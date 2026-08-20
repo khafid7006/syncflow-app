@@ -158,11 +158,33 @@ const getRelativeDeadlineString = (isoString?: string) => {
 const NoWorkspaceView: React.FC<{
   onCreateWorkspace: () => void;
   profile: UserProfile | null;
-  publicWorkspaces: Workspace[];
-  isLoading: boolean;
   onOpenAccessModal: (ws: Workspace) => void;
-}> = ({ onCreateWorkspace, profile, publicWorkspaces, isLoading, onOpenAccessModal }) => {
+}> = ({ onCreateWorkspace, profile, onOpenAccessModal }) => {
   const isOwner = profile?.role === 'owner';
+  const [directoryWorkspaces, setDirectoryWorkspaces] = useState<any[]>([]);
+  const [isLoadingDirectory, setIsLoadingDirectory] = useState<boolean>(true);
+
+  const fetchDirectoryWorkspaces = async () => {
+    setIsLoadingDirectory(true);
+    try {
+      const { data, error } = await supabase
+        .from('workspaces')
+        .select('id, name, created_at, invite_code')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      console.log("-> Direktori Workspace ditemukan:", data);
+      setDirectoryWorkspaces(data || []);
+    } catch (err: any) {
+      console.error("Gagal load direktori workspace:", err.message || err);
+    } finally {
+      setIsLoadingDirectory(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDirectoryWorkspaces();
+  }, []);
 
   return (
     <div className="min-h-[65vh] flex flex-col justify-center p-4 font-sans max-w-5xl mx-auto w-full my-auto space-y-6">
@@ -191,12 +213,12 @@ const NoWorkspaceView: React.FC<{
       </div>
 
       {/* Grid Bento Responsive 3-Kolom */}
-      {isLoading ? (
+      {isLoadingDirectory ? (
         <div className="flex items-center justify-center py-12 text-xs text-zinc-400 gap-2 font-sans">
           <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
           <span>Memuat direktori proyek...</span>
         </div>
-      ) : publicWorkspaces.length === 0 ? (
+      ) : directoryWorkspaces.length === 0 ? (
         <div className="max-w-md mx-auto rounded-2xl border border-white/10 bg-zinc-950/70 backdrop-blur-xl p-8 text-center shadow-2xl space-y-3 font-sans">
           <p className="text-xs text-zinc-400">Belum ada workspace proyek yang terdaftar di direktori.</p>
           {isOwner && (
@@ -210,45 +232,29 @@ const NoWorkspaceView: React.FC<{
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl w-full mx-auto px-4 mt-6">
-          {publicWorkspaces.map(ws => (
+          {directoryWorkspaces.map((ws) => (
             <div
               key={ws.id}
               onClick={() => onOpenAccessModal(ws)}
-              className="group relative rounded-2xl border border-white/10 bg-zinc-950/60 backdrop-blur-xl p-5 hover:border-white/30 hover:bg-zinc-900/80 transition-all cursor-pointer shadow-xl flex flex-col justify-between h-44 font-sans"
+              className="group relative rounded-2xl border border-white/10 bg-zinc-950/70 backdrop-blur-xl p-5 hover:border-white/30 hover:bg-zinc-900/80 transition-all cursor-pointer shadow-xl flex flex-col justify-between h-44 text-left font-sans"
             >
-              {/* Elemen Atas */}
-              <div className="space-y-2">
+              <div>
                 <div className="flex items-center justify-between">
-                  <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                    <Folder className="w-4 h-4 text-zinc-300" />
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-zinc-300 font-medium flex items-center gap-1">
+                  <span className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70">
+                    📁
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-white/50 font-sans">
                     🔒 Terkunci
                   </span>
                 </div>
-                <h3 className="text-base font-bold text-white tracking-tight line-clamp-1">
+                <h3 className="text-sm font-bold text-white tracking-tight mt-3 truncate font-sans">
                   {ws.name}
                 </h3>
-                {ws.description && (
-                  <p className="text-[11px] text-zinc-400 line-clamp-1 font-sans">
-                    {ws.description}
-                  </p>
-                )}
               </div>
 
-              {/* Elemen Bawah (Tombol Buka Ruang Kerja) */}
-              <div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenAccessModal(ws);
-                  }}
-                  className="w-full py-2 rounded-xl bg-white/5 group-hover:bg-white group-hover:text-zinc-950 text-white/80 font-semibold text-xs border border-white/10 group-hover:border-transparent transition-all flex items-center justify-center gap-2 cursor-pointer font-sans"
-                >
-                  🔑 Buka Ruang Kerja
-                </button>
-              </div>
+              <button className="w-full py-2 rounded-xl bg-white/5 group-hover:bg-white group-hover:text-zinc-950 text-white/80 font-semibold text-xs border border-white/10 group-hover:border-transparent transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans">
+                <span>🔑 Masukkan Kode PIN</span>
+              </button>
             </div>
           ))}
         </div>
@@ -2161,8 +2167,6 @@ export const App: React.FC = () => {
           <NoWorkspaceView
             onCreateWorkspace={() => setIsCreateWorkspaceModalOpen(true)}
             profile={profile}
-            publicWorkspaces={publicWorkspaces}
-            isLoading={isPublicWorkspacesLoading}
             onOpenAccessModal={handleOpenAccessCodeModal}
           />
         ) : !isPoOrPlRole || viewMode === 'member' ? (
