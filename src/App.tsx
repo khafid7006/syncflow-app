@@ -48,6 +48,8 @@ export const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  
+  // DEFAULT VIEW STATE: Set initial viewMode strictly to 'member' (anti-flash for members)
   const [viewMode, setViewMode] = useState<'po' | 'member'>('member');
 
   // Login / Signup form states
@@ -117,9 +119,8 @@ export const App: React.FC = () => {
   const totalDodCount = dodItems.length;
   const isAllDoDCompleted = totalDodCount > 0 ? completedDodCount === totalDodCount : true;
 
-  // Effective View Mode: Lock non-owner roles strictly to 'member'
+  // Strict Role Check helper
   const isOwnerRole = profile?.role === 'owner';
-  const effectiveViewMode = isOwnerRole ? viewMode : 'member';
 
   // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks & Project Links
   useEffect(() => {
@@ -152,22 +153,26 @@ export const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Ensure role lock for viewMode
+  // FORCE DEFAULT VIEW BERDASARKAN ROLE (ANTI-FLASH)
   useEffect(() => {
-    if (profile && profile.role !== 'owner') {
-      setViewMode('member');
+    if (profile) {
+      if (profile.role === 'owner') {
+        setViewMode('po');
+      } else {
+        setViewMode('member');
+      }
     }
   }, [profile]);
 
-  // Fetch PO Data when effectiveViewMode is 'po' or profile is loaded
+  // Fetch PO Data when viewMode is 'po' or owner profile is loaded
   useEffect(() => {
     if (session?.user) {
       fetchProjectLinks();
-      if (isOwnerRole || effectiveViewMode === 'po') {
+      if (isOwnerRole) {
         fetchPOData();
       }
     }
-  }, [profile, viewMode, session, isOwnerRole, effectiveViewMode]);
+  }, [profile, viewMode, session, isOwnerRole]);
 
   // 3. SUPABASE REALTIME SUBSCRIPTION FOR TASKS & PROJECT_LINKS
   useEffect(() => {
@@ -180,7 +185,7 @@ export const App: React.FC = () => {
         { event: '*', schema: 'public', table: 'tasks' },
         (payload) => {
           console.log('Realtime task change received:', payload);
-          fetchPOData();
+          if (isOwnerRole) fetchPOData();
           if (session?.user?.id) {
             fetchActiveTask(session.user.id);
           }
@@ -199,7 +204,7 @@ export const App: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session]);
+  }, [session, isOwnerRole]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -1104,13 +1109,13 @@ export const App: React.FC = () => {
             </span>
           </div>
 
-          {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK UNTUK ROLE OWNER/PO) */}
-          {isOwnerRole && (
+          {/* View Mode Switcher Pill (SEMBUNYIKAN SWITCHER NAVBAR TOTAL UNTUK MEMBER) */}
+          {profile?.role === 'owner' && (
             <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
               <button
                 onClick={() => setViewMode('po')}
                 className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
-                  effectiveViewMode === 'po'
+                  viewMode === 'po'
                     ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
                     : 'text-zinc-400 hover:text-white hover:bg-white/10'
                 }`}
@@ -1120,7 +1125,7 @@ export const App: React.FC = () => {
               <button
                 onClick={() => setViewMode('member')}
                 className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
-                  effectiveViewMode === 'member'
+                  viewMode === 'member'
                     ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
                     : 'text-zinc-400 hover:text-white hover:bg-white/10'
                 }`}
@@ -1176,11 +1181,300 @@ export const App: React.FC = () => {
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW ROUTER: EFFECTIVE VIEW MODE ROUTING */}
+        {/* VIEW ROUTER: STRICT ROLE-BASED ACCESS CONTROL GUARD */}
         {/* ========================================================================= */}
-        {effectiveViewMode === 'po' ? (
+        {profile?.role !== 'owner' ? (
           /* ========================================================================= */
-          /* PO DASHBOARD VIEW (BENTO GRID ALL-IN-ONE PO CONTROL CENTER) */
+          /* DASHBOARD MEMBER VIEW (MEMBER ACCOUNT HARD GUARDED) */
+          /* ========================================================================= */
+          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
+            
+            {/* GRID KIRI (7 Kolom / 60% Width) */}
+            <div className="lg:col-span-7 flex flex-col justify-between gap-6">
+              
+              {/* TOP ROW KIRI: 2 Kartu */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                
+                {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member / Empty State) */}
+                {!activeTask ? (
+                  /* EMPTY STATE: TIDAK ADA TUGAS AKTIF */
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all font-sans">
+                    <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
+                      <span>Tugas Aktif</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-zinc-400 font-medium">
+                        Standby
+                      </span>
+                    </div>
+
+                    <div className="text-center my-auto py-4 space-y-2">
+                      <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-md">
+                        <CheckCircle2 className="w-6 h-6 text-zinc-300" />
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="text-xs font-bold text-white tracking-tight leading-snug">
+                          Semua tugas selesai atau belum ada penugasan baru.
+                        </h3>
+                        <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
+                          Tunggu instruksi tugas berikutnya dari Project Owner.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
+                      SyncFlow Status: Standby
+                    </div>
+                  </div>
+                ) : (
+                  /* KARTU TUGAS AKTIF BIASA */
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-200 space-y-3 font-sans">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
+                        <span>Tugas Aktif</span>
+                        {/* Top Right Status Badge on Member Card */}
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium ${
+                          taskStatus === 'Perlu Revisi'
+                            ? 'bg-neutral-800 text-zinc-200 border-white/30'
+                            : taskStatus === 'Terkendala (Blocker)'
+                              ? 'bg-neutral-800 text-zinc-300 border-white/20'
+                              : taskStatus === 'Sedang Ditinjau PO'
+                                ? 'bg-white/10 text-white border-white/20'
+                                : 'bg-white/5 text-zinc-400 border-white/10'
+                        }`}>
+                          {taskStatus}
+                        </span>
+                      </div>
+                      {/* Render Judul Tugas */}
+                      <h2 className="text-base font-bold text-white tracking-tight leading-snug">
+                        {taskTitle}
+                      </h2>
+                    </div>
+
+                    {/* PO Feedback Action Cards in Member Dashboard */}
+                    {activeTask?.revision_note && (
+                      <div className="p-3 bg-neutral-900 border border-white/20 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
+                        <div className="font-semibold text-white text-[11px] flex items-center gap-1">
+                          <span>⚠️ Catatan Revisi PO:</span>
+                        </div>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed">
+                          {activeTask.revision_note}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* REDESAIN KARTU SOLUSI PO: TAMPILKAN RIWAYAT KENDALA VS SOLUSI PO */}
+                    {activeTask?.resolution_note && (
+                      <div className="my-3 rounded-2xl border border-white/10 bg-neutral-900/90 p-3.5 space-y-2 text-xs font-sans">
+                        {/* Baris 1: Kendala Member */}
+                        {activeTask.blocker_reason && (
+                          <div>
+                            <span className="text-zinc-400 block font-medium text-[10px] uppercase tracking-wider">
+                              Kendala yang Kamu Laporkan:
+                            </span>
+                            <p className="text-zinc-300 mt-0.5 line-through decoration-zinc-500 text-[11px]">
+                              {activeTask.blocker_reason}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Divider halus */}
+                        {activeTask.blocker_reason && <div className="border-t border-white/10" />}
+
+                        {/* Baris 2: Solusi PO */}
+                        <div>
+                          <span className="text-white block font-semibold text-[11px] flex items-center gap-1.5">
+                            💡 Solusi / Arahan PO:
+                          </span>
+                          <p className="text-zinc-200 font-normal mt-0.5 text-xs leading-relaxed">
+                            {activeTask.resolution_note}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Render Array Checklist (DoD) dengan Realtime State */}
+                    <div className="space-y-2 pt-3 border-t border-white/10 text-xs font-sans">
+                      {dodItems.map(item => (
+                        <div
+                          key={item.id}
+                          onClick={() => toggleDod(item.id)}
+                          className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors"
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0 ${
+                            item.checked 
+                              ? 'bg-white border-white text-zinc-950' 
+                              : 'border-zinc-500 bg-transparent'
+                          }`}>
+                            {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+                          <span className={`text-xs ${item.checked ? 'line-through text-zinc-500' : 'text-zinc-200'}`}>
+                            {item.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* KARTU TENGAH ATAS (Submit Deliverable - VALIDASI KETAT DOD & FORM UNLOCK & EMPTY STATE) */}
+                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium text-zinc-500">
+                      Penyerahan Tugas
+                    </span>
+                    <h3 className="text-base font-bold text-zinc-950 tracking-tight">
+                      {!activeTask
+                        ? 'Kirim Hasil Tugas'
+                        : taskStatus === 'Perlu Revisi'
+                          ? 'Kirim Hasil Revisi'
+                          : 'Kirim Hasil Tugas'}
+                    </h3>
+                  </div>
+
+                  {/* Form Input Clean & Lock / Validation Logic */}
+                  <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans">
+                    {!activeTask ? (
+                      /* EMPTY STATE INPUT FORM TERKUNCI */
+                      <input
+                        type="text"
+                        disabled
+                        placeholder="Menunggu tugas aktif..."
+                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-400 placeholder-zinc-400 cursor-not-allowed font-sans"
+                      />
+                    ) : submittedUrl && taskStatus === 'Sedang Ditinjau PO' ? (
+                      <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
+                        <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
+                        <a href={submittedUrl} target="_blank" rel="noreferrer" className="text-zinc-900 underline truncate block font-medium">
+                          {submittedUrl}
+                        </a>
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        required
+                        disabled={taskStatus === 'Sedang Ditinjau PO'}
+                        placeholder="Link tugas..."
+                        value={deliverableUrl}
+                        onChange={e => setDeliverableUrl(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors disabled:opacity-50 font-sans"
+                      />
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted}
+                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-200 ${
+                        !activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted
+                          ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                          : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
+                      }`}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>
+                        {!activeTask
+                          ? 'Belum Ada Tugas'
+                          : taskStatus === 'Sedang Ditinjau PO'
+                            ? 'Sedang Ditinjau PO'
+                            : taskStatus === 'Perlu Revisi'
+                              ? 'Kirim Hasil Revisi'
+                              : 'Kirim Hasil Tugas'}
+                      </span>
+                    </button>
+
+                    {/* Helper text jika DoD belum lengkap */}
+                    {activeTask && taskStatus !== 'Sedang Ditinjau PO' && !isAllDoDCompleted && (
+                      <p className="text-[10px] text-zinc-500 text-center font-sans font-medium pt-0.5">
+                        Selesaikan semua checklist ({completedDodCount}/{totalDodCount}) untuk menyerahkan tugas.
+                      </p>
+                    )}
+                  </form>
+
+                  {/* Tombol Laporkan Kendala */}
+                  <div className="pt-2 border-t border-zinc-100 font-sans">
+                    <button
+                      onClick={() => setIsBlockerModalOpen(true)}
+                      disabled={!activeTask}
+                      className={`w-full py-2 border text-xs rounded-full transition-colors flex items-center justify-center gap-1.5 ${
+                        !activeTask
+                          ? 'border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed'
+                          : 'border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium cursor-pointer'
+                      }`}
+                    >
+                      <AlertTriangle className={`w-3.5 h-3.5 ${!activeTask ? 'text-zinc-400' : 'text-zinc-600'}`} />
+                      <span>🚨 Laporkan Kendala</span>
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis) */}
+              <div className="space-y-2 pt-2 font-sans">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
+                  Halo, {userName}
+                </h1>
+                <p className="text-base text-zinc-400 font-sans">
+                  {activeTask
+                    ? `Target: ${taskTitle}`
+                    : 'Status: Standby / Menunggu Sprint Berikutnya'}
+                </p>
+              </div>
+
+            </div>
+
+            {/* GRID KANAN (5 Kolom / 40% Width - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
+            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
+              
+              {/* KARTU KANAN (Aset Tim) */}
+              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all font-sans">
+                
+                <div className="space-y-1">
+                  <span className="text-xs font-medium text-zinc-400">
+                    Aset Tim
+                  </span>
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    Tautan Utama ({projectLinks.length})
+                  </h3>
+                </div>
+
+                {/* Dynamic Links List (Read-Only for Member) */}
+                <div className="space-y-3 pt-4 flex-1">
+                  {projectLinks.length === 0 ? (
+                    <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim.</p>
+                  ) : (
+                    projectLinks.map(link => (
+                      <a
+                        key={link.id || link.title}
+                        href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
+                            {renderLinkIcon(link.title, link.icon_type)}
+                          </div>
+                          <span className="font-semibold text-white truncate max-w-[200px] sm:max-w-[260px]">
+                            {link.title}
+                          </span>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors shrink-0" />
+                      </a>
+                    ))
+                  )}
+                </div>
+
+                <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
+                  SyncFlow Dashboard
+                </div>
+
+              </div>
+
+            </div>
+
+          </main>
+        ) : viewMode === 'po' ? (
+          /* ========================================================================= */
+          /* PO DASHBOARD VIEW (BENTO GRID ALL-IN-ONE PO CONTROL CENTER - OWNER ONLY) */
           /* ========================================================================= */
           <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
             
@@ -1603,7 +1897,7 @@ export const App: React.FC = () => {
           </main>
         ) : (
           /* ========================================================================= */
-          /* DASHBOARD MEMBER VIEW (STRICT MONOCHROME GLASSMORPHISM) */
+          /* DASHBOARD MEMBER VIEW FOR PO TOGGLE */
           /* ========================================================================= */
           <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
             
