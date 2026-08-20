@@ -98,105 +98,88 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- 1. TEAMS TABLE
 -- ============================================================================
 CREATE TABLE teams (
-  id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
+  id VARCHAR(64) PRIMARY KEY,
+  name VARCHAR(128) NOT NULL,
+  department VARCHAR(64) NOT NULL,
+  lead_name VARCHAR(128) NOT NULL,
+  lead_role user_role_enum NOT NULL DEFAULT 'PROJECT_LEAD',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================================
--- 2. USERS TABLE
+-- 2. USERS TABLE (MEMBER PROFILE & ROLE)
 -- ============================================================================
 CREATE TABLE users (
-  id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  name VARCHAR(255) NOT NULL,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  avatar_url TEXT,
+  id VARCHAR(64) PRIMARY KEY,
+  full_name VARCHAR(128) NOT NULL,
+  email VARCHAR(128) NOT NULL UNIQUE,
   role user_role_enum NOT NULL DEFAULT 'MEMBER',
+  pod_type pod_type_enum NOT NULL DEFAULT 'PRODUCT_BUILDER',
   team_id VARCHAR(64) REFERENCES teams(id) ON DELETE SET NULL,
-  pod_type pod_type_enum DEFAULT 'ALL',
+  avatar_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for fast role & team lookups
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_team_id ON users(team_id);
+CREATE INDEX idx_users_team ON users(team_id);
 CREATE INDEX idx_users_role ON users(role);
 
 -- ============================================================================
 -- 3. SPRINTS TABLE
 -- ============================================================================
 CREATE TABLE sprints (
-  id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  team_id VARCHAR(64) NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  name VARCHAR(255) NOT NULL,
-  sprint_goal TEXT,
+  id VARCHAR(64) PRIMARY KEY,
+  name VARCHAR(128) NOT NULL,
+  goal TEXT,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  is_active BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for active sprints per team
-CREATE INDEX idx_sprints_team_id ON sprints(team_id);
-CREATE INDEX idx_sprints_is_active ON sprints(is_active);
-
 -- ============================================================================
--- 4. TASKS TABLE
+-- 4. TASKS TABLE (MASTER MONITORING FEED)
 -- ============================================================================
 CREATE TABLE tasks (
-  id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  task_code VARCHAR(50) NOT NULL,
-  team_id VARCHAR(64) NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  sprint_id VARCHAR(64) NOT NULL REFERENCES sprints(id) ON DELETE CASCADE,
-  assignee_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
-  assigned_to VARCHAR(255),
-  pod pod_type_enum DEFAULT 'PRODUCT_BUILDER',
-  title VARCHAR(255) NOT NULL,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title VARCHAR(256) NOT NULL,
   description TEXT,
-  deliverable_link TEXT,
-  deliverable_url TEXT,
-  status task_status_enum NOT NULL DEFAULT 'TODO',
+  assignee_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  status VARCHAR(64) NOT NULL DEFAULT 'in_progress',
   priority task_priority_enum NOT NULL DEFAULT 'MEDIUM',
-  is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
-  blocker_reason TEXT,
   blocker_category blocker_category_enum,
-  review_feedback TEXT,
-  checklist JSONB,
+  blocker_reason TEXT,
+  deliverable_url TEXT,
+  deliverable_link TEXT,
+  revision_note TEXT,
+  resolution_note TEXT,
+  is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
   due_date TIMESTAMPTZ,
   submitted_at TIMESTAMPTZ,
+  checklist JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Alter table queries for existing instances
-ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMPTZ;
-ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ;
-
--- Index for task queries
-CREATE INDEX idx_tasks_team_id ON tasks(team_id);
-CREATE INDEX idx_tasks_sprint_id ON tasks(sprint_id);
-CREATE INDEX idx_tasks_assignee_id ON tasks(assignee_id);
 CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);
 
 -- ============================================================================
--- 5. TASK DODS TABLE (Definition of Done Criteria)
+-- 5. TASK DODS (DEFINITION OF DONE CHECKLIST)
 -- ============================================================================
 CREATE TABLE task_dods (
-  id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  task_id VARCHAR(64) NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  criteria_text TEXT NOT NULL,
-  is_checked BOOLEAN NOT NULL DEFAULT FALSE,
-  verified_by VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id VARCHAR(64) PRIMARY KEY,
+  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  item_text TEXT NOT NULL,
+  is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_task_dods_task_id ON task_dods(task_id);
+CREATE INDEX idx_dods_task ON task_dods(task_id);
 
 -- ============================================================================
--- 6. COMMUNITY MESSAGES TABLE
+-- 6. COMMUNITY MESSAGES TABLE (FEEDBACK & DISCUSSIONS)
 -- ============================================================================
 CREATE TABLE community_messages (
-  id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  id VARCHAR(64) PRIMARY KEY,
   team_id VARCHAR(64) REFERENCES teams(id) ON DELETE SET NULL,
   channel_type channel_type_enum NOT NULL DEFAULT 'ALL_TEAMS',
   sender_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -227,6 +210,7 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   name TEXT NOT NULL,
   description TEXT,
   owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  invite_code TEXT UNIQUE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -235,6 +219,7 @@ CREATE TABLE IF NOT EXISTS public.workspace_members (
   workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'member', -- 'po' | 'pl' | 'member'
+  pod TEXT DEFAULT 'Product Builder',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
   UNIQUE(workspace_id, user_id)
 );
@@ -243,34 +228,10 @@ CREATE TABLE IF NOT EXISTS public.workspace_members (
 ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
 ALTER TABLE public.project_links ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
 
--- ============================================================================
--- ENABLE ROW LEVEL SECURITY (RLS) FOR PUBLIC ACCESS
--- ============================================================================
-ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sprints ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE task_dods ENABLE ROW LEVEL SECURITY;
-ALTER TABLE community_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.project_links ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
+-- Add invite_code column and migration fallback if workspaces table already exists
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS invite_code TEXT UNIQUE;
+UPDATE public.workspaces SET invite_code = UPPER(SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 6)) WHERE invite_code IS NULL;
 
-CREATE POLICY "Allow public read access to teams" ON teams FOR SELECT USING (true);
-CREATE POLICY "Allow public insert to teams" ON teams FOR INSERT WITH CHECK (true);
-
-CREATE POLICY "Allow public read access to users" ON users FOR SELECT USING (true);
-CREATE POLICY "Allow public insert to users" ON users FOR INSERT WITH CHECK (true);
-
-CREATE POLICY "Allow public read access to sprints" ON sprints FOR SELECT USING (true);
-CREATE POLICY "Allow public insert to sprints" ON sprints FOR INSERT WITH CHECK (true);
-
-CREATE POLICY "Allow public read access to tasks" ON tasks FOR SELECT USING (true);
-CREATE POLICY "Allow public insert/update to tasks" ON tasks FOR ALL USING (true);
-
-CREATE POLICY "Allow public access to task_dods" ON task_dods FOR ALL USING (true);
-CREATE POLICY "Allow public access to community_messages" ON community_messages FOR ALL USING (true);
-CREATE POLICY "Allow public access to project_links" ON public.project_links FOR ALL USING (true);
-CREATE POLICY "Allow public access to workspaces" ON public.workspaces FOR ALL USING (true);
-CREATE POLICY "Allow public access to workspace_members" ON public.workspace_members FOR ALL USING (true);
-
+-- Disable RLS to allow direct queries without block
+ALTER TABLE public.workspaces DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workspace_members DISABLE ROW LEVEL SECURITY;

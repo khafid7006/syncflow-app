@@ -22,6 +22,7 @@ export interface Workspace {
   description?: string;
   owner_id?: string;
   role?: 'po' | 'pl' | 'member';
+  invite_code?: string;
   created_at?: string;
 }
 
@@ -629,13 +630,15 @@ export const App: React.FC = () => {
 
     setIsCreatingWorkspace(true);
     try {
-      // 1. Insert Workspace Baru
+      // 1. Insert Workspace Baru dengan Invite Code
+      const generatedInviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       const { data: newWs, error: wsError } = await supabase
         .from('workspaces')
         .insert([{ 
           name: newWorkspaceName.trim(),
           created_by: userId,
-          owner_id: userId 
+          owner_id: userId,
+          invite_code: generatedInviteCode
         }])
         .select()
         .single();
