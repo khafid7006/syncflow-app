@@ -1,13 +1,12 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
-  LayoutDashboard, CheckSquare, Zap, Layers 
+  LayoutDashboard, Zap, Layers 
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
   const { activeTab, setActiveTab, currentUser, tasks } = useApp();
 
-  const myTasksCount = tasks.filter(t => t.status !== 'DONE' && t.status !== 'SELESAI').length;
   const blockedCount = tasks.filter(t => t.status === 'BLOCKED' || t.is_blocked).length;
 
   const navItems = [
@@ -15,12 +14,6 @@ export const Sidebar: React.FC = () => {
       id: 'dashboard',
       label: 'Dasbor',
       icon: <LayoutDashboard className="w-4 h-4 stroke-[2]" />
-    },
-    {
-      id: 'tasks',
-      label: 'Tugas',
-      icon: <CheckSquare className="w-4 h-4 stroke-[2]" />,
-      badge: myTasksCount > 0 ? myTasksCount : undefined
     },
     {
       id: 'focus',
@@ -44,7 +37,7 @@ export const Sidebar: React.FC = () => {
               <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-bold">1.0</span>
             </div>
             <div className="text-[10px] text-slate-400 font-mono tracking-wide uppercase">
-              PKL INDITO Architecture
+              Super Simpel Workflows
             </div>
           </div>
         </div>
@@ -77,7 +70,7 @@ export const Sidebar: React.FC = () => {
                 </div>
                 {item.badge !== undefined && (
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                    isActive ? 'bg-[#F59E0B] text-slate-950' : 'bg-slate-200 text-slate-800'
+                    isActive ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-800'
                   }`}>
                     {item.badge}
                   </span>
@@ -96,7 +89,7 @@ export const Sidebar: React.FC = () => {
             <span>Live PKL System</span>
           </div>
           <p className="text-[10px] text-slate-400 font-sans">
-            Strict 4 Roles • Real-time DB
+            8 Anak SMK • 3 Mahasiswa PO
           </p>
         </div>
       </div>

@@ -57,22 +57,10 @@ export const App: React.FC = () => {
       case 'dashboard':
         return renderDashboardByRole();
 
-      case 'tasks':
-        return <TasksView onCreateTask={() => setIsCreateTaskOpen(true)} />;
-
       case 'focus':
       case 'do':
-        return <FocusExecutionView />;
-
-      case 'sprints':
-        return <SprintsView onCreateTask={() => setIsCreateTaskOpen(true)} />;
-
-      case 'teams':
-      case 'community':
-        return <CommunityView />;
-
       default:
-        return <TasksView onCreateTask={() => setIsCreateTaskOpen(true)} />;
+        return <FocusExecutionView />;
     }
   };
 

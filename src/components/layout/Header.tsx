@@ -115,7 +115,7 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Center: Floating Pill Navigation Tabs (Dasbor, Tugas, Lakukan /do) */}
+      {/* Center: Floating Pill Navigation Tabs (Dasbor, Lakukan /do) */}
       <div className="flex items-center gap-1 p-1 bg-white/80 backdrop-blur-md rounded-full border border-white/70 shadow-sm font-mono text-xs">
         <button
           onClick={() => setActiveTab('dashboard')}
@@ -126,17 +126,6 @@ export const Header: React.FC = () => {
           }`}
         >
           Dasbor
-        </button>
-
-        <button
-          onClick={() => setActiveTab('tasks')}
-          className={`px-4 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
-            activeTab === 'tasks'
-              ? 'bg-[#18181B] text-white shadow-xs'
-              : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100/70'
-          }`}
-        >
-          Tugas
         </button>
 
         <button
