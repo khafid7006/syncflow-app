@@ -86,13 +86,14 @@ export const App: React.FC = () => {
     { id: 3, text: 'Lampirkan link hasil kerjaan', checked: false },
   ]);
 
-  // 1. Fetch Session & Profile on Mount
+  // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
         fetchOrCreateProfile(session.user);
         fetchActiveTask(session.user.id);
+        fetchPOData();
       } else {
         setAuthLoading(false);
       }
@@ -103,6 +104,7 @@ export const App: React.FC = () => {
       if (session?.user) {
         fetchOrCreateProfile(session.user);
         fetchActiveTask(session.user.id);
+        fetchPOData();
       } else {
         setProfile(null);
         setActiveTask(null);
@@ -208,10 +210,10 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. JOIN PROFIL DI RADAR KENDALA & REVIEW + 2. FETCH DROPDOWN MEMBER AKTIF
+  // 1. FETCH MEMBERS & TASKS WITH PROFILES RELATIONS JOIN
   const fetchPOData = async () => {
     try {
-      // 1. Fetch blocked tasks with explicit profiles:assignee_id join
+      // Fetch blocked tasks with profiles:assignee_id join
       const { data: blockedData, error: bErr } = await supabase
         .from('tasks')
         .select(`
@@ -219,8 +221,7 @@ export const App: React.FC = () => {
           profiles:assignee_id (
             id,
             full_name,
-            pod,
-            role
+            pod
           )
         `)
         .or('status.eq.blocked,is_blocked.eq.true')
@@ -228,7 +229,7 @@ export const App: React.FC = () => {
 
       if (bErr) console.error("Error fetching blocked tasks:", bErr.message);
 
-      // 1. Fetch review tasks with explicit profiles:assignee_id join
+      // Fetch review tasks with profiles:assignee_id join
       const { data: reviewData, error: rErr } = await supabase
         .from('tasks')
         .select(`
@@ -236,8 +237,7 @@ export const App: React.FC = () => {
           profiles:assignee_id (
             id,
             full_name,
-            pod,
-            role
+            pod
           )
         `)
         .or('status.eq.review,status.eq.UNDER_REVIEW')
@@ -245,22 +245,24 @@ export const App: React.FC = () => {
 
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
 
-      // 2. Query all users from public.profiles: select('id, full_name, pod, role').order('full_name')
+      // Fetch members from public.profiles
       const { data: membersData, error: mErr } = await supabase
         .from('profiles')
         .select('id, full_name, pod, role')
         .order('full_name', { ascending: true });
 
-      if (mErr) console.error("Error fetching members:", mErr.message);
-
-      if (blockedData) setBlockedTasks(blockedData);
-      if (reviewData) setReviewTasks(reviewData);
-      if (membersData) {
+      if (mErr) {
+        console.error('Gagal fetch profiles:', mErr.message);
+      } else if (membersData) {
+        console.log('Daftar member ditemukan:', membersData);
         setMemberProfiles(membersData as UserProfile[]);
         if (membersData.length > 0 && (!selectedAssigneeId || !membersData.some(m => m.id === selectedAssigneeId))) {
           setSelectedAssigneeId(membersData[0].id);
         }
       }
+
+      if (blockedData) setBlockedTasks(blockedData);
+      if (reviewData) setReviewTasks(reviewData);
     } catch (err: any) {
       console.error('Fetch PO Data error:', err);
     }
@@ -586,7 +588,7 @@ export const App: React.FC = () => {
     setDodPoints(updated);
   };
 
-  // 3. SUBMIT PENUGASAN CEPAT
+  // SUBMIT PENUGASAN CEPAT
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
@@ -922,9 +924,9 @@ export const App: React.FC = () => {
                         {blockedTasks.map(t => (
                           <div key={t.id} className="p-3.5 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-2 text-xs font-sans">
                             <div className="flex items-center justify-between">
-                              <span className="font-bold text-white">{t.profiles?.full_name || 'Tanpa Nama'}</span>
+                              <span className="font-bold text-white">{t.profiles?.full_name || 'Member Tim'}</span>
                               <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
-                                {t.profiles?.pod || 'Divisi Tim'}
+                                {t.profiles?.pod || 'Umum'}
                               </span>
                             </div>
                             <p className="text-zinc-300 leading-relaxed font-sans bg-white/5 p-2 rounded-xl border border-white/5 text-[11px]">
@@ -959,7 +961,7 @@ export const App: React.FC = () => {
                   </div>
 
                   <form onSubmit={handleCreateNewTask} className="space-y-3 my-auto py-2 font-sans">
-                    {/* 2. FETCH DROPDOWN: Render {member.full_name} — {member.pod} */}
+                    {/* 1. DROPDOWN FIX: Render {m.full_name || 'Member'} — {m.pod || 'Divisi'} */}
                     <div className="space-y-1">
                       <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
                       <select
@@ -968,11 +970,11 @@ export const App: React.FC = () => {
                         className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans cursor-pointer"
                       >
                         {memberProfiles.length === 0 ? (
-                          <option value="">Tidak ada member terdaftar</option>
+                          <option value="">Memuat daftar tim...</option>
                         ) : (
                           memberProfiles.map(m => (
                             <option key={m.id} value={m.id}>
-                              {m.full_name || 'Tanpa Nama'} — {m.pod || 'Divisi Tim'}
+                              {m.full_name || 'Member'} — {m.pod || 'Divisi'}
                             </option>
                           ))
                         )}
@@ -1096,7 +1098,7 @@ export const App: React.FC = () => {
                             <div>
                               <div className="font-bold text-white">{t.title}</div>
                               <div className="text-[11px] text-zinc-400">
-                                {t.profiles?.full_name || 'Tanpa Nama'} • {t.profiles?.pod || 'Divisi Tim'}
+                                {t.profiles?.full_name || 'Member Tim'} • {t.profiles?.pod || 'Umum'}
                               </div>
                             </div>
                             {(t.deliverable_link || t.deliverable_url) && (
