@@ -23,6 +23,8 @@ export interface MemberTask {
   deliverable_url?: string;
   blocker_reason?: string;
   is_blocked?: boolean;
+  revision_note?: string;
+  resolution_note?: string;
   checklist?: { id: number; text: string; checked: boolean; is_checked?: boolean }[];
   created_at?: string;
   profiles?: {
@@ -75,8 +77,16 @@ export const App: React.FC = () => {
     'Sambungkan tombol ke halaman sukses',
     'Lampirkan link hasil kerjaan',
   ]);
-  
-  // Modals & Toasts
+
+  // PO Feedback Modals states
+  const [targetTaskId, setTargetTaskId] = useState<string | null>(null);
+  const [isResolveBlockerModalOpen, setIsResolveBlockerModalOpen] = useState<boolean>(false);
+  const [inputResolutionNote, setInputResolutionNote] = useState<string>('');
+
+  const [isRevisionModalOpen, setIsRevisionModalOpen] = useState<boolean>(false);
+  const [inputRevisionNote, setInputRevisionNote] = useState<string>('');
+
+  // Member Modals & Toasts
   const [isBlockerModalOpen, setIsBlockerModalOpen] = useState<boolean>(false);
   const [blockerReason, setBlockerReason] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -412,7 +422,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // MEMBER: SUBMIT DELIVERABLE LINK
+  // MEMBER: SUBMIT DELIVERABLE LINK (RESET REVISION & RESOLUTION NOTES)
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deliverableUrl.trim() || !session?.user?.id) return;
@@ -427,7 +437,9 @@ export const App: React.FC = () => {
           .update({ 
             deliverable_link: linkInput,
             deliverable_url: linkInput,
-            status: 'review' 
+            status: 'review',
+            revision_note: null,
+            resolution_note: null
           })
           .eq('id', activeTask.id)
           .select();
@@ -447,7 +459,9 @@ export const App: React.FC = () => {
             title: taskTitle || 'Buat Halaman Pembayaran Aplikasi',
             deliverable_link: linkInput,
             deliverable_url: linkInput,
-            status: 'review'
+            status: 'review',
+            revision_note: null,
+            resolution_note: null
           })
           .select();
 
@@ -529,23 +543,76 @@ export const App: React.FC = () => {
     showToast('🚨 Kendala berhasil dilaporkan ke Project Owner.');
   };
 
-  // PO DASHBOARD ACTIONS
-  const handleResolveBlocker = async (taskId: string) => {
+  // PO DASHBOARD INTERACTION HANDLERS (MODAL INPUT INSTRUKSI)
+  const handleOpenResolveBlockerModal = (taskId: string) => {
+    setTargetTaskId(taskId);
+    setInputResolutionNote('');
+    setIsResolveBlockerModalOpen(true);
+  };
+
+  const handleSubmitResolveBlocker = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetTaskId || !inputResolutionNote.trim()) return;
+
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ status: 'in_progress', is_blocked: false })
-        .eq('id', taskId);
+        .update({ 
+          status: 'in_progress', 
+          is_blocked: false, 
+          blocker_reason: null,
+          resolution_note: inputResolutionNote.trim() 
+        })
+        .eq('id', targetTaskId);
 
       if (error) {
         console.error("Resolve blocker error:", error.message);
-        showToast(`Gagal resolve blocker: ${error.message}`);
+        showToast(`Gagal kirim solusi: ${error.message}`);
       } else {
-        showToast('Kendala berhasil ditandai Teratasi!');
+        showToast('💡 Solusi kendala telah dikirimkan ke Member!');
+        setIsResolveBlockerModalOpen(false);
+        setTargetTaskId(null);
+        setInputResolutionNote('');
         fetchPOData();
       }
     } catch (err: any) {
       console.error("Resolve blocker error:", err);
+      showToast(`Gagal kirim solusi: ${err.message || err}`);
+    }
+  };
+
+  const handleOpenRevisionModal = (taskId: string) => {
+    setTargetTaskId(taskId);
+    setInputRevisionNote('');
+    setIsRevisionModalOpen(true);
+  };
+
+  const handleSubmitRevisionNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetTaskId || !inputRevisionNote.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ 
+          status: 'in_progress', 
+          revision_note: inputRevisionNote.trim() 
+        })
+        .eq('id', targetTaskId);
+
+      if (error) {
+        console.error("Request revision error:", error.message);
+        showToast(`Gagal kirim catatan revisi: ${error.message}`);
+      } else {
+        showToast('⚠️ Catatan revisi telah dikirimkan ke Member!');
+        setIsRevisionModalOpen(false);
+        setTargetTaskId(null);
+        setInputRevisionNote('');
+        fetchPOData();
+      }
+    } catch (err: any) {
+      console.error("Request revision error:", err);
+      showToast(`Gagal kirim catatan revisi: ${err.message || err}`);
     }
   };
 
@@ -553,37 +620,22 @@ export const App: React.FC = () => {
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ status: 'done' })
+        .update({ 
+          status: 'done',
+          revision_note: null,
+          resolution_note: null
+        })
         .eq('id', taskId);
 
       if (error) {
         console.error("Accept review error:", error.message);
         showToast(`Gagal ACC tugas: ${error.message}`);
       } else {
-        showToast('Tugas telah di-ACC (Done)!');
+        showToast('✅ Tugas telah di-ACC (Done)!');
         fetchPOData();
       }
     } catch (err: any) {
       console.error("Accept review error:", err);
-    }
-  };
-
-  const handleRequestRevision = async (taskId: string) => {
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ status: 'in_progress' })
-        .eq('id', taskId);
-
-      if (error) {
-        console.error("Request revision error:", error.message);
-        showToast(`Gagal minta revisi: ${error.message}`);
-      } else {
-        showToast('Status tugas dikembalikan ke Dalam Pengerjaan.');
-        fetchPOData();
-      }
-    } catch (err: any) {
-      console.error("Request revision error:", err);
     }
   };
 
@@ -973,7 +1025,7 @@ export const App: React.FC = () => {
                               {t.title}
                             </div>
 
-                            {/* Status Indicator & Specific Action Controls */}
+                            {/* Status Indicator & Specific Action Controls (Modal Triggers) */}
                             {isBlocked ? (
                               <div className="space-y-2 pt-1 border-t border-white/5">
                                 <div className="flex items-center justify-between">
@@ -982,7 +1034,7 @@ export const App: React.FC = () => {
                                     <span>🚨 Blocker</span>
                                   </span>
                                   <button
-                                    onClick={() => t.id && handleResolveBlocker(t.id)}
+                                    onClick={() => t.id && handleOpenResolveBlockerModal(t.id)}
                                     className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-[11px] rounded-full transition-colors cursor-pointer flex items-center gap-1"
                                   >
                                     <RotateCcw className="w-3 h-3" />
@@ -1020,7 +1072,7 @@ export const App: React.FC = () => {
                                     ACC
                                   </button>
                                   <button
-                                    onClick={() => t.id && handleRequestRevision(t.id)}
+                                    onClick={() => t.id && handleOpenRevisionModal(t.id)}
                                     className="flex-1 py-1.5 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-colors cursor-pointer text-center text-[11px]"
                                   >
                                     Minta Revisi
@@ -1286,7 +1338,7 @@ export const App: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 
                 {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member) */}
-                <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all">
+                <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all space-y-3 font-sans">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                       <span>Tugas Aktif</span>
@@ -1306,8 +1358,31 @@ export const App: React.FC = () => {
                     </h2>
                   </div>
 
+                  {/* PO Feedback Action Cards in Member Dashboard */}
+                  {activeTask?.revision_note && (
+                    <div className="p-3 bg-neutral-900 border border-white/15 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
+                      <div className="font-semibold text-white text-[11px] flex items-center gap-1">
+                        <span>⚠️ Catatan Revisi dari PO:</span>
+                      </div>
+                      <p className="text-zinc-300 text-[11px] leading-relaxed">
+                        {activeTask.revision_note}
+                      </p>
+                    </div>
+                  )}
+
+                  {activeTask?.resolution_note && (
+                    <div className="p-3 bg-white/10 border border-white/15 rounded-2xl text-xs text-white font-sans space-y-1">
+                      <div className="font-semibold text-white text-[11px] flex items-center gap-1">
+                        <span>💡 Solusi Kendala dari PO:</span>
+                      </div>
+                      <p className="text-zinc-200 text-[11px] leading-relaxed">
+                        {activeTask.resolution_note}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Render Array Checklist (DoD) */}
-                  <div className="space-y-2 pt-4 border-t border-white/10 text-xs font-sans">
+                  <div className="space-y-2 pt-3 border-t border-white/10 text-xs font-sans">
                     {dodItems.map(item => (
                       <div
                         key={item.id}
@@ -1468,6 +1543,116 @@ export const App: React.FC = () => {
         </footer>
 
       </div>
+
+      {/* MODAL INPUT ARANAN SOLUSI KENDALA (PO VIEW) */}
+      {isResolveBlockerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <RotateCcw className="w-4 h-4 text-zinc-300" />
+                <span>Solusi / Arahan Kendala</span>
+              </div>
+              <button
+                onClick={() => setIsResolveBlockerModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitResolveBlocker} className="space-y-4 font-sans">
+              <div className="space-y-1">
+                <label className="block text-zinc-400 font-medium">Berikan Solusi / Arahan untuk Kendala Ini</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Tuliskan arahan/solusi teknis..."
+                  value={inputResolutionNote}
+                  onChange={e => setInputResolutionNote(e.target.value)}
+                  className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsResolveBlockerModalOpen(false)}
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={!inputResolutionNote.trim()}
+                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all ${
+                    inputResolutionNote.trim()
+                      ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
+                      : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Kirim Arahan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL INPUT CATATAN REVISI (PO VIEW) */}
+      {isRevisionModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <AlertTriangle className="w-4 h-4 text-zinc-300" />
+                <span>Catatan Revisi Tugas</span>
+              </div>
+              <button
+                onClick={() => setIsRevisionModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitRevisionNote} className="space-y-4 font-sans">
+              <div className="space-y-1">
+                <label className="block text-zinc-400 font-medium">Catatan Poin Revisi & Hal yang Harus Diperbaiki</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Tuliskan poin revisi..."
+                  value={inputRevisionNote}
+                  onChange={e => setInputRevisionNote(e.target.value)}
+                  className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRevisionModalOpen(false)}
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={!inputRevisionNote.trim()}
+                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all ${
+                    inputRevisionNote.trim()
+                      ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
+                      : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Kirim Arahan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL LAPORKAN KENDALA (MEMBER VIEW) */}
       {isBlockerModalOpen && (
