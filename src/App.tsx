@@ -63,11 +63,22 @@ export const App: React.FC = () => {
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<'Dalam Pengerjaan' | 'Sedang Ditinjau PO' | 'Terkendala (Blocker)' | 'Perlu Revisi'>('Dalam Pengerjaan');
 
-  // PO Dashboard states (Master Task Feed & Profiles)
+  // PO Dashboard states (Master Task Feed, Filter Tab, & Profiles)
   const [allTasks, setAllTasks] = useState<MemberTask[]>([]);
   const [blockedTasks, setBlockedTasks] = useState<MemberTask[]>([]);
   const [reviewTasks, setReviewTasks] = useState<MemberTask[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<UserProfile[]>([]);
+  const [poTaskFeedFilter, setPoTaskFeedFilter] = useState<'active' | 'done'>('active');
+
+  // Project Asset Links State (with localStorage persistence)
+  const [driveUrl, setDriveUrl] = useState<string>(() => localStorage.getItem('syncflow_drive_url') || 'https://drive.google.com');
+  const [figmaUrl, setFigmaUrl] = useState<string>(() => localStorage.getItem('syncflow_figma_url') || 'https://figma.com');
+  const [repoUrl, setRepoUrl] = useState<string>(() => localStorage.getItem('syncflow_repo_url') || 'https://github.com/khafid7006/syncflow-app');
+  
+  const [isEditAssetLinksModalOpen, setIsEditAssetLinksModalOpen] = useState<boolean>(false);
+  const [inputDriveUrl, setInputDriveUrl] = useState<string>('');
+  const [inputFigmaUrl, setInputFigmaUrl] = useState<string>('');
+  const [inputRepoUrl, setInputRepoUrl] = useState<string>('');
 
   // PO Quick Assignment Form states (Dynamic DoD list, max 10 points)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
@@ -426,6 +437,26 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  // EDIT PROJECT ASSET LINKS HANDLERS
+  const handleOpenEditAssetLinksModal = () => {
+    setInputDriveUrl(driveUrl);
+    setInputFigmaUrl(figmaUrl);
+    setInputRepoUrl(repoUrl);
+    setIsEditAssetLinksModalOpen(true);
+  };
+
+  const handleSaveAssetLinks = (e: React.FormEvent) => {
+    e.preventDefault();
+    setDriveUrl(inputDriveUrl.trim());
+    setFigmaUrl(inputFigmaUrl.trim());
+    setRepoUrl(inputRepoUrl.trim());
+    localStorage.setItem('syncflow_drive_url', inputDriveUrl.trim());
+    localStorage.setItem('syncflow_figma_url', inputFigmaUrl.trim());
+    localStorage.setItem('syncflow_repo_url', inputRepoUrl.trim());
+    setIsEditAssetLinksModalOpen(false);
+    showToast('Tautan aset proyek berhasil diperbarui!');
+  };
+
   // CHECKLIST TOGGLE & SUPABASE REALTIME PERSISTENCE FOR MEMBER
   const toggleDod = async (id: number) => {
     const updatedItems = dodItems.map(item => {
@@ -753,20 +784,24 @@ export const App: React.FC = () => {
   const blockedTasksCount = allTasks.filter(t => t.status === 'blocked' || t.is_blocked).length;
   const doneTasksCount = allTasks.filter(t => t.status === 'done').length;
 
-  // Review Tasks list filtered for PO review cards
-  const reviewTasksList = allTasks.filter(task => 
-    task.status === 'review' || task.status === 'in_review' || task.status === 'UNDER_REVIEW'
-  );
-
-  // Sorted tasks for Master Task Feed (Blocked first, then Review, then In Progress, then Done)
-  const sortedMasterTasks = [...allTasks].sort((a, b) => {
-    const priorityScore = (task: MemberTask) => {
-      if (task.status === 'blocked' || task.is_blocked) return 0;
-      if (task.status === 'review' || task.status === 'in_review' || task.status === 'UNDER_REVIEW') return 1;
-      if (task.status === 'in_progress') return 2;
-      return 3;
-    };
-    return priorityScore(a) - priorityScore(b);
+  // Filtered & Sorted Master Tasks for Column 1 Task Feed
+  const filteredMasterTasks = allTasks.filter(t => {
+    if (poTaskFeedFilter === 'active') {
+      return t.status !== 'done';
+    } else {
+      return t.status === 'done';
+    }
+  }).sort((a, b) => {
+    if (poTaskFeedFilter === 'active') {
+      const priorityScore = (task: MemberTask) => {
+        if (task.status === 'blocked' || task.is_blocked) return 0;
+        if (task.status === 'review' || task.status === 'in_review' || task.status === 'UNDER_REVIEW') return 1;
+        return 2;
+      };
+      return priorityScore(a) - priorityScore(b);
+    } else {
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    }
   });
 
   // Loading Screen
@@ -1037,40 +1072,75 @@ export const App: React.FC = () => {
               
               <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all font-sans">
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-white font-bold text-sm">
-                      <Activity className="w-4 h-4 text-zinc-300" />
-                      <span>Radar & Status Tim</span>
+                  {/* Header & Tab Feed Switcher */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-white font-bold text-sm">
+                        <Activity className="w-4 h-4 text-zinc-300" />
+                        <span>Radar & Status Tim</span>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
+                        {allTasks.length} Total
+                      </span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
-                      {allTasks.length} Tugas Total
-                    </span>
+
+                    {/* MONOCHROME TAB TOGGLE: Aktif & Review vs Selesai */}
+                    <div className="flex items-center p-1 bg-neutral-950 border border-white/10 rounded-2xl text-xs font-sans">
+                      <button
+                        onClick={() => setPoTaskFeedFilter('active')}
+                        className={`flex-1 py-1.5 rounded-xl font-medium text-[11px] transition-all cursor-pointer ${
+                          poTaskFeedFilter === 'active'
+                            ? 'bg-white text-zinc-950 font-bold shadow-xs'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        Aktif & Review ({allTasks.filter(t => t.status !== 'done').length})
+                      </button>
+                      <button
+                        onClick={() => setPoTaskFeedFilter('done')}
+                        className={`flex-1 py-1.5 rounded-xl font-medium text-[11px] transition-all cursor-pointer ${
+                          poTaskFeedFilter === 'done'
+                            ? 'bg-white text-zinc-950 font-bold shadow-xs'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        Selesai ({allTasks.filter(t => t.status === 'done').length})
+                      </button>
+                    </div>
                   </div>
 
-                  {sortedMasterTasks.length === 0 ? (
+                  {filteredMasterTasks.length === 0 ? (
                     <div className="p-8 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1 my-auto font-sans">
                       <CheckCircle2 className="w-6 h-6 text-zinc-500 mx-auto" />
-                      <p className="font-medium text-white">Belum ada tugas di database.</p>
-                      <p className="text-[11px] text-zinc-500">Tugas yang dibagikan akan muncul disini.</p>
+                      <p className="font-medium text-white">
+                        {poTaskFeedFilter === 'active' ? 'Belum ada tugas aktif.' : 'Belum ada tugas selesai.'}
+                      </p>
+                      <p className="text-[11px] text-zinc-500">
+                        {poTaskFeedFilter === 'active' ? 'Tugas aktif tim akan muncul disini.' : 'Tugas yang di-ACC akan tercatat disini.'}
+                      </p>
                     </div>
                   ) : (
-                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                      {sortedMasterTasks.map(t => {
+                    <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
+                      {filteredMasterTasks.map(t => {
                         const completedDod = t.checklist?.filter(c => c.checked || c.is_checked).length || 0;
                         const totalDod = t.checklist?.length || 0;
                         const isBlocked = t.status === 'blocked' || t.is_blocked;
                         const isReview = t.status === 'review' || t.status === 'in_review' || t.status === 'UNDER_REVIEW';
                         const isDone = t.status === 'done';
                         const deliverableContent = t.deliverable_link || t.deliverable_url || '';
+                        const formattedDate = t.created_at ? new Date(t.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
                         return (
-                          <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-colors">
+                          <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-all duration-200">
                             {/* Member Header */}
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-white text-xs">{t.profiles?.full_name || 'Member Tim'}</span>
-                              <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
-                                {t.profiles?.pod || 'Umum'}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {formattedDate && <span className="text-[10px] text-zinc-500">{formattedDate}</span>}
+                                <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
+                                  {t.profiles?.pod || 'Umum'}
+                                </span>
+                              </div>
                             </div>
 
                             {/* Task Title */}
@@ -1078,7 +1148,7 @@ export const App: React.FC = () => {
                               {t.title}
                             </div>
 
-                            {/* PREVIEW CHECKLIST DOD DETAIL ON PO CARDS (TRANSPARANSI PENUH) */}
+                            {/* PREVIEW CHECKLIST DOD DETAIL ON PO CARDS */}
                             {t.checklist && Array.isArray(t.checklist) && t.checklist.length > 0 && (
                               <div className="my-2 space-y-1.5 rounded-xl bg-neutral-950 p-2.5 text-[11px] border border-white/10 font-sans">
                                 <div className="flex items-center justify-between text-zinc-400 text-[10px] font-medium pb-1 border-b border-white/5">
@@ -1112,7 +1182,7 @@ export const App: React.FC = () => {
                               </div>
                             )}
 
-                            {/* Status Indicator & Specific Action Controls (Modal Triggers) */}
+                            {/* Status Indicator & Specific Action Controls */}
                             {isBlocked ? (
                               <div className="space-y-2 pt-1 border-t border-white/5">
                                 <div className="flex items-center justify-between">
@@ -1122,7 +1192,7 @@ export const App: React.FC = () => {
                                   </span>
                                   <button
                                     onClick={() => t.id && handleOpenResolveBlockerModal(t.id)}
-                                    className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-[11px] rounded-full transition-colors cursor-pointer flex items-center gap-1"
+                                    className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-[11px] rounded-full transition-all duration-200 cursor-pointer flex items-center gap-1"
                                   >
                                     <RotateCcw className="w-3 h-3" />
                                     <span>Selesaikan</span>
@@ -1164,13 +1234,13 @@ export const App: React.FC = () => {
                                 <div className="flex items-center gap-2 pt-1">
                                   <button
                                     onClick={() => t.id && handleAcceptReview(t.id)}
-                                    className="flex-1 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center text-[11px]"
+                                    className="flex-1 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-all duration-200 cursor-pointer text-center text-[11px]"
                                   >
                                     Terima (ACC)
                                   </button>
                                   <button
                                     onClick={() => t.id && handleOpenRevisionModal(t.id)}
-                                    className="flex-1 py-1.5 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-colors cursor-pointer text-center text-[11px]"
+                                    className="flex-1 py-1.5 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-all duration-200 cursor-pointer text-center text-[11px]"
                                   >
                                     Minta Revisi
                                   </button>
@@ -1361,14 +1431,26 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Master Quick Links */}
-                  <div className="space-y-2.5 pt-2">
+                  {/* Master Quick Links & Edit Button */}
+                  <div className="space-y-2.5 pt-2 font-sans">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-medium text-zinc-400 tracking-wider">Tautan Utama</span>
+                      {(profile?.role === 'owner' || viewMode === 'po') && (
+                        <button
+                          onClick={handleOpenEditAssetLinksModal}
+                          className="text-[10px] text-zinc-300 hover:text-white underline cursor-pointer font-medium"
+                        >
+                          Edit Tautan
+                        </button>
+                      )}
+                    </div>
+
                     {/* Link 1: Google Drive */}
                     <a
-                      href="https://drive.google.com"
+                      href={driveUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all group/link"
+                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
                     >
                       <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
@@ -1381,10 +1463,10 @@ export const App: React.FC = () => {
 
                     {/* Link 2: Figma */}
                     <a
-                      href="https://figma.com"
+                      href={figmaUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all group/link"
+                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
                     >
                       <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
@@ -1397,10 +1479,10 @@ export const App: React.FC = () => {
 
                     {/* Link 3: GitHub Repo */}
                     <a
-                      href="https://github.com/khafid7006/syncflow-app"
+                      href={repoUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all group/link"
+                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
                     >
                       <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
@@ -1465,7 +1547,7 @@ export const App: React.FC = () => {
                   </div>
                 ) : (
                   /* KARTU TUGAS AKTIF BIASA */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all space-y-3 font-sans">
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-200 space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                         <span>Tugas Aktif</span>
@@ -1535,7 +1617,7 @@ export const App: React.FC = () => {
                   </div>
                 )}
 
-                {/* KARTU TENGAH ATAS (Submit Deliverable - VALIDASI KETAT DOD & FORM UNLOCK) */}
+                {/* KARTU TENGAH ATAS (Submit Deliverable - VALIDASI KETAT DOD & FORM UNLOCK & EMPTY STATE) */}
                 <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-zinc-500">
@@ -1582,7 +1664,7 @@ export const App: React.FC = () => {
                     <button
                       type="submit"
                       disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted}
-                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
+                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-200 ${
                         !activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted
                           ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                           : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
@@ -1660,10 +1742,10 @@ export const App: React.FC = () => {
                 <div className="space-y-3 pt-4 flex-1">
                   {/* Link 1: Google Drive */}
                   <a
-                    href="https://drive.google.com"
+                    href={driveUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all group/link"
+                    className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
@@ -1676,10 +1758,10 @@ export const App: React.FC = () => {
 
                   {/* Link 2: Figma */}
                   <a
-                    href="https://figma.com"
+                    href={figmaUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all group/link"
+                    className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
@@ -1708,6 +1790,80 @@ export const App: React.FC = () => {
         </footer>
 
       </div>
+
+      {/* MODAL EDIT TAUTAN ASET PROYEK (PO VIEW) */}
+      {isEditAssetLinksModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <Folder className="w-4 h-4 text-zinc-300" />
+                <span>Edit Tautan Aset Proyek</span>
+              </div>
+              <button
+                onClick={() => setIsEditAssetLinksModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAssetLinks} className="space-y-3 font-sans">
+              <div className="space-y-1">
+                <label className="block text-zinc-400 font-medium text-[11px]">URL Drive Proyek</label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://drive.google.com/..."
+                  value={inputDriveUrl}
+                  onChange={e => setInputDriveUrl(e.target.value)}
+                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-zinc-400 font-medium text-[11px]">URL Figma UI/UX</label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://figma.com/file/..."
+                  value={inputFigmaUrl}
+                  onChange={e => setInputFigmaUrl(e.target.value)}
+                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-zinc-400 font-medium text-[11px]">URL Repository Code</label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://github.com/..."
+                  value={inputRepoUrl}
+                  onChange={e => setInputRepoUrl(e.target.value)}
+                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setIsEditAssetLinksModalOpen(false)}
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors text-xs"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full shadow-md transition-colors cursor-pointer text-xs"
+                >
+                  Simpan Tautan Aset
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL INPUT ARANAN SOLUSI KENDALA (PO VIEW) */}
       {isResolveBlockerModalOpen && (
