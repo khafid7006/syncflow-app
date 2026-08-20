@@ -10,6 +10,8 @@ import { RoleBadge } from '../common/Badge';
 export const Header: React.FC = () => {
   const { 
     currentUser, 
+    setCurrentUser,
+    users,
     teams, 
     sprints,
     activeTab, 
@@ -143,20 +145,37 @@ export const Header: React.FC = () => {
         </button>
       </div>
 
-      {/* Right: Reset Data, Sample Data & Logout Button */}
+      {/* Right: Role Switcher, Reset Data, & Logout Button */}
       <div className="flex items-center gap-2">
+        {/* QUICK ROLE SWITCHER DROPDOWN FOR TESTING */}
+        <select
+          value={currentUser.id}
+          onChange={e => {
+            const u = users.find(user => user.id === e.target.value);
+            if (u) setCurrentUser(u);
+          }}
+          className="hidden md:flex items-center px-3 py-1.5 bg-amber-100/90 hover:bg-amber-200 text-amber-950 font-mono font-bold text-[11px] rounded-full border border-amber-300 transition-colors cursor-pointer focus:outline-hidden"
+          title="Toggle Peran Pengguna untuk Testing"
+        >
+          {users.map(u => (
+            <option key={u.id} value={u.id}>
+              🎭 {u.role === 'PROJECT_OWNER' ? 'PO (Mahasiswa)' : u.role === 'MEMBER' ? `Member PKL (${u.pod_label || 'Pod'})` : u.role === 'PROJECT_LEAD' || u.role === 'PROJECT_LEADER' ? 'Lead SMK' : 'Business Owner'}: {u.name}
+            </option>
+          ))}
+        </select>
+
         {/* RESET DATA BUTTON */}
         <button
           onClick={async () => {
-            if (confirm('Kosongkan semua data tugas di Supabase & Local State?')) {
+            if (confirm('Bersihkan Papan (Hapus Semua Tugas) di Supabase & Local State?')) {
               await resetAllTasks();
-              alert('Semua data tugas berhasil dikosongkan!');
+              alert('Semua data tugas di Papan Kanban berhasil dibersihkan!');
             }
           }}
           className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-mono font-bold text-[11px] rounded-full border border-rose-200 transition-colors cursor-pointer"
-          title="Reset Data (Hapus Semua)"
+          title="Bersihkan Papan (Hapus Semua)"
         >
-          <span>Reset Data</span>
+          <span>Bersihkan Papan</span>
         </button>
 
         {/* MUAT SAMPLE DATA BUTTON */}
