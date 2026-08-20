@@ -3,7 +3,8 @@ import { supabase } from './lib/supabase';
 import { 
   Layers, Check, Send, AlertTriangle, ExternalLink, 
   Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
-  ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus
+  ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus,
+  GitBranch, Activity, Clock, CheckCircle
 } from 'lucide-react';
 
 export interface UserProfile {
@@ -60,7 +61,8 @@ export const App: React.FC = () => {
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<'Dalam Pengerjaan' | 'Sedang Ditinjau PO' | 'Terkendala (Blocker)'>('Dalam Pengerjaan');
 
-  // PO Dashboard states
+  // PO Dashboard states (Master Task Feed & Profiles)
+  const [allTasks, setAllTasks] = useState<MemberTask[]>([]);
   const [blockedTasks, setBlockedTasks] = useState<MemberTask[]>([]);
   const [reviewTasks, setReviewTasks] = useState<MemberTask[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<UserProfile[]>([]);
@@ -210,10 +212,26 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. FETCH MEMBERS & TASKS WITH PROFILES RELATIONS JOIN
+  // 1. FETCH ALL TASKS & PROFILES FOR BENTO PO CONTROL CENTER
   const fetchPOData = async () => {
     try {
-      // Fetch blocked tasks with profiles:assignee_id join
+      // Fetch ALL tasks with profiles:assignee_id join
+      const { data: allTasksData, error: aErr } = await supabase
+        .from('tasks')
+        .select(`
+          *,
+          profiles:assignee_id (
+            id,
+            full_name,
+            pod
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (aErr) console.error("Error fetching all tasks:", aErr.message);
+      if (allTasksData) setAllTasks(allTasksData);
+
+      // Fetch blocked tasks
       const { data: blockedData, error: bErr } = await supabase
         .from('tasks')
         .select(`
@@ -229,7 +247,7 @@ export const App: React.FC = () => {
 
       if (bErr) console.error("Error fetching blocked tasks:", bErr.message);
 
-      // Fetch review tasks with profiles:assignee_id join
+      // Fetch review tasks
       const { data: reviewData, error: rErr } = await supabase
         .from('tasks')
         .select(`
@@ -631,6 +649,22 @@ export const App: React.FC = () => {
     }
   };
 
+  // Summary Metrics Calculation for Column 3
+  const activeTasksCount = allTasks.filter(t => t.status !== 'done').length;
+  const blockedTasksCount = allTasks.filter(t => t.status === 'blocked' || t.is_blocked).length;
+  const doneTasksCount = allTasks.filter(t => t.status === 'done').length;
+
+  // Sorted tasks for Master Task Feed (Blocked first, then Review, then In Progress, then Done)
+  const sortedMasterTasks = [...allTasks].sort((a, b) => {
+    const priorityScore = (task: MemberTask) => {
+      if (task.status === 'blocked' || task.is_blocked) return 0;
+      if (task.status === 'review' || task.status === 'UNDER_REVIEW') return 1;
+      if (task.status === 'in_progress') return 2;
+      return 3;
+    };
+    return priorityScore(a) - priorityScore(b);
+  });
+
   // Loading Screen
   if (authLoading && !session) {
     return (
@@ -888,169 +922,140 @@ export const App: React.FC = () => {
         {/* ========================================================================= */}
         {viewMode === 'po' ? (
           /* ========================================================================= */
-          /* PO DASHBOARD VIEW (SYMMETRICAL 3-COLUMN BENTO GRID MATCHING MEMBER) */
+          /* PO DASHBOARD VIEW (BENTO GRID ALL-IN-ONE PO CONTROL CENTER) */
           /* ========================================================================= */
           <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
             
             {/* ========================================================================= */}
-            {/* GRID KIRI (7 Kolom): 2 Kartu (KOLOM 1 Radar Kendala & KOLOM 2 Bagi Tugas Baru) */}
+            {/* KOLOM 1 (KIRI - LEBAR - 5 KOLOM): RADAR & STATUS TIM (MASTER TASK FEED) */}
             {/* ========================================================================= */}
-            <div className="lg:col-span-7 flex flex-col justify-between gap-6">
+            <div className="lg:col-span-5 flex flex-col justify-between gap-6">
               
-              {/* TOP ROW KIRI: 2 Kartu Sejajar */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                
-                {/* 1. KOLOM KIRI (Glassmorphism Gelap): Radar Kendala */}
-                <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[360px] hover:border-white/20 transition-all">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                      <div className="flex items-center gap-2 text-white font-bold text-sm">
-                        <AlertTriangle className="w-4 h-4 text-zinc-300" />
-                        <span>Radar Kendala</span>
-                      </div>
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
-                        {blockedTasks.length} Kendala
-                      </span>
+              <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all font-sans">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-white font-bold text-sm">
+                      <Activity className="w-4 h-4 text-zinc-300" />
+                      <span>Radar & Status Tim</span>
                     </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
+                      {allTasks.length} Tugas Total
+                    </span>
+                  </div>
 
-                    {blockedTasks.length === 0 ? (
-                      <div className="p-6 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1 my-auto font-sans">
-                        <CheckCircle2 className="w-5 h-5 text-zinc-500 mx-auto" />
-                        <p className="font-medium text-white">Tidak ada kendala aktif.</p>
-                        <p className="text-[11px] text-zinc-500">Semua anggota tim lancar.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
-                        {blockedTasks.map(t => (
-                          <div key={t.id} className="p-3.5 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-2 text-xs font-sans">
+                  {sortedMasterTasks.length === 0 ? (
+                    <div className="p-8 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1 my-auto font-sans">
+                      <CheckCircle2 className="w-6 h-6 text-zinc-500 mx-auto" />
+                      <p className="font-medium text-white">Belum ada tugas di database.</p>
+                      <p className="text-[11px] text-zinc-500">Tugas yang dibagikan akan muncul disini.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                      {sortedMasterTasks.map(t => {
+                        const completedDod = t.checklist?.filter(c => c.checked || c.is_checked).length || 0;
+                        const totalDod = t.checklist?.length || 0;
+                        const isBlocked = t.status === 'blocked' || t.is_blocked;
+                        const isReview = t.status === 'review' || t.status === 'UNDER_REVIEW';
+                        const isDone = t.status === 'done';
+
+                        return (
+                          <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-colors">
+                            {/* Member Header */}
                             <div className="flex items-center justify-between">
-                              <span className="font-bold text-white">{t.profiles?.full_name || 'Member Tim'}</span>
+                              <span className="font-bold text-white text-xs">{t.profiles?.full_name || 'Member Tim'}</span>
                               <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
                                 {t.profiles?.pod || 'Umum'}
                               </span>
                             </div>
-                            <p className="text-zinc-300 leading-relaxed font-sans bg-white/5 p-2 rounded-xl border border-white/5 text-[11px]">
-                              {t.blocker_reason || 'Terjadi kendala teknis'}
-                            </p>
-                            <div className="flex items-center justify-between pt-1">
-                              <span className="text-[10px] text-zinc-400 truncate max-w-[140px]">Tugas: {t.title}</span>
-                              <button
-                                onClick={() => t.id && handleResolveBlocker(t.id)}
-                                className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-medium text-[11px] rounded-full transition-colors cursor-pointer flex items-center gap-1 shrink-0 font-sans"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                                <span>Selesaikan Kendala</span>
-                              </button>
+
+                            {/* Task Title */}
+                            <div className="font-medium text-zinc-200 text-xs">
+                              {t.title}
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* 2. KOLOM TENGAH (Putih Solid Kontras): Bagi Tugas Baru (Checklist DoD Dinamis Max 10) */}
-                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[360px] hover:scale-[1.01] transition-transform font-sans">
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium text-zinc-500">
-                      Penugasan Tim
-                    </span>
-                    <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                      Bagi Tugas Baru
-                    </h3>
-                  </div>
-
-                  <form onSubmit={handleCreateNewTask} className="space-y-3 my-auto py-2 font-sans">
-                    {/* 1. DROPDOWN FIX: Render {m.full_name || 'Member'} — {m.pod || 'Divisi'} */}
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
-                      <select
-                        value={selectedAssigneeId}
-                        onChange={e => setSelectedAssigneeId(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans cursor-pointer"
-                      >
-                        {memberProfiles.length === 0 ? (
-                          <option value="">Memuat daftar tim...</option>
-                        ) : (
-                          memberProfiles.map(m => (
-                            <option key={m.id} value={m.id}>
-                              {m.full_name || 'Member'} — {m.pod || 'Divisi'}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Judul Tugas</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Nama tugas..."
-                        value={newAssignTaskTitle}
-                        onChange={e => setNewAssignTaskTitle(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans"
-                      />
-                    </div>
-
-                    {/* DYNAMIC DOD CHECKLIST LIST */}
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-                          Checklist DoD ({dodPoints.length}/10 Poin)
-                        </label>
-                        {dodPoints.length < 10 && (
-                          <button
-                            type="button"
-                            onClick={handleAddDodPoint}
-                            className="text-[10px] font-bold text-zinc-900 hover:text-zinc-600 flex items-center gap-0.5 cursor-pointer transition-colors"
-                          >
-                            <Plus className="w-3 h-3" />
-                            <span>+ Tambah Poin</span>
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                        {dodPoints.map((point, idx) => (
-                          <div key={idx} className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              required
-                              placeholder={`DoD ${idx + 1}...`}
-                              value={point}
-                              onChange={e => handleDodPointChange(idx, e.target.value)}
-                              className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans focus:outline-hidden focus:border-zinc-800"
-                            />
-                            {dodPoints.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveDodPoint(idx)}
-                                className="w-6 h-6 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center cursor-pointer transition-colors text-xs font-bold shrink-0"
-                              >
-                                ×
-                              </button>
+                            {/* Status Indicator & Specific Action Controls */}
+                            {isBlocked ? (
+                              <div className="space-y-2 pt-1 border-t border-white/5">
+                                <div className="flex items-center justify-between">
+                                  <span className="px-2 py-0.5 rounded-md bg-neutral-800 border border-white/15 text-[10px] text-zinc-300 font-semibold flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-zinc-400" />
+                                    <span>🚨 Blocker</span>
+                                  </span>
+                                  <button
+                                    onClick={() => t.id && handleResolveBlocker(t.id)}
+                                    className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-[11px] rounded-full transition-colors cursor-pointer flex items-center gap-1"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    <span>Selesaikan</span>
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-zinc-300 bg-white/5 p-2 rounded-xl border border-white/5">
+                                  {t.blocker_reason || 'Terjadi kendala teknis'}
+                                </p>
+                              </div>
+                            ) : isReview ? (
+                              <div className="space-y-2 pt-1 border-t border-white/5">
+                                <div className="flex items-center justify-between">
+                                  <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/15 text-[10px] text-white font-semibold flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-zinc-300" />
+                                    <span>⏳ Butuh Review</span>
+                                  </span>
+                                  {(t.deliverable_link || t.deliverable_url) && (
+                                    <a
+                                      href={t.deliverable_link || t.deliverable_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="px-2.5 py-1 bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg text-[10px] text-white flex items-center gap-1 transition-colors font-medium"
+                                    >
+                                      <span>Periksa Hasil</span>
+                                      <ExternalLink className="w-3 h-3 text-zinc-400" />
+                                    </a>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 pt-1">
+                                  <button
+                                    onClick={() => t.id && handleAcceptReview(t.id)}
+                                    className="flex-1 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center text-[11px]"
+                                  >
+                                    ACC
+                                  </button>
+                                  <button
+                                    onClick={() => t.id && handleRequestRevision(t.id)}
+                                    className="flex-1 py-1.5 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-colors cursor-pointer text-center text-[11px]"
+                                  >
+                                    Minta Revisi
+                                  </button>
+                                </div>
+                              </div>
+                            ) : isDone ? (
+                              <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
+                                <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/15 text-[10px] text-white font-semibold flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3 text-white" />
+                                  <span>✅ Selesai</span>
+                                </span>
+                                <span className="text-zinc-500 text-[10px]">Telah di-ACC PO</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
+                                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] text-zinc-400 font-medium flex items-center gap-1">
+                                  <Activity className="w-3 h-3 text-zinc-400" />
+                                  <span>⚡ Sedang Mengerjakan</span>
+                                </span>
+                                <span className="text-zinc-400 font-medium text-[10px]">
+                                  {completedDod}/{totalDod} DoD Selesai
+                                </span>
+                              </div>
                             )}
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
-
-                    <button
-                      type="submit"
-                      disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
-                      className={`w-full py-2.5 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
-                        selectedAssigneeId && newAssignTaskTitle.trim()
-                          ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
-                          : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
-                      }`}
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Kirim Tugas ke Member</span>
-                    </button>
-                  </form>
+                  )}
                 </div>
 
+                <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
+                  SyncFlow Master Task Feed
+                </div>
               </div>
 
               {/* AREA BAWAH KIRI (Header Teks Sapaan Personal Dinamis PO) */}
@@ -1066,76 +1071,201 @@ export const App: React.FC = () => {
             </div>
 
             {/* ========================================================================= */}
-            {/* GRID KANAN (5 Kolom): KOLOM 3 Review Deliverable */}
+            {/* KOLOM 2 (TENGAH - PUTIH SOLID - 4 KOLOM): BAGI TUGAS BARU */}
             {/* ========================================================================= */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
+            <div className="lg:col-span-4 flex flex-col justify-between">
               
-              {/* 3. KOLOM KANAN (Glassmorphism Gelap): Review Deliverable */}
-              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[360px] hover:border-white/20 transition-all font-sans">
-                
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-white font-bold text-sm">
-                      <ClipboardCheck className="w-4 h-4 text-zinc-300" />
-                      <span>Review Deliverable</span>
-                    </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
-                      {reviewTasks.length} Menunggu
-                    </span>
+              <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-transform font-sans">
+                <div className="space-y-1">
+                  <span className="text-xs font-medium text-zinc-500">
+                    Penugasan Tim
+                  </span>
+                  <h3 className="text-base font-bold text-zinc-950 tracking-tight">
+                    Bagi Tugas Baru
+                  </h3>
+                </div>
+
+                <form onSubmit={handleCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
+                  {/* Dropdown Select Member */}
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
+                    <select
+                      value={selectedAssigneeId}
+                      onChange={e => setSelectedAssigneeId(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans cursor-pointer"
+                    >
+                      {memberProfiles.length === 0 ? (
+                        <option value="">Memuat daftar tim...</option>
+                      ) : (
+                        memberProfiles.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.full_name || 'Member'} — {m.pod || 'Divisi'}
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </div>
 
-                  {reviewTasks.length === 0 ? (
-                    <div className="p-8 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1 my-auto font-sans">
-                      <CheckCircle2 className="w-6 h-6 text-zinc-500 mx-auto" />
-                      <p className="font-medium text-white">Tidak ada tugas dalam antrean review.</p>
-                      <p className="text-[11px] text-zinc-500">Deliverable yang dikirim anak SMK akan muncul disini.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                      {reviewTasks.map(t => (
-                        <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-bold text-white">{t.title}</div>
-                              <div className="text-[11px] text-zinc-400">
-                                {t.profiles?.full_name || 'Member Tim'} • {t.profiles?.pod || 'Umum'}
-                              </div>
-                            </div>
-                            {(t.deliverable_link || t.deliverable_url) && (
-                              <a
-                                href={t.deliverable_link || t.deliverable_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-[11px] text-white flex items-center gap-1 transition-colors font-medium shrink-0"
-                              >
-                                <span>Buka Link</span>
-                                <ExternalLink className="w-3 h-3 text-zinc-400" />
-                              </a>
-                            )}
-                          </div>
+                  {/* Task Title Input */}
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Judul Tugas</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Nama tugas..."
+                      value={newAssignTaskTitle}
+                      onChange={e => setNewAssignTaskTitle(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans"
+                    />
+                  </div>
 
-                          <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+                  {/* DYNAMIC DOD CHECKLIST LIST (MAX 10 POINTS) */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                        Checklist DoD ({dodPoints.length}/10 Poin)
+                      </label>
+                      {dodPoints.length < 10 && (
+                        <button
+                          type="button"
+                          onClick={handleAddDodPoint}
+                          className="text-[10px] font-bold text-zinc-900 hover:text-zinc-600 flex items-center gap-0.5 cursor-pointer transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>+ Tambah Poin</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                      {dodPoints.map((point, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            required
+                            placeholder={`DoD ${idx + 1}...`}
+                            value={point}
+                            onChange={e => handleDodPointChange(idx, e.target.value)}
+                            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans focus:outline-hidden focus:border-zinc-800"
+                          />
+                          {dodPoints.length > 1 && (
                             <button
-                              onClick={() => t.id && handleAcceptReview(t.id)}
-                              className="flex-1 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center text-xs font-sans"
+                              type="button"
+                              onClick={() => handleRemoveDodPoint(idx)}
+                              className="w-6 h-6 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center cursor-pointer transition-colors text-xs font-bold shrink-0"
                             >
-                              Terima (ACC)
+                              ×
                             </button>
-                            <button
-                              onClick={() => t.id && handleRequestRevision(t.id)}
-                              className="flex-1 py-2 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-colors cursor-pointer text-center text-xs font-sans"
-                            >
-                              Minta Revisi
-                            </button>
-                          </div>
+                          )}
                         </div>
                       ))}
                     </div>
-                  )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
+                    className={`w-full py-3 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
+                      selectedAssigneeId && newAssignTaskTitle.trim()
+                        ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
+                        : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Kirim Tugas ke Member</span>
+                  </button>
+                </form>
+              </div>
+
+            </div>
+
+            {/* ========================================================================= */}
+            {/* KOLOM 3 (KANAN - 3 KOLOM): ASET & PUSAT REFERENSI TIM */}
+            {/* ========================================================================= */}
+            <div className="lg:col-span-3 flex flex-col justify-between gap-6 font-sans">
+              
+              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all font-sans">
+                
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium text-zinc-400">
+                      Pusat Operasional
+                    </span>
+                    <h3 className="text-base font-bold text-white tracking-tight">
+                      Aset & Referensi Tim
+                    </h3>
+                  </div>
+
+                  {/* Summary Metrics */}
+                  <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/10 text-center">
+                    <div className="space-y-0.5">
+                      <div className="text-lg font-bold text-white">{activeTasksCount}</div>
+                      <div className="text-[9px] text-zinc-400 uppercase font-medium tracking-wider">Aktif</div>
+                    </div>
+                    <div className="space-y-0.5 border-x border-white/10">
+                      <div className="text-lg font-bold text-white">{blockedTasksCount}</div>
+                      <div className="text-[9px] text-zinc-400 uppercase font-medium tracking-wider">Kendala</div>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-lg font-bold text-white">{doneTasksCount}</div>
+                      <div className="text-[9px] text-zinc-400 uppercase font-medium tracking-wider">Done</div>
+                    </div>
+                  </div>
+
+                  {/* Master Quick Links */}
+                  <div className="space-y-2.5 pt-2">
+                    {/* Link 1: Google Drive */}
+                    <a
+                      href="https://drive.google.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all group/link"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
+                          <Folder className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="font-semibold text-white text-xs">Drive Proyek</span>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors" />
+                    </a>
+
+                    {/* Link 2: Figma */}
+                    <a
+                      href="https://figma.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all group/link"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
+                          <Figma className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="font-semibold text-white text-xs">Figma UI/UX</span>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors" />
+                    </a>
+
+                    {/* Link 3: GitHub Repo */}
+                    <a
+                      href="https://github.com/khafid7006/syncflow-app"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all group/link"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
+                          <GitBranch className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="font-semibold text-white text-xs">Repository Code</span>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors" />
+                    </a>
+                  </div>
                 </div>
 
                 <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                  SyncFlow PO Control Board
+                  SyncFlow PO Control Center
                 </div>
 
               </div>
