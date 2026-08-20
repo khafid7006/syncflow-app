@@ -146,7 +146,7 @@ export const App: React.FC = () => {
   const [userWorkspaces, setUserWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
   const [activeWorkspaceRole, setActiveWorkspaceRole] = useState<'po' | 'pl' | 'member'>('member');
-  const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState<boolean>(false);
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState<boolean>(false);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState<boolean>(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState<string>('');
   const [newWorkspaceDescription, setNewWorkspaceDescription] = useState<string>('');
@@ -230,8 +230,18 @@ export const App: React.FC = () => {
   const totalDodCount = dodItems.length;
   const isAllDoDCompleted = totalDodCount > 0 ? completedDodCount === totalDodCount : true;
 
-  // Strict Role Check helper (PO or PL role in current active workspace or owner profile)
-  const isPoOrPlRole = activeWorkspaceRole === 'po' || activeWorkspaceRole === 'pl' || profile?.role === 'owner';
+  // Strict Role Check helper
+  const isOwnerOrPo = profile?.role === 'owner' || activeWorkspaceRole === 'po';
+  const isPlRole = activeWorkspaceRole === 'pl';
+  const isPoOrPlRole = isOwnerOrPo || isPlRole;
+
+  // Header Role Badge display logic
+  let userRoleDisplay = profile?.pod || 'Member';
+  if (isOwnerOrPo) {
+    userRoleDisplay = 'Project Owner';
+  } else if (isPlRole) {
+    userRoleDisplay = 'Project Leader';
+  }
 
   // Quick Deadline Preset Handler for PO Assignment Form & Edit Form
   const handleApplyDeadlinePreset = (daysOffset: number, targetForm: 'create' | 'edit' = 'create') => {
@@ -292,11 +302,9 @@ export const App: React.FC = () => {
     if (session?.user && currentWorkspace?.id) {
       fetchActiveTask(session.user.id, currentWorkspace.id);
       fetchProjectLinks(currentWorkspace.id);
-      if (isPoOrPlRole) {
-        fetchPOData(currentWorkspace.id);
-      }
+      fetchPOData(currentWorkspace.id);
     }
-  }, [currentWorkspace, session, isPoOrPlRole]);
+  }, [currentWorkspace, session]);
 
   // FORCE DEFAULT VIEW BERDASARKAN ROLE WORKSPACE (ANTI-FLASH)
   useEffect(() => {
@@ -348,7 +356,7 @@ export const App: React.FC = () => {
         setIsProfileDropdownOpen(false);
       }
       if (workspaceDropdownRef.current && !workspaceDropdownRef.current.contains(e.target as Node)) {
-        setIsWorkspaceDropdownOpen(false);
+        setIsWorkspaceMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
@@ -431,7 +439,7 @@ export const App: React.FC = () => {
   const handleSelectWorkspace = (ws: Workspace) => {
     setCurrentWorkspace(ws);
     setActiveWorkspaceRole(ws.role || (profile?.role === 'owner' ? 'po' : 'member'));
-    setIsWorkspaceDropdownOpen(false);
+    setIsWorkspaceMenuOpen(false);
     showToast(`Beralih ke workspace: ${ws.name}`);
   };
 
@@ -602,7 +610,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. FETCH ALL TASKS & PROFILES FOR PO FEED (FILTERED BY WORKSPACE)
+  // 1. FETCH ALL TASKS & WORKSPACE MEMBERS FOR PO FEED & ASSIGNMENT DROPDOWN
   const fetchPOData = async (wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     try {
@@ -666,19 +674,44 @@ export const App: React.FC = () => {
       const { data: reviewData, error: rErr } = await reviewQuery.order('created_at', { ascending: false });
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
 
-      // Fetch members from public.profiles
-      const { data: membersData, error: mErr } = await supabase
-        .from('profiles')
-        .select('id, full_name, pod, role')
-        .order('full_name', { ascending: true });
+      // FIX DROPDOWN PENUGASAN: FETCH MEMBERS DARI PUBLIC.WORKSPACE_MEMBERS DENGAN FALLBACK PROFILES
+      let parsedMembers: UserProfile[] = [];
 
-      if (mErr) {
-        console.error('Gagal fetch profiles:', mErr.message);
-      } else if (membersData) {
-        setMemberProfiles(membersData as UserProfile[]);
-        if (membersData.length > 0 && (!selectedAssigneeId || !membersData.some(m => m.id === selectedAssigneeId))) {
-          setSelectedAssigneeId(membersData[0].id);
+      if (targetWsId) {
+        const { data: wsMembers, error: wmErr } = await supabase
+          .from('workspace_members')
+          .select(`
+            user_id,
+            role,
+            profiles:user_id (id, full_name, email, pod, role)
+          `)
+          .eq('workspace_id', targetWsId);
+
+        if (!wmErr && wsMembers && wsMembers.length > 0) {
+          parsedMembers = wsMembers.map((item: any) => ({
+            id: item.profiles?.id || item.user_id,
+            full_name: item.profiles?.full_name || 'Anggota Tim',
+            role: item.role || item.profiles?.role || 'member',
+            pod: item.profiles?.pod || 'Product Builder'
+          }));
         }
+      }
+
+      // Fallback jika workspace_members kosong
+      if (parsedMembers.length === 0) {
+        const { data: allProfiles, error: pErr } = await supabase
+          .from('profiles')
+          .select('id, full_name, pod, role')
+          .order('full_name', { ascending: true });
+
+        if (!pErr && allProfiles && allProfiles.length > 0) {
+          parsedMembers = allProfiles as UserProfile[];
+        }
+      }
+
+      setMemberProfiles(parsedMembers);
+      if (parsedMembers.length > 0 && (!selectedAssigneeId || !parsedMembers.some(m => m.id === selectedAssigneeId))) {
+        setSelectedAssigneeId(parsedMembers[0].id);
       }
 
       if (blockedData) setBlockedTasks(blockedData);
@@ -1481,8 +1514,6 @@ export const App: React.FC = () => {
 
   // User Profile metadata
   const userName = profile?.full_name || session.user.email?.split('@')[0] || 'Anggota Tim';
-  const userPod = profile?.pod || 'Product Builder';
-  const userRoleDisplay = activeWorkspaceRole.toUpperCase();
 
   // =========================================================================
   // MAIN APP CONTAINER (HEADER & ROUTING SWITCHER)
@@ -1531,69 +1562,41 @@ export const App: React.FC = () => {
               </span>
             </div>
 
-            {/* WORKSPACE SELECTOR DROPDOWN */}
-            {currentWorkspace && (
-              <div className="relative" ref={workspaceDropdownRef}>
-                <button
-                  onClick={() => setIsWorkspaceDropdownOpen(!isWorkspaceDropdownOpen)}
-                  className="bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl px-3 py-1.5 text-xs transition-all duration-300 flex items-center gap-2 cursor-pointer font-sans"
-                >
-                  <div className="w-5 h-5 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center font-bold text-[10px] text-white">
-                    {currentWorkspace.name.substring(0, 1).toUpperCase()}
-                  </div>
-                  <span className="font-semibold text-white truncate max-w-[120px] sm:max-w-[160px]">
-                    {currentWorkspace.name}
-                  </span>
-                  <span className="px-1.5 py-0.2 rounded bg-white/10 text-[9px] uppercase font-bold text-zinc-300">
-                    {activeWorkspaceRole}
-                  </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
-                </button>
+            {/* WORKSPACE SELECTOR DROPDOWN (1. REVISED EXACT UI) */}
+            <div className="relative font-sans" ref={workspaceDropdownRef}>
+              <button 
+                onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
+                className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-all cursor-pointer"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>{currentWorkspace?.name || "Pilih Workspace"}</span>
+                <span className="text-white/40 text-[10px]">▼</span>
+              </button>
 
-                {/* Dropdown Items */}
-                {isWorkspaceDropdownOpen && (
-                  <div className="absolute left-0 mt-2 w-64 bg-neutral-900/95 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-1.5 z-50 space-y-1 text-xs font-sans transition-all duration-300 ease-in-out">
-                    <div className="px-2.5 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
-                      Workspace Anda
-                    </div>
-                    {userWorkspaces.map(ws => (
-                      <button
-                        key={ws.id}
-                        onClick={() => handleSelectWorkspace(ws)}
-                        className={`w-full p-2 rounded-xl text-left flex items-center justify-between transition-colors duration-300 cursor-pointer ${
-                          currentWorkspace.id === ws.id
-                            ? 'bg-white/15 text-white font-bold border border-white/10'
-                            : 'text-zinc-300 hover:text-white hover:bg-white/10'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <Folder className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                          <span className="truncate">{ws.name}</span>
-                        </div>
-                        {ws.role && (
-                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-white/10 text-zinc-400 font-medium">
-                            {ws.role}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-
-                    <div className="border-t border-white/10 pt-1">
-                      <button
-                        onClick={() => {
-                          setIsWorkspaceDropdownOpen(false);
-                          setIsCreateWorkspaceModalOpen(true);
-                        }}
-                        className="w-full p-2 text-left text-white hover:bg-white/10 rounded-xl flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300"
-                      >
-                        <Plus className="w-4 h-4 text-white" />
-                        <span>+ Buat Workspace Baru</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+              {/* Menu Dropdown */}
+              {isWorkspaceMenuOpen && (
+                <div className="absolute left-0 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-950/90 backdrop-blur-xl p-1.5 shadow-2xl z-50 font-sans">
+                  <div className="px-2 py-1 text-[10px] font-semibold text-white/40 uppercase tracking-wider">Workspace Tim</div>
+                  {userWorkspaces.map(ws => (
+                    <button
+                      key={ws.id}
+                      onClick={() => handleSelectWorkspace(ws)}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${currentWorkspace?.id === ws.id ? 'bg-white/10 text-white font-medium' : 'text-white/70 hover:bg-white/5'}`}
+                    >
+                      <span>{ws.name}</span>
+                      <span className="text-[10px] text-white/40 uppercase">{ws.role}</span>
+                    </button>
+                  ))}
+                  <div className="border-t border-white/5 my-1" />
+                  <button
+                    onClick={() => { setIsCreateWorkspaceModalOpen(true); setIsWorkspaceMenuOpen(false); }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-white/80 hover:bg-white/10 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>+ Buat Workspace Baru</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK WORKSPACE ROLE PO DAN PL) */}
@@ -1607,7 +1610,7 @@ export const App: React.FC = () => {
                     : 'text-zinc-400 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <span>Papan Kontrol ({activeWorkspaceRole.toUpperCase()})</span>
+                <span>{isOwnerOrPo ? 'Papan PO' : 'Papan PL'}</span>
               </button>
               <button
                 onClick={() => setViewMode('member')}
@@ -1639,7 +1642,7 @@ export const App: React.FC = () => {
                 <div className="p-2.5 border-b border-white/10 space-y-0.5">
                   <div className="font-bold text-white truncate">{userName}</div>
                   <div className="text-[11px] text-zinc-400 truncate">{session.user.email}</div>
-                  <div className="text-[10px] text-zinc-400">Role Workspace: {activeWorkspaceRole.toUpperCase()}</div>
+                  <div className="text-[10px] text-zinc-400">Role: {userRoleDisplay}</div>
                 </div>
 
                 <button
@@ -2277,7 +2280,7 @@ export const App: React.FC = () => {
                 </div>
 
                 <form onSubmit={handleCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
-                  {/* Dropdown Select Member */}
+                  {/* Dropdown Select Member (3. REVISED FORMAT) */}
                   <div className="space-y-1">
                     <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
                     <select
@@ -2290,7 +2293,7 @@ export const App: React.FC = () => {
                       ) : (
                         memberProfiles.map(m => (
                           <option key={m.id} value={m.id}>
-                            {m.full_name || 'Member'} — {m.pod || 'Divisi'}
+                            {m.full_name} — {m.pod || 'General'} ({ (m.role || 'member').toUpperCase() })
                           </option>
                         ))
                       )}
