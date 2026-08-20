@@ -21,7 +21,9 @@ export const Header: React.FC = () => {
     notifications, 
     markNotificationAsRead, 
     markAllNotificationsAsRead, 
-    setSelectedTaskId 
+    setSelectedTaskId,
+    resetAllTasks,
+    loadSampleTasks
   } = useApp();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -141,16 +143,32 @@ export const Header: React.FC = () => {
         </button>
       </div>
 
-      {/* Right: SOP, Notifications & White Pill Logout Button */}
+      {/* Right: Reset Data, Sample Data & Logout Button */}
       <div className="flex items-center gap-2">
-        {/* SOP BUTTON */}
+        {/* RESET DATA BUTTON */}
         <button
-          onClick={() => setIsSopModalOpen(true)}
-          className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 bg-white/80 hover:bg-white text-zinc-800 font-mono font-bold text-xs rounded-full border border-white/80 shadow-2xs transition-colors cursor-pointer"
-          title="Buka Panduan SOP"
+          onClick={async () => {
+            if (confirm('Kosongkan semua data tugas di Supabase & Local State?')) {
+              await resetAllTasks();
+              alert('Semua data tugas berhasil dikosongkan!');
+            }
+          }}
+          className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-mono font-bold text-[11px] rounded-full border border-rose-200 transition-colors cursor-pointer"
+          title="Reset Data (Hapus Semua)"
         >
-          <BookOpen className="w-3.5 h-3.5 text-[#F59E0B]" />
-          <span>SOP</span>
+          <span>Reset Data</span>
+        </button>
+
+        {/* MUAT SAMPLE DATA BUTTON */}
+        <button
+          onClick={async () => {
+            await loadSampleTasks();
+            alert('Sample data berhasil dimuat!');
+          }}
+          className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-mono font-bold text-[11px] rounded-full border border-amber-200 transition-colors cursor-pointer"
+          title="Muat Sample Data"
+        >
+          <span>Muat Sample Data</span>
         </button>
 
         {/* NOTIFICATION BELL */}

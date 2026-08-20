@@ -271,5 +271,18 @@ export const supabaseService = {
       console.warn('Supabase sendCommunityMessage error:', err);
       return false;
     }
+  },
+
+  // 10. Delete All Tasks in Supabase (Clean Slate)
+  async deleteAllTasks(): Promise<boolean> {
+    if (!isSupabaseConfigured()) return false;
+
+    try {
+      const { error } = await supabase.from('tasks').delete().neq('id', '0');
+      return !error;
+    } catch (err) {
+      console.warn('Supabase deleteAllTasks error:', err);
+      return false;
+    }
   }
 };

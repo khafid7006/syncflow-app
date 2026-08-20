@@ -117,6 +117,8 @@ interface AppContextType {
   }) => Promise<{ success: boolean; message?: string }>;
   
   resetToEmptyData: () => void;
+  resetAllTasks: () => Promise<void>;
+  loadSampleTasks: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -915,6 +917,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSelectedTaskId(null);
   };
 
+  const resetAllTasks = async () => {
+    setTasks([]);
+    localStorage.removeItem('syncflow_tasks');
+    await supabaseService.deleteAllTasks();
+  };
+
+  const loadSampleTasks = async () => {
+    setTasks(INITIAL_TASKS);
+    localStorage.setItem('syncflow_tasks', JSON.stringify(INITIAL_TASKS));
+  };
+
   return (
     <AppContext.Provider value={{
       currentUser,
@@ -966,7 +979,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       markNotificationAsRead,
       markAllNotificationsAsRead,
       updateProfile,
-      resetToEmptyData
+      resetToEmptyData,
+      resetAllTasks,
+      loadSampleTasks
     }}>
       {children}
     </AppContext.Provider>
