@@ -15,8 +15,18 @@ export interface UserProfile {
   pod: 'Product Builder' | 'BA' | 'QA' | 'Marketing';
 }
 
+export interface Workspace {
+  id: string;
+  name: string;
+  description?: string;
+  owner_id?: string;
+  role?: 'po' | 'pl' | 'member';
+  created_at?: string;
+}
+
 export interface MemberTask {
   id?: string;
+  workspace_id?: string;
   assignee_id?: string;
   title: string;
   description?: string;
@@ -41,6 +51,7 @@ export interface MemberTask {
 
 export interface ProjectLink {
   id?: string;
+  workspace_id?: string;
   title: string;
   url: string;
   icon_type?: string;
@@ -130,6 +141,16 @@ export const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+
+  // MULTI-WORKSPACE STATES & WORKSPACE ROLE HIERARCHY
+  const [userWorkspaces, setUserWorkspaces] = useState<Workspace[]>([]);
+  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+  const [activeWorkspaceRole, setActiveWorkspaceRole] = useState<'po' | 'pl' | 'member'>('member');
+  const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState<boolean>(false);
+  const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState<boolean>(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState<string>('');
+  const [newWorkspaceDescription, setNewWorkspaceDescription] = useState<string>('');
+  const workspaceDropdownRef = useRef<HTMLDivElement>(null);
   
   // DEFAULT VIEW STATE: Set initial viewMode strictly to 'member' (anti-flash for members)
   const [viewMode, setViewMode] = useState<'po' | 'member'>('member');
@@ -209,8 +230,8 @@ export const App: React.FC = () => {
   const totalDodCount = dodItems.length;
   const isAllDoDCompleted = totalDodCount > 0 ? completedDodCount === totalDodCount : true;
 
-  // Strict Role Check helper
-  const isOwnerRole = profile?.role === 'owner';
+  // Strict Role Check helper (PO or PL role in current active workspace or owner profile)
+  const isPoOrPlRole = activeWorkspaceRole === 'po' || activeWorkspaceRole === 'pl' || profile?.role === 'owner';
 
   // Quick Deadline Preset Handler for PO Assignment Form & Edit Form
   const handleApplyDeadlinePreset = (daysOffset: number, targetForm: 'create' | 'edit' = 'create') => {
@@ -232,15 +253,12 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks & Project Links
+  // 1. Fetch Session & Profile on Mount + Fetch Workspaces
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
         fetchOrCreateProfile(session.user);
-        fetchActiveTask(session.user.id);
-        fetchPOData();
-        fetchProjectLinks();
       } else {
         setAuthLoading(false);
       }
@@ -250,12 +268,11 @@ export const App: React.FC = () => {
       setSession(session);
       if (session?.user) {
         fetchOrCreateProfile(session.user);
-        fetchActiveTask(session.user.id);
-        fetchPOData();
-        fetchProjectLinks();
       } else {
         setProfile(null);
         setActiveTask(null);
+        setUserWorkspaces([]);
+        setCurrentWorkspace(null);
         setAuthLoading(false);
       }
     });
@@ -263,30 +280,38 @@ export const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // FORCE DEFAULT VIEW BERDASARKAN ROLE (ANTI-FLASH)
+  // Fetch Workspaces whenever profile or session is ready
+  useEffect(() => {
+    if (session?.user && profile) {
+      fetchUserWorkspaces(session.user.id, profile.role);
+    }
+  }, [session, profile]);
+
+  // Fetch Workspace-Scoped Data whenever currentWorkspace changes
+  useEffect(() => {
+    if (session?.user && currentWorkspace?.id) {
+      fetchActiveTask(session.user.id, currentWorkspace.id);
+      fetchProjectLinks(currentWorkspace.id);
+      if (isPoOrPlRole) {
+        fetchPOData(currentWorkspace.id);
+      }
+    }
+  }, [currentWorkspace, session, isPoOrPlRole]);
+
+  // FORCE DEFAULT VIEW BERDASARKAN ROLE WORKSPACE (ANTI-FLASH)
   useEffect(() => {
     if (profile) {
-      if (profile.role === 'owner') {
+      if (isPoOrPlRole) {
         setViewMode('po');
       } else {
         setViewMode('member');
       }
     }
-  }, [profile]);
-
-  // Fetch PO Data when viewMode is 'po' or owner profile is loaded
-  useEffect(() => {
-    if (session?.user) {
-      fetchProjectLinks();
-      if (isOwnerRole) {
-        fetchPOData();
-      }
-    }
-  }, [profile, viewMode, session, isOwnerRole]);
+  }, [profile, activeWorkspaceRole, currentWorkspace]);
 
   // 3. SUPABASE REALTIME SUBSCRIPTION FOR TASKS & PROJECT_LINKS
   useEffect(() => {
-    if (!session?.user) return;
+    if (!session?.user || !currentWorkspace?.id) return;
 
     const channel = supabase
       .channel('syncflow-realtime-channel')
@@ -295,9 +320,9 @@ export const App: React.FC = () => {
         { event: '*', schema: 'public', table: 'tasks' },
         (payload) => {
           console.log('Realtime task change received:', payload);
-          if (isOwnerRole) fetchPOData();
-          if (session?.user?.id) {
-            fetchActiveTask(session.user.id);
+          if (isPoOrPlRole && currentWorkspace?.id) fetchPOData(currentWorkspace.id);
+          if (session?.user?.id && currentWorkspace?.id) {
+            fetchActiveTask(session.user.id, currentWorkspace.id);
           }
         }
       )
@@ -306,7 +331,7 @@ export const App: React.FC = () => {
         { event: '*', schema: 'public', table: 'project_links' },
         (payload) => {
           console.log('Realtime project_links change received:', payload);
-          fetchProjectLinks();
+          if (currentWorkspace?.id) fetchProjectLinks(currentWorkspace.id);
         }
       )
       .subscribe();
@@ -314,26 +339,159 @@ export const App: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session, isOwnerRole]);
+  }, [session, isPoOrPlRole, currentWorkspace]);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsProfileDropdownOpen(false);
+      }
+      if (workspaceDropdownRef.current && !workspaceDropdownRef.current.contains(e.target as Node)) {
+        setIsWorkspaceDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // FETCHING PROJECT LINKS FROM SUPABASE (PUBLIC.PROJECT_LINKS)
-  const fetchProjectLinks = async () => {
+  // FETCH & MANAGE WORKSPACES (TERISOLASI)
+  const fetchUserWorkspaces = async (userId: string, userProfileRole?: string) => {
     try {
-      const { data, error } = await supabase
-        .from('project_links')
-        .select('*')
-        .order('created_at', { ascending: true });
+      // 1. Query workspace_members joining workspaces
+      const { data: memberData, error: mErr } = await supabase
+        .from('workspace_members')
+        .select(`
+          role,
+          workspaces:workspace_id (
+            id,
+            name,
+            description,
+            owner_id,
+            created_at
+          )
+        `)
+        .eq('user_id', userId);
+
+      if (mErr) {
+        console.warn("Gagal fetch workspace_members:", mErr.message);
+      }
+
+      let loadedWorkspaces: Workspace[] = [];
+
+      if (memberData && memberData.length > 0) {
+        loadedWorkspaces = memberData
+          .filter((m: any) => m.workspaces)
+          .map((m: any) => ({
+            ...m.workspaces,
+            role: m.role as 'po' | 'pl' | 'member',
+          }));
+      }
+
+      // If user has no workspace yet, create a default workspace "Workspace Utama"
+      if (loadedWorkspaces.length === 0) {
+        console.log("Belum ada workspace, membuat Workspace Utama...");
+        const initialRole = userProfileRole === 'owner' ? 'po' : 'member';
+        
+        const { data: newWs, error: createWsErr } = await supabase
+          .from('workspaces')
+          .insert([{
+            name: 'Workspace Utama',
+            description: 'Workspace utama tim SyncFlow',
+            owner_id: userId
+          }])
+          .select()
+          .single();
+
+        if (!createWsErr && newWs) {
+          await supabase.from('workspace_members').insert([{
+            workspace_id: newWs.id,
+            user_id: userId,
+            role: initialRole
+          }]);
+
+          const createdWorkspaceObj: Workspace = { ...newWs, role: initialRole };
+          loadedWorkspaces = [createdWorkspaceObj];
+        }
+      }
+
+      setUserWorkspaces(loadedWorkspaces);
+
+      if (loadedWorkspaces.length > 0) {
+        const activeWs = loadedWorkspaces[0];
+        setCurrentWorkspace(activeWs);
+        setActiveWorkspaceRole(activeWs.role || (userProfileRole === 'owner' ? 'po' : 'member'));
+      }
+    } catch (err: any) {
+      console.error("Fetch workspaces error:", err);
+    }
+  };
+
+  // SWITCH WORKSPACE HANDLER
+  const handleSelectWorkspace = (ws: Workspace) => {
+    setCurrentWorkspace(ws);
+    setActiveWorkspaceRole(ws.role || (profile?.role === 'owner' ? 'po' : 'member'));
+    setIsWorkspaceDropdownOpen(false);
+    showToast(`Beralih ke workspace: ${ws.name}`);
+  };
+
+  // CREATE NEW WORKSPACE HANDLER
+  const handleCreateWorkspaceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWorkspaceName.trim() || !session?.user?.id) return;
+
+    const wsName = newWorkspaceName.trim();
+    const wsDesc = newWorkspaceDescription.trim();
+
+    try {
+      const { data: newWs, error } = await supabase
+        .from('workspaces')
+        .insert([{
+          name: wsName,
+          description: wsDesc || null,
+          owner_id: session.user.id
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        showToast(`Gagal membuat workspace: ${error.message}`);
+        return;
+      }
+
+      if (newWs) {
+        // Set creator as 'po' in workspace_members
+        await supabase.from('workspace_members').insert([{
+          workspace_id: newWs.id,
+          user_id: session.user.id,
+          role: 'po'
+        }]);
+
+        const newWsObj: Workspace = { ...newWs, role: 'po' };
+        setUserWorkspaces([...userWorkspaces, newWsObj]);
+        setCurrentWorkspace(newWsObj);
+        setActiveWorkspaceRole('po');
+        setIsCreateWorkspaceModalOpen(false);
+        setNewWorkspaceName('');
+        setNewWorkspaceDescription('');
+        showToast(`✓ Workspace "${wsName}" berhasil dibuat!`);
+      }
+    } catch (err: any) {
+      console.error("Create workspace error:", err);
+      showToast(`Gagal membuat workspace: ${err.message || err}`);
+    }
+  };
+
+  // FETCHING PROJECT LINKS FROM SUPABASE (PUBLIC.PROJECT_LINKS - FILTERED BY WORKSPACE)
+  const fetchProjectLinks = async (wsId?: string) => {
+    const targetWsId = wsId || currentWorkspace?.id;
+    try {
+      let query = supabase.from('project_links').select('*');
+      if (targetWsId) {
+        query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: true });
 
       if (error) {
         console.warn("Gagal fetch project_links:", error.message);
@@ -346,9 +504,9 @@ export const App: React.FC = () => {
         setProjectLinks(data as ProjectLink[]);
       } else {
         const defaults: ProjectLink[] = [
-          { title: 'Drive Proyek', url: 'https://drive.google.com', icon_type: 'drive' },
-          { title: 'Figma UI/UX', url: 'https://figma.com', icon_type: 'figma' },
-          { title: 'Repository Code', url: 'https://github.com/khafid7006/syncflow-app', icon_type: 'github' },
+          { workspace_id: targetWsId, title: 'Drive Proyek', url: 'https://drive.google.com', icon_type: 'drive' },
+          { workspace_id: targetWsId, title: 'Figma UI/UX', url: 'https://figma.com', icon_type: 'figma' },
+          { workspace_id: targetWsId, title: 'Repository Code', url: 'https://github.com/khafid7006/syncflow-app', icon_type: 'github' },
         ];
         const { data: insertedData } = await supabase.from('project_links').insert(defaults).select();
         if (insertedData) setProjectLinks(insertedData as ProjectLink[]);
@@ -368,16 +526,21 @@ export const App: React.FC = () => {
     return <LinkIcon className="w-3.5 h-3.5" />;
   };
 
-  // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER (FILTER HANYA AMBIL TUGAS BERJALAN & EMPTY STATE)
-  const fetchActiveTask = async (userId: string) => {
+  // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER (FILTERED BY WORKSPACE & ASSIGNEE)
+  const fetchActiveTask = async (userId: string, wsId?: string) => {
+    const targetWsId = wsId || currentWorkspace?.id;
     try {
-      console.log("Current User ID:", userId);
-
-      const { data, error } = await supabase
+      let query = supabase
         .from('tasks')
         .select('*')
         .eq('assignee_id', userId)
-        .in('status', ['in_progress', 'review', 'blocked'])
+        .in('status', ['in_progress', 'review', 'blocked']);
+
+      if (targetWsId) {
+        query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
+      }
+
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -385,8 +548,6 @@ export const App: React.FC = () => {
       if (error) {
         console.error("Error fetching task:", error.message);
       }
-
-      console.log("Fetched Task Data:", data);
 
       if (data) {
         setActiveTask(data);
@@ -430,7 +591,7 @@ export const App: React.FC = () => {
           }));
         }
       } else {
-        // EMPTY STATE: TIDAK ADA TUGAS AKTIF
+        // EMPTY STATE: TIDAK ADA TUGAS AKTIF DI WORKSPACE INI
         setActiveTask(null);
         setSubmittedUrl(null);
         setDeliverableUrl('');
@@ -441,11 +602,11 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. FETCH ALL TASKS & PROFILES FOR BENTO PO CONTROL CENTER
-  const fetchPOData = async () => {
+  // 1. FETCH ALL TASKS & PROFILES FOR PO FEED (FILTERED BY WORKSPACE)
+  const fetchPOData = async (wsId?: string) => {
+    const targetWsId = wsId || currentWorkspace?.id;
     try {
-      // Fetch ALL tasks with profiles:assignee_id join
-      const { data: allTasksData, error: aErr } = await supabase
+      let query = supabase
         .from('tasks')
         .select(`
           *,
@@ -454,14 +615,19 @@ export const App: React.FC = () => {
             full_name,
             pod
           )
-        `)
-        .order('created_at', { ascending: false });
+        `);
+
+      if (targetWsId) {
+        query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
+      }
+
+      const { data: allTasksData, error: aErr } = await query.order('created_at', { ascending: false });
 
       if (aErr) console.error("Error fetching all tasks:", aErr.message);
       if (allTasksData) setAllTasks(allTasksData);
 
       // Fetch blocked tasks
-      const { data: blockedData, error: bErr } = await supabase
+      let blockedQuery = supabase
         .from('tasks')
         .select(`
           *,
@@ -471,13 +637,17 @@ export const App: React.FC = () => {
             pod
           )
         `)
-        .or('status.eq.blocked,is_blocked.eq.true')
-        .order('created_at', { ascending: false });
+        .or('status.eq.blocked,is_blocked.eq.true');
 
+      if (targetWsId) {
+        blockedQuery = blockedQuery.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
+      }
+
+      const { data: blockedData, error: bErr } = await blockedQuery.order('created_at', { ascending: false });
       if (bErr) console.error("Error fetching blocked tasks:", bErr.message);
 
-      // Fetch review tasks with status review, in_review, or UNDER_REVIEW
-      const { data: reviewData, error: rErr } = await supabase
+      // Fetch review tasks
+      let reviewQuery = supabase
         .from('tasks')
         .select(`
           *,
@@ -487,9 +657,13 @@ export const App: React.FC = () => {
             pod
           )
         `)
-        .or('status.eq.review,status.eq.in_review,status.eq.UNDER_REVIEW')
-        .order('created_at', { ascending: false });
+        .or('status.eq.review,status.eq.in_review,status.eq.UNDER_REVIEW');
 
+      if (targetWsId) {
+        reviewQuery = reviewQuery.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
+      }
+
+      const { data: reviewData, error: rErr } = await reviewQuery.order('created_at', { ascending: false });
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
 
       // Fetch members from public.profiles
@@ -501,7 +675,6 @@ export const App: React.FC = () => {
       if (mErr) {
         console.error('Gagal fetch profiles:', mErr.message);
       } else if (membersData) {
-        console.log('Daftar member ditemukan:', membersData);
         setMemberProfiles(membersData as UserProfile[]);
         if (membersData.length > 0 && (!selectedAssigneeId || !membersData.some(m => m.id === selectedAssigneeId))) {
           setSelectedAssigneeId(membersData[0].id);
@@ -527,11 +700,6 @@ export const App: React.FC = () => {
 
       if (data) {
         setProfile(data as UserProfile);
-        if (data.role === 'owner') {
-          setViewMode('po');
-        } else {
-          setViewMode('member');
-        }
       } else {
         const newProfile: UserProfile = {
           id: user.id,
@@ -542,11 +710,6 @@ export const App: React.FC = () => {
 
         await supabase.from('profiles').insert([newProfile]);
         setProfile(newProfile);
-        if (newProfile.role === 'owner') {
-          setViewMode('po');
-        } else {
-          setViewMode('member');
-        }
       }
     } catch (err) {
       console.warn('Fetch profile error:', err);
@@ -557,8 +720,9 @@ export const App: React.FC = () => {
         pod: user.user_metadata?.pod || 'Product Builder',
       };
       setProfile(fallback);
-      setViewMode('member');
-    } font-sans
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   // Auth Submit (Login / Sign Up)
@@ -591,8 +755,6 @@ export const App: React.FC = () => {
           };
           await supabase.from('profiles').insert([newProfile]);
           setProfile(newProfile);
-          if (newProfile.role === 'owner') setViewMode('po');
-          else setViewMode('member');
           showToast('Akun berhasil dibuat & Anda berhasil masuk!');
         }
       } else {
@@ -606,7 +768,9 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       setAuthError(err.message || 'Terjadi kesalahan autentikasi.');
-    } font-sans
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   // Auth Sign Out
@@ -631,7 +795,7 @@ export const App: React.FC = () => {
   const handleAddLinkRow = () => {
     setEditableLinks([
       ...editableLinks,
-      { id: `temp-${Date.now()}`, title: '', url: 'https://' }
+      { id: `temp-${Date.now()}`, workspace_id: currentWorkspace?.id, title: '', url: 'https://' }
     ]);
   };
 
@@ -658,7 +822,8 @@ export const App: React.FC = () => {
             .from('project_links')
             .update({ 
               title: link.title.trim(), 
-              url: link.url.trim() 
+              url: link.url.trim(),
+              workspace_id: currentWorkspace?.id
             })
             .eq('id', link.id);
         } else {
@@ -666,14 +831,15 @@ export const App: React.FC = () => {
             .from('project_links')
             .insert([{ 
               title: link.title.trim(), 
-              url: link.url.trim() 
+              url: link.url.trim(),
+              workspace_id: currentWorkspace?.id
             }]);
         }
       }
 
       showToast('Daftar tautan tim berhasil diperbarui!');
       setIsManageLinksModalOpen(false);
-      fetchProjectLinks();
+      if (currentWorkspace?.id) fetchProjectLinks(currentWorkspace.id);
     } catch (err: any) {
       console.error("Save links error:", err);
       showToast(`Gagal menyimpan tautan: ${err.message || err}`);
@@ -721,7 +887,6 @@ export const App: React.FC = () => {
 
     const linkInput = deliverableUrl.trim();
     const nowIso = new Date().toISOString();
-    console.log("Current User ID:", session.user.id);
 
     try {
       if (activeTask?.id) {
@@ -736,7 +901,8 @@ export const App: React.FC = () => {
             revision_note: null,
             resolution_note: null,
             blocker_reason: null,
-            is_blocked: false
+            is_blocked: false,
+            workspace_id: currentWorkspace?.id
           })
           .eq('id', activeTask.id)
           .select();
@@ -757,6 +923,7 @@ export const App: React.FC = () => {
           .from('tasks')
           .insert({
             assignee_id: session.user.id,
+            workspace_id: currentWorkspace?.id,
             title: taskTitle || 'Buat Halaman Pembayaran Aplikasi',
             deliverable_link: linkInput,
             deliverable_url: linkInput,
@@ -799,7 +966,6 @@ export const App: React.FC = () => {
     if (!blockerReason.trim() || !session?.user?.id) return;
 
     const blockerInput = blockerReason.trim();
-    console.log("Current User ID:", session.user.id);
 
     try {
       if (activeTask?.id) {
@@ -825,6 +991,7 @@ export const App: React.FC = () => {
           .from('tasks')
           .insert({
             assignee_id: session.user.id,
+            workspace_id: currentWorkspace?.id,
             title: taskTitle || 'Tugas Member',
             blocker_reason: blockerInput,
             is_blocked: true,
@@ -880,7 +1047,7 @@ export const App: React.FC = () => {
         setIsResolveBlockerModalOpen(false);
         setTargetTaskId(null);
         setInputResolutionNote('');
-        fetchPOData();
+        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
       }
     } catch (err: any) {
       console.error("Resolve blocker error:", err);
@@ -919,7 +1086,7 @@ export const App: React.FC = () => {
         setIsRevisionModalOpen(false);
         setTargetTaskId(null);
         setInputRevisionNote('');
-        fetchPOData();
+        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
       }
     } catch (err: any) {
       console.error("Request revision error:", err);
@@ -946,7 +1113,7 @@ export const App: React.FC = () => {
         showToast(`Gagal ACC tugas: ${error.message}`);
       } else {
         showToast('✓ Tugas disetujui & dipindahkan ke Selesai');
-        fetchPOData();
+        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
       }
     } catch (err: any) {
       console.error("Accept review error:", err);
@@ -1031,7 +1198,7 @@ export const App: React.FC = () => {
         showToast('✓ Detail tugas berhasil diperbarui');
         setIsEditTaskModalOpen(false);
         setEditingTask(null);
-        fetchPOData();
+        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
       }
     } catch (err: any) {
       console.error("Save task edit error:", err);
@@ -1055,7 +1222,7 @@ export const App: React.FC = () => {
         showToast('🗑️ Tugas berhasil dihapus');
         setIsEditTaskModalOpen(false);
         setEditingTask(null);
-        fetchPOData();
+        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
       }
     } catch (err: any) {
       console.error("Delete task error:", err);
@@ -1082,7 +1249,7 @@ export const App: React.FC = () => {
     setDodPoints(updated);
   };
 
-  // PO KIRIM TUGAS (AUTO-FOCUS & SMOOTH RESET FORM + BUTTON ANIMATION)
+  // PO KIRIM TUGAS (AUTO-FOCUS & SMOOTH RESET FORM + WORKSPACE SCOPING)
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
@@ -1104,6 +1271,7 @@ export const App: React.FC = () => {
       const { error } = await supabase
         .from('tasks')
         .insert({
+          workspace_id: currentWorkspace?.id,
           assignee_id: selectedAssigneeId,
           title: newAssignTaskTitle.trim(),
           description: newAssignDescription.trim() || null,
@@ -1133,7 +1301,7 @@ export const App: React.FC = () => {
           taskTitleInputRef.current?.focus();
         }, 100);
 
-        fetchPOData();
+        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
       }
     } catch (err: any) {
       console.error("Create task error:", err);
@@ -1314,7 +1482,7 @@ export const App: React.FC = () => {
   // User Profile metadata
   const userName = profile?.full_name || session.user.email?.split('@')[0] || 'Anggota Tim';
   const userPod = profile?.pod || 'Product Builder';
-  const userRole = profile?.role === 'owner' ? 'Project Owner' : userPod;
+  const userRoleDisplay = activeWorkspaceRole.toUpperCase();
 
   // =========================================================================
   // MAIN APP CONTAINER (HEADER & ROUTING SWITCHER)
@@ -1348,22 +1516,88 @@ export const App: React.FC = () => {
       <div className="relative z-10 w-full max-w-[1360px] mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-8 flex-1 min-h-screen justify-between font-sans">
         
         {/* ========================================================================= */}
-        {/* TOP BAR NAVBAR (ROLE-BASED VIEW CONTROL) */}
+        {/* TOP BAR NAVBAR (MULTI-WORKSPACE SELECTOR & ROLE CONTROL) */}
         {/* ========================================================================= */}
         <header className="w-full flex items-center justify-between gap-4 font-sans text-xs">
           
-          {/* Logo Brand: SyncFlow */}
-          <div className="flex items-center gap-2.5 cursor-pointer group">
-            <div className="w-9 h-9 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-105 transition-all duration-300">
-              <Layers className="w-5 h-5 text-white" />
+          {/* Logo Brand: SyncFlow & WORKSPACE SELECTOR DROPDOWN (KIRI ATAS) */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 cursor-pointer group">
+              <div className="w-9 h-9 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-105 transition-all duration-300">
+                <Layers className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-bold text-white text-base tracking-tight hidden sm:inline">
+                SyncFlow
+              </span>
             </div>
-            <span className="font-bold text-white text-base tracking-tight">
-              SyncFlow
-            </span>
+
+            {/* WORKSPACE SELECTOR DROPDOWN */}
+            {currentWorkspace && (
+              <div className="relative" ref={workspaceDropdownRef}>
+                <button
+                  onClick={() => setIsWorkspaceDropdownOpen(!isWorkspaceDropdownOpen)}
+                  className="bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl px-3 py-1.5 text-xs transition-all duration-300 flex items-center gap-2 cursor-pointer font-sans"
+                >
+                  <div className="w-5 h-5 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center font-bold text-[10px] text-white">
+                    {currentWorkspace.name.substring(0, 1).toUpperCase()}
+                  </div>
+                  <span className="font-semibold text-white truncate max-w-[120px] sm:max-w-[160px]">
+                    {currentWorkspace.name}
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded bg-white/10 text-[9px] uppercase font-bold text-zinc-300">
+                    {activeWorkspaceRole}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                </button>
+
+                {/* Dropdown Items */}
+                {isWorkspaceDropdownOpen && (
+                  <div className="absolute left-0 mt-2 w-64 bg-neutral-900/95 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-1.5 z-50 space-y-1 text-xs font-sans transition-all duration-300 ease-in-out">
+                    <div className="px-2.5 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                      Workspace Anda
+                    </div>
+                    {userWorkspaces.map(ws => (
+                      <button
+                        key={ws.id}
+                        onClick={() => handleSelectWorkspace(ws)}
+                        className={`w-full p-2 rounded-xl text-left flex items-center justify-between transition-colors duration-300 cursor-pointer ${
+                          currentWorkspace.id === ws.id
+                            ? 'bg-white/15 text-white font-bold border border-white/10'
+                            : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <Folder className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <span className="truncate">{ws.name}</span>
+                        </div>
+                        {ws.role && (
+                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-white/10 text-zinc-400 font-medium">
+                            {ws.role}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+
+                    <div className="border-t border-white/10 pt-1">
+                      <button
+                        onClick={() => {
+                          setIsWorkspaceDropdownOpen(false);
+                          setIsCreateWorkspaceModalOpen(true);
+                        }}
+                        className="w-full p-2 text-left text-white hover:bg-white/10 rounded-xl flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300"
+                      >
+                        <Plus className="w-4 h-4 text-white" />
+                        <span>+ Buat Workspace Baru</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* View Mode Switcher Pill (SEMBUNYIKAN SWITCHER NAVBAR TOTAL UNTUK MEMBER) */}
-          {profile?.role === 'owner' && (
+          {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK WORKSPACE ROLE PO DAN PL) */}
+          {isPoOrPlRole && (
             <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
               <button
                 onClick={() => setViewMode('po')}
@@ -1373,7 +1607,7 @@ export const App: React.FC = () => {
                     : 'text-zinc-400 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <span>Papan PO</span>
+                <span>Papan Kontrol ({activeWorkspaceRole.toUpperCase()})</span>
               </button>
               <button
                 onClick={() => setViewMode('member')}
@@ -1395,7 +1629,7 @@ export const App: React.FC = () => {
               className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300 shadow-md font-sans"
             >
               <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-              <span className="text-white font-semibold">{userName} — {userRole}</span>
+              <span className="text-white font-semibold">{userName} — {userRoleDisplay}</span>
               <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
             </button>
 
@@ -1405,7 +1639,7 @@ export const App: React.FC = () => {
                 <div className="p-2.5 border-b border-white/10 space-y-0.5">
                   <div className="font-bold text-white truncate">{userName}</div>
                   <div className="text-[11px] text-zinc-400 truncate">{session.user.email}</div>
-                  <div className="text-[10px] text-zinc-400">Peran: {profile?.role || 'member'}</div>
+                  <div className="text-[10px] text-zinc-400">Role Workspace: {activeWorkspaceRole.toUpperCase()}</div>
                 </div>
 
                 <button
@@ -1421,9 +1655,9 @@ export const App: React.FC = () => {
         </header>
 
         {/* ========================================================================= */}
-        {/* VIEW ROUTER: STRICT ROLE-BASED ACCESS CONTROL GUARD */}
+        {/* VIEW ROUTER: STRICT ROLE-BASED ACCESS CONTROL GUARD (WORKSPACES) */}
         {/* ========================================================================= */}
-        {profile?.role !== 'owner' ? (
+        {!isPoOrPlRole || viewMode === 'member' ? (
           /* ========================================================================= */
           /* DASHBOARD MEMBER VIEW (RESPONSIVE BENTO GRID MOBILE & TABLET FRIENDLY) */
           /* ========================================================================= */
@@ -1452,16 +1686,16 @@ export const App: React.FC = () => {
                       </div>
                       <div className="space-y-1">
                         <h3 className="text-xs font-bold text-white tracking-tight leading-snug">
-                          Semua tugas selesai atau belum ada penugasan baru.
+                          Semua tugas selesai di workspace {currentWorkspace?.name}.
                         </h3>
                         <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
-                          Tunggu instruksi tugas berikutnya dari Project Owner.
+                          Tunggu instruksi tugas berikutnya dari Project Owner / Lead.
                         </p>
                       </div>
                     </div>
 
                     <div className="text-[10px] text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                      SyncFlow Status: Standby
+                      SyncFlow Status: Standby ({currentWorkspace?.name})
                     </div>
                   </div>
                 ) : (
@@ -1693,8 +1927,8 @@ export const App: React.FC = () => {
                 </h1>
                 <p className="text-base text-zinc-400 font-sans">
                   {activeTask
-                    ? `Target: ${taskTitle}`
-                    : 'Status: Standby / Menunggu Sprint Berikutnya'}
+                    ? `Target (${currentWorkspace?.name}): ${taskTitle}`
+                    : `Workspace: ${currentWorkspace?.name || 'Utama'} • Standby`}
                 </p>
               </div>
 
@@ -1703,12 +1937,12 @@ export const App: React.FC = () => {
             {/* GRID KANAN (5 Kolom di Desktop / 1 Kolom di Mobile & Tablet - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
             <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
               
-              {/* KARTU KANAN (Aset Tim) */}
+              {/* KARTU KANAN (Aset Tim Workspace) */}
               <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
                 
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">
-                    Aset Tim
+                    Aset Tim ({currentWorkspace?.name})
                   </span>
                   <h3 className="text-base font-bold text-white tracking-tight">
                     Tautan Utama ({projectLinks.length})
@@ -1718,7 +1952,7 @@ export const App: React.FC = () => {
                 {/* Dynamic Links List (Read-Only for Member) */}
                 <div className="space-y-3 pt-4 flex-1">
                   {projectLinks.length === 0 ? (
-                    <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim.</p>
+                    <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim di workspace ini.</p>
                   ) : (
                     projectLinks.map(link => (
                       <a
@@ -1743,7 +1977,7 @@ export const App: React.FC = () => {
                 </div>
 
                 <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                  SyncFlow Dashboard
+                  SyncFlow Dashboard ({currentWorkspace?.name})
                 </div>
 
               </div>
@@ -1751,9 +1985,9 @@ export const App: React.FC = () => {
             </div>
 
           </main>
-        ) : viewMode === 'po' ? (
+        ) : (
           /* ========================================================================= */
-          /* PO DASHBOARD VIEW (RESPONSIVE BENTO GRID MOBILE & TABLET FRIENDLY - OWNER ONLY) */
+          /* PO / PL CONTROL CENTER VIEW (RESPONSIVE BENTO GRID MOBILE & TABLET FRIENDLY) */
           /* ========================================================================= */
           <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
             
@@ -1769,7 +2003,7 @@ export const App: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-white font-bold text-sm">
                         <Activity className="w-4 h-4 text-zinc-300" />
-                        <span>Radar & Status Tim</span>
+                        <span>Radar Tim ({currentWorkspace?.name})</span>
                       </div>
                       <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
                         {allTasks.length} Total
@@ -1839,7 +2073,7 @@ export const App: React.FC = () => {
                                 <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
                                   {t.profiles?.pod || 'Umum'}
                                 </span>
-                                {isOwnerRole && (
+                                {isPoOrPlRole && (
                                   <button
                                     onClick={() => handleOpenEditTaskModal(t)}
                                     className="px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/15 border border-white/10 text-[10px] text-zinc-300 hover:text-white font-medium cursor-pointer transition-colors duration-300 flex items-center gap-1"
@@ -2021,7 +2255,7 @@ export const App: React.FC = () => {
                   Halo, {userName}
                 </h1>
                 <p className="text-base text-zinc-400 font-sans">
-                  Papan kontrol & radar kendala tim hari ini.
+                  Papan kontrol & radar tim untuk {currentWorkspace?.name || 'Workspace Utama'}.
                 </p>
               </div>
 
@@ -2035,7 +2269,7 @@ export const App: React.FC = () => {
               <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-zinc-500">
-                    Penugasan Tim
+                    Penugasan Workspace: {currentWorkspace?.name}
                   </span>
                   <h3 className="text-base font-bold text-zinc-950 tracking-tight">
                     Bagi Tugas Baru
@@ -2235,9 +2469,9 @@ export const App: React.FC = () => {
                   <div className="space-y-2.5 pt-2 font-sans">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] uppercase font-medium text-zinc-400 tracking-wider">
-                        Tautan Utama ({projectLinks.length})
+                        Tautan Workspace ({projectLinks.length})
                       </span>
-                      {isOwnerRole && (
+                      {isPoOrPlRole && (
                         <button
                           onClick={handleOpenManageLinksModal}
                           className="text-[10px] text-zinc-300 hover:text-white underline cursor-pointer font-medium"
@@ -2248,7 +2482,7 @@ export const App: React.FC = () => {
                     </div>
 
                     {projectLinks.length === 0 ? (
-                      <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim.</p>
+                      <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan di workspace ini.</p>
                     ) : (
                       projectLinks.map(link => (
                         <a
@@ -2282,334 +2516,6 @@ export const App: React.FC = () => {
             </div>
 
           </main>
-        ) : (
-          /* ========================================================================= */
-          /* DASHBOARD MEMBER VIEW FOR PO TOGGLE */
-          /* ========================================================================= */
-          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
-            
-            {/* GRID KIRI (7 Kolom di Desktop / 1 Kolom di Mobile & Tablet) */}
-            <div className="lg:col-span-7 flex flex-col justify-between gap-6 transition-all duration-300 ease-in-out">
-              
-              {/* TOP ROW KIRI: 2 Kartu */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                
-                {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member / Empty State) */}
-                {!activeTask ? (
-                  /* EMPTY STATE: TIDAK ADA TUGAS AKTIF */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
-                    <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                      <span>Tugas Aktif</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-zinc-400 font-medium">
-                        Standby
-                      </span>
-                    </div>
-
-                    <div className="text-center my-auto py-4 space-y-2">
-                      <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-md">
-                        <CheckCircle2 className="w-6 h-6 text-zinc-300" />
-                      </div>
-                      <div className="space-y-1">
-                        <h3 className="text-xs font-bold text-white tracking-tight leading-snug">
-                          Semua tugas selesai atau belum ada penugasan baru.
-                        </h3>
-                        <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
-                          Tunggu instruksi tugas berikutnya dari Project Owner.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="text-[10px] text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                      SyncFlow Status: Standby
-                    </div>
-                  </div>
-                ) : (
-                  /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF & BRIEF BOX */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out space-y-3 font-sans">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                        <span>Tugas Aktif</span>
-                        {/* Top Right Status Badge on Member Card */}
-                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium transition-colors duration-300 ${
-                          taskStatus === 'Perlu Revisi'
-                            ? 'bg-neutral-800 text-zinc-200 border-white/30'
-                            : taskStatus === 'Terkendala (Blocker)'
-                              ? 'bg-neutral-800 text-zinc-300 border-white/20'
-                              : taskStatus === 'Sedang Ditinjau PO'
-                                ? 'bg-white/10 text-white border-white/20'
-                                : 'bg-white/5 text-zinc-400 border-white/10'
-                        }`}>
-                          {taskStatus}
-                        </span>
-                      </div>
-                      {/* Render Judul Tugas */}
-                      <h2 className="text-base font-bold text-white tracking-tight leading-snug">
-                        {taskTitle}
-                      </h2>
-
-                      {/* BADGE DEADLINE RINGKAS & RELATIF WAKTU */}
-                      {activeTask?.due_date && (() => {
-                        const rel = getRelativeDeadlineString(activeTask.due_date);
-                        if (!rel) return null;
-
-                        return (
-                          <div className="pt-0.5">
-                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium tracking-tight font-sans transition-colors duration-300 ${
-                              rel.status === 'overdue'
-                                ? 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
-                                : rel.status === 'urgent'
-                                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
-                                  : 'bg-white/5 border border-white/10 text-white/70'
-                            }`}>
-                              <span>{rel.text}</span>
-                            </span>
-                          </div>
-                        );
-                      })()}
-
-                      {/* TAMPILKAN DESKRIPSI BRIEF DI DASHBOARD MEMBER */}
-                      {activeTask?.description && (
-                        <div className="my-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/80 leading-relaxed whitespace-pre-line font-sans">
-                          <span className="text-white/40 block font-medium mb-1 uppercase tracking-wider text-[10px]">Brief Tugas:</span>
-                          {activeTask.description}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* PO Feedback Action Cards in Member Dashboard */}
-                    {activeTask?.revision_note && (
-                      <div className="p-3 bg-neutral-900 border border-white/20 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
-                        <div className="font-semibold text-white text-[11px] flex items-center gap-1">
-                          <span>⚠️ Catatan Revisi PO:</span>
-                        </div>
-                        <p className="text-zinc-300 text-[11px] leading-relaxed">
-                          {activeTask.revision_note}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* REDESAIN KARTU SOLUSI PO: TAMPILKAN RIWAYAT KENDALA VS SOLUSI PO */}
-                    {activeTask?.resolution_note && (
-                      <div className="my-3 rounded-2xl border border-white/10 bg-neutral-900/90 p-3.5 space-y-2 text-xs font-sans">
-                        {/* Baris 1: Kendala Member */}
-                        {activeTask.blocker_reason && (
-                          <div>
-                            <span className="text-zinc-400 block font-medium text-[10px] uppercase tracking-wider">
-                              Kendala yang Kamu Laporkan:
-                            </span>
-                            <p className="text-zinc-300 mt-0.5 line-through decoration-zinc-500 text-[11px]">
-                              {activeTask.blocker_reason}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Divider halus */}
-                        {activeTask.blocker_reason && <div className="border-t border-white/10" />}
-
-                        {/* Baris 2: Solusi PO */}
-                        <div>
-                          <span className="text-white block font-semibold text-[11px] flex items-center gap-1.5">
-                            💡 Solusi / Arahan PO:
-                          </span>
-                          <p className="text-zinc-200 font-normal mt-0.5 text-xs leading-relaxed">
-                            {activeTask.resolution_note}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* HEADER & LABEL DOD (DEFINITION OF DONE) */}
-                    <div className="mt-4 mb-2 flex items-center justify-between border-t border-white/5 pt-3 font-sans">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-semibold tracking-wider text-white/60 uppercase">Checklist DoD</span>
-                        <span className="text-[10px] text-white/30">(Definition of Done)</span>
-                      </div>
-                      <span className="text-[11px] font-medium text-white/40">
-                        {completedDodCount}/{totalDodCount} Selesai
-                      </span>
-                    </div>
-
-                    {/* Render Array Checklist (DoD) dengan Realtime State */}
-                    <div className="space-y-1.5 text-xs font-sans">
-                      {dodItems.map(item => (
-                        <div
-                          key={item.id}
-                          onClick={() => toggleDod(item.id)}
-                          className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors duration-300"
-                        >
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all duration-300 shrink-0 ${
-                            item.checked 
-                              ? 'bg-white border-white text-zinc-950' 
-                              : 'border-zinc-500 bg-transparent'
-                          }`}>
-                            {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
-                          </div>
-                          <span className={`text-xs transition-colors duration-300 ${item.checked ? 'line-through text-white/40' : 'text-zinc-200'}`}>
-                            {item.text}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* KARTU TENGAH ATAS (Submit Deliverable - VALIDASI KETAT DOD & FORM UNLOCK & EMPTY STATE) */}
-                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium text-zinc-500">
-                      Penyerahan Tugas
-                    </span>
-                    <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                      {!activeTask
-                        ? 'Kirim Hasil Tugas'
-                        : taskStatus === 'Perlu Revisi'
-                          ? 'Kirim Hasil Revisi'
-                          : 'Kirim Hasil Tugas'}
-                    </h3>
-                  </div>
-
-                  {/* Form Input Clean & Lock / Validation Logic */}
-                  <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans">
-                    {!activeTask ? (
-                      /* EMPTY STATE INPUT FORM TERKUNCI */
-                      <input
-                        type="text"
-                        disabled
-                        placeholder="Menunggu tugas aktif..."
-                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-400 placeholder-zinc-400 cursor-not-allowed font-sans"
-                      />
-                    ) : submittedUrl && taskStatus === 'Sedang Ditinjau PO' ? (
-                      <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
-                        <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
-                        <a href={submittedUrl} target="_blank" rel="noreferrer" className="text-zinc-900 underline truncate block font-medium">
-                          {submittedUrl}
-                        </a>
-                      </div>
-                    ) : (
-                      <input
-                        type="text"
-                        required
-                        disabled={taskStatus === 'Sedang Ditinjau PO'}
-                        placeholder="Link tugas..."
-                        value={deliverableUrl}
-                        onChange={e => setDeliverableUrl(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 disabled:opacity-50 font-sans"
-                      />
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted}
-                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
-                        !activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted
-                          ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-                          : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
-                      }`}
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>
-                        {!activeTask
-                          ? 'Belum Ada Tugas'
-                          : taskStatus === 'Sedang Ditinjau PO'
-                            ? 'Sedang Ditinjau PO'
-                            : taskStatus === 'Perlu Revisi'
-                              ? 'Kirim Hasil Revisi'
-                              : 'Kirim Hasil Tugas'}
-                      </span>
-                    </button>
-
-                    {/* Helper text jika DoD belum lengkap */}
-                    {activeTask && taskStatus !== 'Sedang Ditinjau PO' && !isAllDoDCompleted && (
-                      <p className="text-[10px] text-zinc-500 text-center font-sans font-medium pt-0.5">
-                        Selesaikan semua checklist ({completedDodCount}/{totalDodCount}) untuk menyerahkan tugas.
-                      </p>
-                    )}
-                  </form>
-
-                  {/* Tombol Laporkan Kendala */}
-                  <div className="pt-2 border-t border-zinc-100 font-sans">
-                    <button
-                      onClick={() => setIsBlockerModalOpen(true)}
-                      disabled={!activeTask}
-                      className={`w-full py-2 border text-xs rounded-full transition-colors duration-300 flex items-center justify-center gap-1.5 ${
-                        !activeTask
-                          ? 'border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed'
-                          : 'border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium cursor-pointer'
-                      }`}
-                    >
-                      <AlertTriangle className={`w-3.5 h-3.5 ${!activeTask ? 'text-zinc-400' : 'text-zinc-600'}`} />
-                      <span>🚨 Laporkan Kendala</span>
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis Target) */}
-              <div className="space-y-2 pt-2 font-sans transition-all duration-300 ease-in-out">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
-                  Halo, {userName}
-                </h1>
-                <p className="text-base text-zinc-400 font-sans">
-                  {activeTask
-                    ? `Target: ${taskTitle}`
-                    : 'Status: Standby / Menunggu Sprint Berikutnya'}
-                </p>
-              </div>
-
-            </div>
-
-            {/* GRID KANAN (5 Kolom di Desktop / 1 Kolom di Mobile & Tablet - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
-              
-              {/* KARTU KANAN (Aset Tim) */}
-              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
-                
-                <div className="space-y-1">
-                  <span className="text-xs font-medium text-zinc-400">
-                    Aset Tim
-                  </span>
-                  <h3 className="text-base font-bold text-white tracking-tight">
-                    Tautan Utama ({projectLinks.length})
-                  </h3>
-                </div>
-
-                {/* Dynamic Links List (Read-Only for Member) */}
-                <div className="space-y-3 pt-4 flex-1">
-                  {projectLinks.length === 0 ? (
-                    <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim.</p>
-                  ) : (
-                    projectLinks.map(link => (
-                      <a
-                        key={link.id || link.title}
-                        href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-300 ease-in-out group/link"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                            {renderLinkIcon(link.title, link.icon_type)}
-                          </div>
-                          <span className="font-semibold text-white truncate max-w-[200px] sm:max-w-[260px]">
-                            {link.title}
-                          </span>
-                        </div>
-                        <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
-                      </a>
-                    ))
-                  )}
-                </div>
-
-                <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                  SyncFlow Dashboard
-                </div>
-
-              </div>
-
-            </div>
-
-          </main>
         )}
 
         {/* FOOTER */}
@@ -2618,6 +2524,72 @@ export const App: React.FC = () => {
         </footer>
 
       </div>
+
+      {/* MODAL BUAT WORKSPACE BARU */}
+      {isCreateWorkspaceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out font-sans">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <Folder className="w-4 h-4 text-zinc-300" />
+                <span>Buat Workspace Baru</span>
+              </div>
+              <button
+                onClick={() => setIsCreateWorkspaceModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateWorkspaceSubmit} className="space-y-4 font-sans">
+              <div className="space-y-1">
+                <label className="block text-zinc-400 font-medium">Nama Workspace *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="misal: Project Sprint Delta"
+                  value={newWorkspaceName}
+                  onChange={e => setNewWorkspaceName(e.target.value)}
+                  className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-zinc-400 font-medium">Deskripsi Singkat</label>
+                <textarea
+                  rows={3}
+                  placeholder="Konteks atau divisi pengerjaan..."
+                  value={newWorkspaceDescription}
+                  onChange={e => setNewWorkspaceDescription(e.target.value)}
+                  className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateWorkspaceModalOpen(false)}
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newWorkspaceName.trim()}
+                  className={`px-5 py-2 font-bold rounded-full shadow-md flex items-center gap-1.5 transition-all duration-300 ${
+                    newWorkspaceName.trim()
+                      ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
+                      : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Buat Workspace</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL EDIT DETAIL TUGAS LENGKAP (PO VIEW) */}
       {isEditTaskModalOpen && editingTask && (
@@ -2783,7 +2755,7 @@ export const App: React.FC = () => {
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <Folder className="w-4 h-4 text-zinc-300" />
-                <span>Kelola Tautan Tim</span>
+                <span>Kelola Tautan Tim ({currentWorkspace?.name})</span>
               </div>
               <button
                 onClick={() => setIsManageLinksModalOpen(false)}

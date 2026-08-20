@@ -220,6 +220,30 @@ CREATE TABLE IF NOT EXISTS public.project_links (
 );
 
 -- ============================================================================
+-- 8. WORKSPACES & WORKSPACE MEMBERS TABLES (MULTI-WORKSPACE TERISOLASI)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.workspaces (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  description TEXT,
+  owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE IF NOT EXISTS public.workspace_members (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member', -- 'po' | 'pl' | 'member'
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+  UNIQUE(workspace_id, user_id)
+);
+
+-- Add workspace_id column to existing tasks and project_links tables
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
+ALTER TABLE public.project_links ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+-- ============================================================================
 -- ENABLE ROW LEVEL SECURITY (RLS) FOR PUBLIC ACCESS
 -- ============================================================================
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
@@ -229,6 +253,8 @@ ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_dods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE community_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public read access to teams" ON teams FOR SELECT USING (true);
 CREATE POLICY "Allow public insert to teams" ON teams FOR INSERT WITH CHECK (true);
@@ -245,3 +271,6 @@ CREATE POLICY "Allow public insert/update to tasks" ON tasks FOR ALL USING (true
 CREATE POLICY "Allow public access to task_dods" ON task_dods FOR ALL USING (true);
 CREATE POLICY "Allow public access to community_messages" ON community_messages FOR ALL USING (true);
 CREATE POLICY "Allow public access to project_links" ON public.project_links FOR ALL USING (true);
+CREATE POLICY "Allow public access to workspaces" ON public.workspaces FOR ALL USING (true);
+CREATE POLICY "Allow public access to workspace_members" ON public.workspace_members FOR ALL USING (true);
+
