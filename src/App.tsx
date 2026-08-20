@@ -10,6 +10,7 @@ import { MemberDashboard } from './components/dashboard/MemberDashboard';
 import { TasksView } from './components/tasks/TasksView';
 import { SprintsView } from './components/sprints/SprintsView';
 import { TeamsView } from './components/teams/TeamsView';
+import { FocusExecutionView } from './components/focus/FocusExecutionView';
 import { CommunityView } from './components/community/CommunityView';
 import { TaskDetailModal } from './components/tasks/TaskDetailModal';
 import { CreateTaskModal } from './components/tasks/CreateTaskModal';
