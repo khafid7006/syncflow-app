@@ -204,6 +204,22 @@ export const App: React.FC = () => {
   // Strict Role Check helper
   const isOwnerRole = profile?.role === 'owner';
 
+  // Quick Deadline Preset Handler for PO Assignment Form
+  const handleApplyDeadlinePreset = (daysOffset: number) => {
+    const target = new Date();
+    target.setDate(target.getDate() + daysOffset);
+    target.setHours(17, 0, 0, 0);
+
+    const year = target.getFullYear();
+    const month = String(target.getMonth() + 1).padStart(2, '0');
+    const day = String(target.getDate()).padStart(2, '0');
+    const hours = String(target.getHours()).padStart(2, '0');
+    const minutes = String(target.getMinutes()).padStart(2, '0');
+
+    const formatted = `${year}-${month}-${day}T${hours}:${minutes}`;
+    setNewAssignDueDate(formatted);
+  };
+
   // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks & Project Links
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -530,9 +546,7 @@ export const App: React.FC = () => {
       };
       setProfile(fallback);
       setViewMode('member');
-    } finally {
-      setAuthLoading(false);
-    }
+    } font-sans
   };
 
   // Auth Submit (Login / Sign Up)
@@ -1525,7 +1539,7 @@ export const App: React.FC = () => {
 
               </div>
 
-              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis) */}
+              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis Target) */}
               <div className="space-y-2 pt-2 font-sans">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                   Halo, {userName}
@@ -1640,15 +1654,22 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* EMPTY STATE PADA FEED PO (TAB AKTIF & REVIEW KOSONG) */}
                   {filteredMasterTasks.length === 0 ? (
-                    <div className="p-8 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1 my-auto font-sans">
-                      <CheckCircle2 className="w-6 h-6 text-zinc-500 mx-auto" />
-                      <p className="font-medium text-white">
-                        {poTaskFeedFilter === 'active' ? 'Belum ada tugas aktif.' : 'Belum ada tugas selesai.'}
-                      </p>
-                      <p className="text-[11px] text-zinc-500">
-                        {poTaskFeedFilter === 'active' ? 'Tugas aktif tim akan muncul disini.' : 'Tugas yang di-ACC akan tercatat disini.'}
-                      </p>
+                    <div className="p-8 text-center bg-neutral-900/60 border border-white/10 rounded-2xl text-xs text-zinc-400 space-y-2 my-auto font-sans">
+                      <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-xs">
+                        <Sparkles className="w-5 h-5 text-zinc-300" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-bold text-white text-xs">
+                          {poTaskFeedFilter === 'active' ? 'Semua tugas aktif beres.' : 'Belum ada tugas selesai.'}
+                        </p>
+                        <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
+                          {poTaskFeedFilter === 'active'
+                            ? 'Tidak ada kendala aktif maupun antrean deliverable yang menunggu review.'
+                            : 'Tugas yang di-ACC akan tercatat di tab ini.'}
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
@@ -1888,11 +1909,36 @@ export const App: React.FC = () => {
                     />
                   </div>
 
-                  {/* INPUT DEADLINE DI FORM PO (KOLOM TENGAH PUTIH) */}
+                  {/* INPUT DEADLINE DI FORM PO DENGAN PRESET TENGGAT WAKTU CEPAT */}
                   <div className="space-y-1">
-                    <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
-                      Tenggat Waktu (Deadline)
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+                        Tenggat Waktu (Deadline)
+                      </label>
+                      <div className="flex items-center gap-1 font-sans">
+                        <button
+                          type="button"
+                          onClick={() => handleApplyDeadlinePreset(0)}
+                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors cursor-pointer"
+                        >
+                          Hari Ini (17:00)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleApplyDeadlinePreset(1)}
+                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors cursor-pointer"
+                        >
+                          Besok (17:00)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleApplyDeadlinePreset(3)}
+                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors cursor-pointer"
+                        >
+                          3 Hari
+                        </button>
+                      </div>
+                    </div>
                     <input
                       type="datetime-local"
                       value={newAssignDueDate}
@@ -2300,7 +2346,7 @@ export const App: React.FC = () => {
 
               </div>
 
-              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis) */}
+              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis Target) */}
               <div className="space-y-2 pt-2 font-sans">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                   Halo, {userName}
