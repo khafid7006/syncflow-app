@@ -5,14 +5,15 @@ import {
   Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
   ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus,
   GitBranch, Activity, Clock, CheckCircle, Sparkles, Trash2, Link as LinkIcon,
-  Calendar, Edit3
+  Calendar, Edit3, UserPlus, Users
 } from 'lucide-react';
 
 export interface UserProfile {
   id: string;
   full_name: string;
+  email?: string;
   role: 'member' | 'owner';
-  pod: 'Product Builder' | 'BA' | 'QA' | 'Marketing';
+  pod: 'Product Builder' | 'BA' | 'QA' | 'Marketing' | string;
 }
 
 export interface Workspace {
@@ -22,6 +23,22 @@ export interface Workspace {
   owner_id?: string;
   role?: 'po' | 'pl' | 'member';
   created_at?: string;
+}
+
+export interface WorkspaceMemberDetail {
+  id?: string;
+  workspace_id: string;
+  user_id: string;
+  role: 'po' | 'pl' | 'member';
+  pod: string;
+  created_at?: string;
+  profiles?: {
+    id: string;
+    full_name: string;
+    email?: string;
+    pod?: string;
+    role?: string;
+  };
 }
 
 export interface MemberTask {
@@ -152,7 +169,7 @@ const NoWorkspaceView: React.FC<{
 
         <div className="space-y-2">
           <h2 className="text-xl font-bold tracking-tight text-white">
-            Mulai dengan Membuat Workspace
+            Belum Ada Workspace Aktif
           </h2>
           <p className="text-xs text-white/60 leading-relaxed max-w-xs mx-auto font-sans">
             {isOwner
@@ -226,6 +243,15 @@ export const App: React.FC = () => {
   const [reviewTasks, setReviewTasks] = useState<MemberTask[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<UserProfile[]>([]);
   const [poTaskFeedFilter, setPoTaskFeedFilter] = useState<'active' | 'done'>('active');
+
+  // WORKSPACE MEMBERS MANAGEMENT STATES
+  const [isManageMembersModalOpen, setIsManageMembersModalOpen] = useState<boolean>(false);
+  const [currentWorkspaceMembers, setCurrentWorkspaceMembers] = useState<WorkspaceMemberDetail[]>([]);
+  const [availableProfilesToInvite, setAvailableProfilesToInvite] = useState<UserProfile[]>([]);
+  const [selectedUserToInvite, setSelectedUserToInvite] = useState<string>('');
+  const [selectedRoleToInvite, setSelectedRoleToInvite] = useState<'member' | 'pl'>('member');
+  const [selectedPodToInvite, setSelectedPodToInvite] = useState<string>('Product Builder');
+  const [isAddingMember, setIsAddingMember] = useState<boolean>(false);
 
   // Dynamic Project Links State (Full CRUD backed by Supabase public.project_links)
   const [projectLinks, setProjectLinks] = useState<ProjectLink[]>([]);
@@ -369,7 +395,7 @@ export const App: React.FC = () => {
     }
   }, [profile, activeWorkspaceRole, currentWorkspace]);
 
-  // 4. REALTIME LISTENER SCOPE WITH WORKSPACE_ID FILTER
+  // 4. REALTIME LISTENER SCOPE WITH WORKSPACE_ID FILTER & WORKSPACE MEMBERS
   useEffect(() => {
     if (!session?.user || !currentWorkspace?.id) return;
 
@@ -404,6 +430,20 @@ export const App: React.FC = () => {
           fetchProjectLinks(wsId);
         }
       )
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'workspace_members',
+          filter: `workspace_id=eq.${wsId}`
+        },
+        (payload) => {
+          console.log('Realtime workspace_members change received for workspace:', wsId, payload);
+          fetchPOData(wsId);
+          fetchWorkspaceMembersAndAvailableProfiles(wsId);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -425,14 +465,14 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // FETCH & MANAGE WORKSPACES (PERSISTENCE VIA LOCALSTORAGE)
+  // 1. HARD-FILTER WORKSPACE PER USER LOGIN (HANYA WORKSPACE DI MANA USER TERDAFTAR)
   const fetchUserWorkspaces = async (userId: string, userProfileRole?: string) => {
     try {
-      // Query workspace_members joining workspaces
-      const { data: memberData, error: mErr } = await supabase
+      const { data: memberRows, error } = await supabase
         .from('workspace_members')
         .select(`
           role,
+          pod,
           workspaces:workspace_id (
             id,
             name,
@@ -443,28 +483,26 @@ export const App: React.FC = () => {
         `)
         .eq('user_id', userId);
 
-      if (mErr) {
-        console.warn("Gagal fetch workspace_members:", mErr.message);
+      if (error) {
+        console.warn("Gagal fetch workspace_members:", error.message);
       }
 
-      let loadedWorkspaces: Workspace[] = [];
+      // Map data ke format list workspace yang valid
+      const accessibleWorkspaces: Workspace[] = memberRows
+        ?.filter((row: any) => row.workspaces !== null && row.workspaces !== undefined)
+        .map((row: any) => ({
+          ...row.workspaces,
+          role: row.role as 'po' | 'pl' | 'member',
+          pod: row.pod
+        })) || [];
 
-      if (memberData && memberData.length > 0) {
-        loadedWorkspaces = memberData
-          .filter((m: any) => m.workspaces)
-          .map((m: any) => ({
-            ...m.workspaces,
-            role: m.role as 'po' | 'pl' | 'member',
-          }));
-      }
+      setUserWorkspaces(accessibleWorkspaces);
 
-      setUserWorkspaces(loadedWorkspaces);
-
-      if (loadedWorkspaces.length > 0) {
+      if (accessibleWorkspaces.length > 0) {
         // WORKSPACE PERSISTENCE: Baca dari localStorage agar tidak ter-reset saat refresh
         const savedWsId = localStorage.getItem('syncflow_active_ws');
-        const foundSaved = savedWsId ? loadedWorkspaces.find(w => w.id === savedWsId) : null;
-        const activeWs = foundSaved || loadedWorkspaces[0];
+        const foundSaved = savedWsId ? accessibleWorkspaces.find(w => w.id === savedWsId) : null;
+        const activeWs = foundSaved || accessibleWorkspaces[0];
 
         setCurrentWorkspace(activeWs);
         setActiveWorkspaceRole(activeWs.role || (userProfileRole === 'owner' ? 'po' : 'member'));
@@ -474,6 +512,8 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Fetch workspaces error:", err);
+      setUserWorkspaces([]);
+      setCurrentWorkspace(null);
     }
   };
 
@@ -514,7 +554,7 @@ export const App: React.FC = () => {
           workspace_id: newWs.id,
           user_id: userId,
           role: 'po',
-          pod: 'Project Owner'
+          pod: profile?.pod || 'Project Owner'
         }]);
 
       if (memberError) {
@@ -541,6 +581,127 @@ export const App: React.FC = () => {
       showToast(`Gagal membuat workspace: ${err.message || 'Terjadi kesalahan jaringan'}`);
     } finally {
       setIsCreatingWorkspace(false);
+    }
+  };
+
+  // 2. FITUR KELOLA ANGGOTA WORKSPACE: FETCH CURRENT MEMBERS & AVAILABLE UNINVITED PROFILES
+  const fetchWorkspaceMembersAndAvailableProfiles = async (wsId?: string) => {
+    const targetWsId = wsId || currentWorkspace?.id;
+    if (!targetWsId) return;
+
+    try {
+      // 1. Fetch current members in workspace_members
+      const { data: wmRows, error: wmErr } = await supabase
+        .from('workspace_members')
+        .select(`
+          id,
+          workspace_id,
+          user_id,
+          role,
+          pod,
+          created_at,
+          profiles:user_id (id, full_name, email, pod, role)
+        `)
+        .eq('workspace_id', targetWsId);
+
+      if (wmErr) console.error("Fetch workspace_members detail error:", wmErr.message);
+
+      const parsedMembers: WorkspaceMemberDetail[] = (wmRows || []).map((row: any) => ({
+        id: row.id,
+        workspace_id: row.workspace_id,
+        user_id: row.user_id,
+        role: row.role as 'po' | 'pl' | 'member',
+        pod: row.pod || row.profiles?.pod || 'General',
+        created_at: row.created_at,
+        profiles: row.profiles
+      }));
+
+      setCurrentWorkspaceMembers(parsedMembers);
+
+      // 2. Fetch all profiles to find uninvited users
+      const { data: allProfiles, error: pErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, pod, role')
+        .order('full_name', { ascending: true });
+
+      if (pErr) console.error("Fetch all profiles error:", pErr.message);
+
+      const memberUserIds = new Set(parsedMembers.map(m => m.user_id));
+      const uninvited = (allProfiles as UserProfile[] || []).filter(p => !memberUserIds.has(p.id));
+
+      setAvailableProfilesToInvite(uninvited);
+      if (uninvited.length > 0) {
+        setSelectedUserToInvite(uninvited[0].id);
+        setSelectedPodToInvite(uninvited[0].pod || 'Product Builder');
+      } else {
+        setSelectedUserToInvite('');
+      }
+    } catch (err: any) {
+      console.error("Fetch workspace members error:", err);
+    }
+  };
+
+  const handleOpenManageMembersModal = () => {
+    if (currentWorkspace?.id) {
+      fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
+      setIsManageMembersModalOpen(true);
+    }
+  };
+
+  const handleAddMemberToWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserToInvite || !currentWorkspace?.id) return;
+
+    const invitedProfile = availableProfilesToInvite.find(p => p.id === selectedUserToInvite);
+    const userNameToInvite = invitedProfile?.full_name || 'Pengguna';
+
+    setIsAddingMember(true);
+    try {
+      const { error } = await supabase
+        .from('workspace_members')
+        .insert([{
+          workspace_id: currentWorkspace.id,
+          user_id: selectedUserToInvite,
+          role: selectedRoleToInvite,
+          pod: selectedPodToInvite
+        }]);
+
+      if (error) throw error;
+
+      showToast(`✓ ${userNameToInvite} berhasil ditambahkan ke workspace!`);
+      await fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
+      await fetchPOData(currentWorkspace.id);
+    } catch (err: any) {
+      console.error("Gagal menambahkan anggota:", err.message || err);
+      showToast(`Gagal menambahkan anggota: ${err.message || 'Terjadi kesalahan'}`);
+    } finally {
+      setIsAddingMember(false);
+    }
+  };
+
+  const handleRemoveMemberFromWorkspace = async (targetUserId: string, targetName: string) => {
+    if (!currentWorkspace?.id) return;
+
+    if (targetUserId === session?.user?.id) {
+      alert("Anda tidak dapat menghapus akun Anda sendiri dari workspace ini.");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('workspace_members')
+        .delete()
+        .eq('workspace_id', currentWorkspace.id)
+        .eq('user_id', targetUserId);
+
+      if (error) throw error;
+
+      showToast(`Anggota tim ${targetName} telah dihapus dari workspace.`);
+      await fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
+      await fetchPOData(currentWorkspace.id);
+    } catch (err: any) {
+      console.error("Gagal menghapus anggota:", err.message || err);
+      showToast(`Gagal menghapus anggota: ${err.message || 'Terjadi kesalahan'}`);
     }
   };
 
@@ -650,7 +811,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. HARD-FILTER FETCHING PO DATA (PER WORKSPACE ID)
+  // 3. DROPDOWN PENUGASAN BERBASIS ANGGOTA AKTIF WORKSPACE_MEMBERS
   const fetchPOData = async (wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
@@ -707,37 +868,26 @@ export const App: React.FC = () => {
 
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
 
-      // FIX DROPDOWN PENUGASAN: FETCH MEMBERS DARI PUBLIC.WORKSPACE_MEMBERS DENGAN FALLBACK PROFILES
-      let parsedMembers: UserProfile[] = [];
-
+      // DROPDOWN PENUGASAN: STRICT HANYA ANGGOTA DARI PUBLIC.WORKSPACE_MEMBERS WORKSPACE TERSEBUT
       const { data: wsMembers, error: wmErr } = await supabase
         .from('workspace_members')
         .select(`
           user_id,
           role,
+          pod,
           profiles:user_id (id, full_name, email, pod, role)
         `)
         .eq('workspace_id', targetWsId);
+
+      let parsedMembers: UserProfile[] = [];
 
       if (!wmErr && wsMembers && wsMembers.length > 0) {
         parsedMembers = wsMembers.map((item: any) => ({
           id: item.profiles?.id || item.user_id,
           full_name: item.profiles?.full_name || 'Anggota Tim',
           role: item.role || item.profiles?.role || 'member',
-          pod: item.profiles?.pod || 'Product Builder'
+          pod: item.pod || item.profiles?.pod || 'Product Builder'
         }));
-      }
-
-      // Fallback jika workspace_members kosong
-      if (parsedMembers.length === 0) {
-        const { data: allProfiles, error: pErr } = await supabase
-          .from('profiles')
-          .select('id, full_name, pod, role')
-          .order('full_name', { ascending: true });
-
-        if (!pErr && allProfiles && allProfiles.length > 0) {
-          parsedMembers = allProfiles as UserProfile[];
-        }
       }
 
       setMemberProfiles(parsedMembers);
@@ -2325,7 +2475,7 @@ export const App: React.FC = () => {
                       className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 font-sans cursor-pointer"
                     >
                       {memberProfiles.length === 0 ? (
-                        <option value="">Memuat daftar tim...</option>
+                        <option value="">Belum ada anggota tim terdaftar...</option>
                       ) : (
                         memberProfiles.map(m => (
                           <option key={m.id} value={m.id}>
@@ -2472,7 +2622,7 @@ export const App: React.FC = () => {
             </div>
 
             {/* ========================================================================= */}
-            {/* KOLOM 3 (KANAN - 3 KOLOM): DYNAMIC PROJECT LINKS (FULL CRUD) */}
+            {/* KOLOM 3 (KANAN - 3 KOLOM): DYNAMIC PROJECT LINKS (FULL CRUD) + MEMBER MANAGER */}
             {/* ========================================================================= */}
             <div className="lg:col-span-3 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
               
@@ -2511,12 +2661,21 @@ export const App: React.FC = () => {
                         Tautan Workspace ({projectLinks.length})
                       </span>
                       {isPoOrPlRole && (
-                        <button
-                          onClick={handleOpenManageLinksModal}
-                          className="text-[10px] text-zinc-300 hover:text-white underline cursor-pointer font-medium"
-                        >
-                          Kelola Tautan
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleOpenManageMembersModal}
+                            className="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer flex items-center gap-1"
+                          >
+                            <UserPlus className="w-3 h-3" />
+                            <span>+ Anggota</span>
+                          </button>
+                          <button
+                            onClick={handleOpenManageLinksModal}
+                            className="text-[10px] text-zinc-300 hover:text-white underline cursor-pointer font-medium"
+                          >
+                            Tautan
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -2563,6 +2722,163 @@ export const App: React.FC = () => {
         </footer>
 
       </div>
+
+      {/* 2. MODAL KELOLA ANGGOTA TIM WORKSPACE (PO VIEW) */}
+      {isManageMembersModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
+          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 font-sans text-xs max-h-[90vh] flex flex-col justify-between">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5 text-white font-bold text-sm">
+                <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-zinc-300" />
+                </div>
+                <span>Kelola Anggota Tim ({currentWorkspace?.name})</span>
+              </div>
+              <button
+                onClick={() => setIsManageMembersModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 flex-1 overflow-y-auto pr-1 font-sans">
+              {/* DAFTAR ANGGOTA SAAT INI */}
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                  Anggota Saat Ini ({currentWorkspaceMembers.length})
+                </div>
+
+                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                  {currentWorkspaceMembers.map(m => {
+                    const isSelf = m.user_id === session?.user?.id;
+                    return (
+                      <div key={m.id || m.user_id} className="p-3 bg-neutral-950 border border-white/10 rounded-2xl flex items-center justify-between gap-3 text-xs">
+                        <div className="space-y-0.5 truncate">
+                          <div className="font-semibold text-white truncate flex items-center gap-1.5">
+                            <span>{m.profiles?.full_name || 'Anggota Tim'}</span>
+                            {isSelf && <span className="text-[9px] bg-white/10 px-1.5 py-0.2 rounded text-zinc-400">(Anda)</span>}
+                          </div>
+                          <div className="text-[10px] text-zinc-400 truncate">
+                            {m.profiles?.email} • Pod: <span className="text-zinc-300">{m.pod}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
+                            m.role === 'po' 
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : m.role === 'pl'
+                                ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                                : 'bg-white/10 text-white/70 border border-white/10'
+                          }`}>
+                            {m.role}
+                          </span>
+
+                          {!isSelf && isOwnerOrPo && (
+                            <button
+                              onClick={() => handleRemoveMemberFromWorkspace(m.user_id, m.profiles?.full_name || 'Anggota')}
+                              className="p-1 bg-white/5 hover:bg-rose-950/80 border border-white/10 text-zinc-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
+                              title="Hapus dari Workspace"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* FORM TAMBAH / UNDANG ANGGOTA BARU */}
+              <div className="border-t border-white/10 pt-4 space-y-3 font-sans">
+                <div className="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Tambah Anggota ke Workspace</span>
+                </div>
+
+                {availableProfilesToInvite.length === 0 ? (
+                  <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center">
+                    Semua akun pengguna terdaftar telah dimasukkan ke dalam workspace ini.
+                  </div>
+                ) : (
+                  <form onSubmit={handleAddMemberToWorkspace} className="space-y-3 font-sans">
+                    {/* Select User Dropdown */}
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-zinc-400 font-medium">Pilih Akun Pengguna *</label>
+                      <select
+                        value={selectedUserToInvite}
+                        onChange={e => {
+                          setSelectedUserToInvite(e.target.value);
+                          const p = availableProfilesToInvite.find(x => x.id === e.target.value);
+                          if (p?.pod) setSelectedPodToInvite(p.pod);
+                        }}
+                        className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                      >
+                        {availableProfilesToInvite.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.full_name} ({p.email || 'Tanpa Email'}) — {p.pod || 'General'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Select Role */}
+                      <div className="space-y-1">
+                        <label className="block text-[10px] text-zinc-400 font-medium">Peran di Workspace *</label>
+                        <select
+                          value={selectedRoleToInvite}
+                          onChange={e => setSelectedRoleToInvite(e.target.value as any)}
+                          className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                        >
+                          <option value="member">Member Tim</option>
+                          <option value="pl">Project Leader (PL)</option>
+                        </select>
+                      </div>
+
+                      {/* Select Pod */}
+                      <div className="space-y-1">
+                        <label className="block text-[10px] text-zinc-400 font-medium">Pod / Divisi *</label>
+                        <select
+                          value={selectedPodToInvite}
+                          onChange={e => setSelectedPodToInvite(e.target.value)}
+                          className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                        >
+                          <option value="Product Builder">Product Builder</option>
+                          <option value="BA">BA</option>
+                          <option value="QA">QA</option>
+                          <option value="Marketing">Marketing</option>
+                          <option value="General">General</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isAddingMember || !selectedUserToInvite}
+                      className="w-full py-2.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      {isAddingMember ? 'Menambahkan...' : '+ Tambahkan ke Workspace'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end pt-3 border-t border-white/10 font-sans">
+              <button
+                type="button"
+                onClick={() => setIsManageMembersModalOpen(false)}
+                className="px-5 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors text-xs"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL BUAT WORKSPACE BARU */}
       {isCreateWorkspaceModalOpen && (
