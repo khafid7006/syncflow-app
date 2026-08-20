@@ -18,10 +18,14 @@ export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export type TaskStatus = 
   | 'BACKLOG' 
+  | 'TODO'
   | 'DIKERJAKAN' 
+  | 'IN_PROGRESS'
+  | 'BLOCKED'
   | 'POD_REVIEW' 
   | 'REVIEW' 
-  | 'SELESAI';
+  | 'SELESAI'
+  | 'DONE';
 
 export type SprintStatus = 'PLANNING' | 'ACTIVE' | 'COMPLETED';
 
@@ -106,6 +110,8 @@ export interface Task {
   priority: TaskPriority;
   deadline: string;
   status: TaskStatus;
+  is_blocked?: boolean;
+  blocker_reason?: string;
   progress: number; // 0-100%
   dod_checklist: DodItem[]; // Definition of Done checklist
   comments: TaskComment[];

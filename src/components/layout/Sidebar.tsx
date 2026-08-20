@@ -59,8 +59,8 @@ export const Sidebar: React.FC = () => {
       badge: getActionHubBadge()
     },
     {
-      id: 'teams',
-      label: 'Tim',
+      id: 'community',
+      label: 'Komunitas',
       icon: <Users className="w-4 h-4 stroke-[2]" />
     }
   ];

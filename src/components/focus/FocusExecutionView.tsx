@@ -30,6 +30,8 @@ export const FocusExecutionView: React.FC = () => {
     moveTaskStatus,
     approveTaskReview,
     rejectTaskReview,
+    reportBlocker,
+    resolveBlocker,
     addComment,
     sendNotification
   } = useApp();
@@ -55,6 +57,19 @@ export const FocusExecutionView: React.FC = () => {
   const [isSprintModalOpen, setIsSprintModalOpen] = useState(false);
   const [showMemberSuccess, setShowMemberSuccess] = useState(false);
   const [workspaceNotes, setWorkspaceNotes] = useState('');
+
+  // Blocker modal state for Member
+  const [isBlockerModalOpen, setIsBlockerModalOpen] = useState(false);
+  const [blockerReasonInput, setBlockerReasonInput] = useState('');
+
+  const handleReportBlockerSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockerReasonInput.trim() || !currentExecutionTask) return;
+
+    reportBlocker(currentExecutionTask.id, blockerReasonInput.trim());
+    setBlockerReasonInput('');
+    setIsBlockerModalOpen(false);
+  };
 
   // User's assigned tasks
   const myAssignedTasks = tasks.filter(t => t.assignee_id === currentUser.id);
@@ -592,7 +607,7 @@ export const FocusExecutionView: React.FC = () => {
                         </button>
                       )}
 
-                      {currentExecutionTask.status === 'DIKERJAKAN' && (
+                      {(currentExecutionTask.status === 'DIKERJAKAN' || currentExecutionTask.status === 'IN_PROGRESS') && (
                         <button
                           onClick={handleMemberSubmitReview}
                           disabled={!canMemberSubmitReview}
@@ -605,6 +620,19 @@ export const FocusExecutionView: React.FC = () => {
                           <Send className="w-4 h-4" />
                           <span>{hasMemberAttachments ? 'Serahkan ke Pod Owner' : 'Wajib Lampirkan Link'}</span>
                         </button>
+                      )}
+
+                      {currentExecutionTask.status === 'BLOCKED' && (
+                        <div className="p-4 bg-rose-950/90 border border-rose-700 text-rose-200 font-mono rounded-2xl text-xs space-y-2 text-center">
+                          <div className="font-bold text-rose-400 flex items-center justify-center gap-2">
+                            <AlertCircle className="w-4 h-4" />
+                            <span>🚨 Tugas Terhenti (BLOCKED)</span>
+                          </div>
+                          <div className="text-xs text-rose-200 font-sans italic bg-rose-900/50 p-2.5 rounded-xl border border-rose-800">
+                            "{currentExecutionTask.blocker_reason || 'Terjadi hambatan teknis yang memerlukan pembongkaran.'}"
+                          </div>
+                          <div className="text-[10px] text-rose-400">Pod PIC / Leader telah menerima sinyal darurat ini.</div>
+                        </div>
                       )}
 
                       {currentExecutionTask.status === 'POD_REVIEW' && (
@@ -621,10 +649,21 @@ export const FocusExecutionView: React.FC = () => {
                         </div>
                       )}
 
-                      {currentExecutionTask.status === 'SELESAI' && (
+                      {(currentExecutionTask.status === 'SELESAI' || currentExecutionTask.status === 'DONE') && (
                         <div className="p-3.5 bg-emerald-950/80 border border-emerald-700 text-emerald-400 font-mono text-center rounded-2xl text-xs font-bold">
                           Tugas Disahkan Selesai
                         </div>
+                      )}
+
+                      {/* 🚨 Quick Blocker Button */}
+                      {currentExecutionTask.status !== 'SELESAI' && currentExecutionTask.status !== 'DONE' && currentExecutionTask.status !== 'BLOCKED' && (
+                        <button
+                          onClick={() => setIsBlockerModalOpen(true)}
+                          className="w-full py-2.5 mt-3 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-mono font-bold rounded-2xl text-xs cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <AlertTriangle className="w-4 h-4 text-rose-400" />
+                          <span>🚨 Ada Blocker / Hambatan</span>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1230,6 +1269,64 @@ export const FocusExecutionView: React.FC = () => {
 
           </div>
         </div>
+      )}
+
+      {/* 🚨 BLOCKER REPORTING MODAL FOR MEMBER */}
+      {currentExecutionTask && (
+        <Modal
+          isOpen={isBlockerModalOpen}
+          onClose={() => setIsBlockerModalOpen(false)}
+          title="🚨 Laporkan Blocker / Hambatan Teknis"
+          subtitle={`Tugas: [${currentExecutionTask.code}] ${currentExecutionTask.title}`}
+        >
+          <form onSubmit={handleReportBlockerSubmit} className="space-y-4 text-xs font-sans">
+            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-950 rounded-2xl text-xs space-y-1">
+              <div className="font-mono font-bold flex items-center gap-1.5 text-rose-800">
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                <span>Sinyal Darurat Hambatan</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-rose-900">
+                Status tugas akan otomatis berubah menjadi <strong>BLOCKED</strong>. Pod Owner dan Project Leader akan segera menerima sinyal darurat untuk memvalidasi dan membongkar blocker.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-700">
+                Deskripsikan Hambatan / Kendala Utama *
+              </label>
+              <textarea
+                rows={4}
+                required
+                placeholder="Contoh: API Endpoint Staging belum bisa diakses / Kredensial Database Tim QA tidak valid..."
+                value={blockerReasonInput}
+                onChange={e => setBlockerReasonInput(e.target.value)}
+                className="w-full p-4 border border-rose-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 bg-white rounded-2xl text-xs font-sans focus:outline-hidden text-slate-900 leading-relaxed"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setIsBlockerModalOpen(false)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono font-bold rounded-2xl text-xs cursor-pointer transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={!blockerReasonInput.trim()}
+                className={`px-5 py-2.5 font-mono font-bold rounded-2xl text-xs cursor-pointer shadow-md flex items-center gap-2 transition-all ${
+                  blockerReasonInput.trim()
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                <span>Kirim Sinyal Blocker</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* SPRINT BACKGROUND MODAL HELPER */}

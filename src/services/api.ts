@@ -238,7 +238,7 @@ export const api = {
     return { valid: true };
   },
 
-  // Validasi alur transisi status tugas (Two-Stage Verification)
+  // Validasi alur transisi status tugas (Linear 1-Jalur & Blocker System)
   validateStatusTransition(
     currentUser: User,
     task: Task,
@@ -254,7 +254,12 @@ export const api = {
       };
     }
 
-    // 1. PENGAJUAN KE POD OWNER (DIKERJAKAN -> POD_REVIEW)
+    // 1. PELAPORAN BLOCKER (Bisa dari status apa saja oleh pelaksana)
+    if (newStatus === 'BLOCKED') {
+      return { allowed: true };
+    }
+
+    // 2. PENGAJUAN KE POD REVIEW (DIKERJAKAN / IN_PROGRESS -> POD_REVIEW)
     if (newStatus === 'POD_REVIEW') {
       const hasAttachments = task.attachments && task.attachments.length > 0;
       if (!hasAttachments) {
@@ -265,53 +270,13 @@ export const api = {
       }
     }
 
-    // 2. LOLOSKAN KE REVIEW LEADER (POD_REVIEW -> REVIEW)
-    if (newStatus === 'REVIEW') {
+    // 3. APPROVAL POD OWNER / LEADER (POD_REVIEW -> SELESAI / DONE)
+    if (newStatus === 'SELESAI' || newStatus === 'DONE') {
       const canVerify = this.canVerifyPodDoD(currentUser, task);
       if (!canVerify) {
         return {
           allowed: false,
-          reason: 'Hanya Pod Owner dari Pod terkait atau Project Leader yang berwenang meloloskan tugas ke tahap Review Leader.'
-        };
-      }
-
-      const allDoDDone = task.dod_checklist && task.dod_checklist.length > 0
-        ? task.dod_checklist.every(item => item.completed)
-        : true;
-
-      if (!allDoDDone) {
-        return {
-          allowed: false,
-          reason: 'Seluruh checklist Definition of Done (DoD) harus diverifikasi dan dicentang oleh Pod Owner sebelum diloloskan ke Review Leader.'
-        };
-      }
-    }
-
-    // 3. APPROVAL AKHIR SAHKAN SELESAI (REVIEW -> SELESAI)
-    if (newStatus === 'SELESAI') {
-      const canFinalApprove = this.canApproveFinalReview(currentUser, task);
-      if (!canFinalApprove) {
-        return {
-          allowed: false,
-          reason: 'HANYA Project Leader dan Project Owner yang memiliki wewenang mengesahkan tugas selesai. Pod Owner hanya berwenang meloloskan ke tahap Review Leader.'
-        };
-      }
-
-      if (task.status !== 'REVIEW') {
-        return {
-          allowed: false,
-          reason: 'Tugas harus melalui tahap Cek Pod Owner (POD_REVIEW) dan Review Leader (REVIEW) sebelum disahkan Selesai.'
-        };
-      }
-
-      const allDoDDone = task.dod_checklist && task.dod_checklist.length > 0
-        ? task.dod_checklist.every(item => item.completed)
-        : true;
-
-      if (!allDoDDone) {
-        return {
-          allowed: false,
-          reason: 'Checklist Definition of Done (DoD) belum lengkap diverifikasi.'
+          reason: 'Hanya Pod Owner dari Pod terkait atau Project Leader / Project Owner yang berwenang menyetujui tugas.'
         };
       }
     }
