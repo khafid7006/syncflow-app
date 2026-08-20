@@ -98,12 +98,11 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // 1. PASTIKAN QUERY FETCHING BEKERJA & LOGGING
+  // 1. FETCHING ACTIVE TASK FROM SUPABASE
   const fetchActiveTask = async (userId: string) => {
     try {
       console.log("Current User ID:", userId);
 
-      // Query: select active task for logged in member
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
@@ -114,7 +113,7 @@ export const App: React.FC = () => {
         .maybeSingle();
 
       if (error) {
-        console.error("Error fetching task:", error);
+        console.error("Error fetching task:", error.message);
         showToast(`Error fetching task: ${error.message}`);
       }
 
@@ -246,7 +245,7 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // 4. FIX CENTANG CHECKLIST (DOD) & SUPABASE PERSISTENCE
+  // CHECKLIST TOGGLE & SUPABASE PERSISTENCE
   const toggleDod = async (id: number) => {
     const updatedItems = dodItems.map(item => item.id === id ? { ...item, checked: !item.checked } : item);
     setDodItems(updatedItems);
@@ -259,74 +258,134 @@ export const App: React.FC = () => {
           .eq('id', activeTask.id);
 
         if (error) {
-          console.error("Error updating checklist:", error);
+          console.error("Error updating checklist:", error.message);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error updating checklist:", err);
       }
     }
   };
 
-  // 2. FIX MUTASI TOMBOL KIRIM
+  // 2. LOGIKA KIRIM HASIL TUGAS (UPDATE IF ACTIVE TASK EXISTS, ELSE INSERT)
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!deliverableUrl.trim()) return;
+    if (!deliverableUrl.trim() || !session?.user?.id) return;
 
-    const linkUrl = deliverableUrl.trim();
+    const linkInput = deliverableUrl.trim();
+    console.log("Current User ID:", session.user.id);
 
     try {
       if (activeTask?.id) {
-        const { error } = await supabase
+        // UPDATE existing task row
+        const { data, error } = await supabase
           .from('tasks')
           .update({ 
-            deliverable_link: linkUrl, 
+            deliverable_link: linkInput,
+            deliverable_url: linkInput,
             status: 'review' 
           })
-          .eq('id', activeTask.id);
+          .eq('id', activeTask.id)
+          .select();
 
         if (error) {
-          console.error("Error updating deliverable link:", error);
-          showToast(`Gagal kirim deliverable: ${error.message}`);
+          console.error("Error updating deliverable link:", error.message);
+          showToast(`Gagal kirim tugas: ${error.message}`);
           return;
+        }
+
+        if (data && data[0]) {
+          setActiveTask(data[0]);
+        }
+      } else {
+        // INSERT new task row if activeTask is empty
+        const { data, error } = await supabase
+          .from('tasks')
+          .insert({
+            assignee_id: session.user.id,
+            title: taskTitle || 'Buat Halaman Pembayaran Aplikasi',
+            deliverable_link: linkInput,
+            deliverable_url: linkInput,
+            status: 'review'
+          })
+          .select();
+
+        if (error) {
+          console.error("Error inserting deliverable link:", error.message);
+          showToast(`Gagal kirim tugas: ${error.message}`);
+          return;
+        }
+
+        if (data && data[0]) {
+          setActiveTask(data[0]);
         }
       }
     } catch (err: any) {
-      console.error('Supabase update deliverable error:', err);
-      showToast(`Gagal kirim deliverable: ${err.message || err}`);
+      console.error('Supabase deliverable mutation error:', err);
+      showToast(`Gagal kirim tugas: ${err.message || err}`);
       return;
     }
 
-    setSubmittedUrl(linkUrl);
+    setSubmittedUrl(linkInput);
     setTaskStatus('Sedang Ditinjau PO');
     setDeliverableUrl('');
     showToast('Hasil tugas berhasil dikirim & sedang ditinjau PO.');
   };
 
-  // 3. FIX MUTASI LAPOR KENDALA
+  // 1. LOGIKA LAPORKAN KENDALA (UPDATE IF ACTIVE TASK EXISTS, ELSE INSERT)
   const handleReportBlockerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!blockerReason.trim()) return;
+    if (!blockerReason.trim() || !session?.user?.id) return;
 
-    const reasonText = blockerReason.trim();
+    const blockerInput = blockerReason.trim();
+    console.log("Current User ID:", session.user.id);
 
     try {
       if (activeTask?.id) {
-        const { error } = await supabase
+        // UPDATE existing task row
+        const { data, error } = await supabase
           .from('tasks')
           .update({ 
-            blocker_reason: reasonText, 
+            blocker_reason: blockerInput,
+            is_blocked: true,
             status: 'blocked' 
           })
-          .eq('id', activeTask.id);
+          .eq('id', activeTask.id)
+          .select();
 
         if (error) {
-          console.error("Error updating blocker reason:", error);
+          console.error("Error updating blocker reason:", error.message);
           showToast(`Gagal lapor kendala: ${error.message}`);
           return;
         }
+
+        if (data && data[0]) {
+          setActiveTask(data[0]);
+        }
+      } else {
+        // INSERT new task row if activeTask is empty
+        const { data, error } = await supabase
+          .from('tasks')
+          .insert({
+            assignee_id: session.user.id,
+            title: taskTitle || 'Tugas Member',
+            blocker_reason: blockerInput,
+            is_blocked: true,
+            status: 'blocked'
+          })
+          .select();
+
+        if (error) {
+          console.error("Error inserting blocker task:", error.message);
+          showToast(`Gagal lapor kendala: ${error.message}`);
+          return;
+        }
+
+        if (data && data[0]) {
+          setActiveTask(data[0]);
+        }
       }
     } catch (err: any) {
-      console.error('Supabase update blocker error:', err);
+      console.error('Supabase blocker mutation error:', err);
       showToast(`Gagal lapor kendala: ${err.message || err}`);
       return;
     }
@@ -638,7 +697,7 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* KARTU TENGAH ATAS (Submit Deliverable to Supabase) */}
+              {/* KARTU TENGAH ATAS (Submit Deliverable - Update or Insert) */}
               <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-zinc-500">
@@ -649,7 +708,7 @@ export const App: React.FC = () => {
                   </h3>
                 </div>
 
-                {/* Form Input Clean & Update Supabase: { deliverable_link: linkUrl, status: 'review' } */}
+                {/* Form Input Clean & Update/Insert Payload: { deliverable_link: linkInput, status: 'review' } */}
                 <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2">
                   {submittedUrl ? (
                     <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
@@ -779,7 +838,7 @@ export const App: React.FC = () => {
 
       </div>
 
-      {/* MODAL LAPORKAN KENDALA (Update Supabase: { blocker_reason: reasonText, status: 'blocked' }) */}
+      {/* MODAL LAPORKAN KENDALA (Update or Insert Payload: { blocker_reason: blockerInput, status: 'blocked' }) */}
       {isBlockerModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
