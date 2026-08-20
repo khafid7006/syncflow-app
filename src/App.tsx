@@ -478,9 +478,7 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       setAuthError(err.message || 'Terjadi kesalahan autentikasi.');
-    } finally {
-      setAuthLoading(false);
-    }
+    } font-sans
   };
 
   // Auth Sign Out
@@ -581,7 +579,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // MEMBER: SUBMIT DELIVERABLE LINK (STRICT DOD VALIDATION + RESET REVISION & RESOLUTION NOTES)
+  // MEMBER: SUBMIT DELIVERABLE LINK (STRICT DOD VALIDATION + CLEANUP RESOLUTION & BLOCKER NOTES)
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -606,7 +604,9 @@ export const App: React.FC = () => {
             status: 'review',
             checklist: dodItems,
             revision_note: null,
-            resolution_note: null
+            resolution_note: null,
+            blocker_reason: null,
+            is_blocked: false
           })
           .eq('id', activeTask.id)
           .select();
@@ -633,7 +633,9 @@ export const App: React.FC = () => {
             status: 'review',
             checklist: dodItems,
             revision_note: null,
-            resolution_note: null
+            resolution_note: null,
+            blocker_reason: null,
+            is_blocked: false
           })
           .select();
 
@@ -718,7 +720,7 @@ export const App: React.FC = () => {
     showToast('🚨 Kendala berhasil dilaporkan ke Project Owner.');
   };
 
-  // PO DASHBOARD INTERACTION HANDLERS (MODAL INPUT INSTRUKSI)
+  // PO DASHBOARD INTERACTION HANDLERS (MODAL INPUT INSTRUKSI - SIMPAN TEKS BLOCKER SAAT PO MEMBERIKAN SOLUSI)
   const handleOpenResolveBlockerModal = (taskId: string) => {
     setTargetTaskId(taskId);
     setInputResolutionNote('');
@@ -734,9 +736,9 @@ export const App: React.FC = () => {
         .from('tasks')
         .update({ 
           status: 'in_progress', 
-          is_blocked: false, 
-          blocker_reason: null,
+          is_blocked: false,
           resolution_note: inputResolutionNote.trim() 
+          // JANGAN ubah blocker_reason ke null agar riwayat kendala tetap dapat dilihat member!
         })
         .eq('id', targetTaskId);
 
@@ -798,7 +800,9 @@ export const App: React.FC = () => {
         .update({ 
           status: 'done',
           revision_note: null,
-          resolution_note: null
+          resolution_note: null,
+          blocker_reason: null,
+          is_blocked: false
         })
         .eq('id', taskId);
 
@@ -1539,7 +1543,7 @@ export const App: React.FC = () => {
                           onClick={handleOpenManageLinksModal}
                           className="text-[10px] text-zinc-300 hover:text-white underline cursor-pointer font-medium"
                         >
-                          Edit Tautan
+                          Kelola Tautan
                         </button>
                       )}
                     </div>
@@ -1657,14 +1661,33 @@ export const App: React.FC = () => {
                       </div>
                     )}
 
+                    {/* REDESAIN KARTU SOLUSI PO: TAMPILKAN RIWAYAT KENDALA VS SOLUSI PO */}
                     {activeTask?.resolution_note && (
-                      <div className="p-3 bg-white/10 border border-white/15 rounded-2xl text-xs text-white font-sans space-y-1">
-                        <div className="font-semibold text-white text-[11px] flex items-center gap-1">
-                          <span>💡 Solusi Kendala dari PO:</span>
+                      <div className="my-3 rounded-2xl border border-white/10 bg-neutral-900/90 p-3.5 space-y-2 text-xs font-sans">
+                        {/* Baris 1: Kendala Member */}
+                        {activeTask.blocker_reason && (
+                          <div>
+                            <span className="text-zinc-400 block font-medium text-[10px] uppercase tracking-wider">
+                              Kendala yang Kamu Laporkan:
+                            </span>
+                            <p className="text-zinc-300 mt-0.5 line-through decoration-zinc-500 text-[11px]">
+                              {activeTask.blocker_reason}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Divider halus */}
+                        {activeTask.blocker_reason && <div className="border-t border-white/10" />}
+
+                        {/* Baris 2: Solusi PO */}
+                        <div>
+                          <span className="text-white block font-semibold text-[11px] flex items-center gap-1.5">
+                            💡 Solusi / Arahan PO:
+                          </span>
+                          <p className="text-zinc-200 font-normal mt-0.5 text-xs leading-relaxed">
+                            {activeTask.resolution_note}
+                          </p>
                         </div>
-                        <p className="text-zinc-200 text-[11px] leading-relaxed">
-                          {activeTask.resolution_note}
-                        </p>
                       </div>
                     )}
 
