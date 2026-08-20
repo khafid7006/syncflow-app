@@ -892,10 +892,8 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isManageMembersModalOpen && currentWorkspace?.id) {
-      fetchWorkspaceMembersList();
-    }
-  }, [isManageMembersModalOpen, currentWorkspace?.id]);
+    fetchWorkspaceMembersList();
+  }, [currentWorkspace?.id]);
 
   const handleOpenManageMembersModal = () => {
     if (currentWorkspace?.id) {
