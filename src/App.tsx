@@ -604,10 +604,10 @@ export const App: React.FC = () => {
     showToast('Anda telah keluar.');
   };
 
-  // Toast Helper
+  // TOAST HELPER (AUTOHIDE 3 DETIK)
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000);
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   // MODAL KELOLA TAUTAN TIM (FULL CRUD FOR PO VIEW)
@@ -695,7 +695,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // MEMBER: SUBMIT DELIVERABLE LINK (STRICT DOD VALIDATION + INJECT SUBMITTED_AT TIMESTAMP)
+  // MEMBER: SUBMIT DELIVERABLE LINK (FEEDBACK TOAST: "✓ Hasil tugas berhasil dikirim untuk ditinjau")
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -778,10 +778,10 @@ export const App: React.FC = () => {
 
     setSubmittedUrl(linkInput);
     setTaskStatus('Sedang Ditinjau PO');
-    showToast('Hasil tugas berhasil dikirim & sedang ditinjau PO.');
+    showToast('✓ Hasil tugas berhasil dikirim untuk ditinjau');
   };
 
-  // MEMBER: REPORT BLOCKER
+  // MEMBER: REPORT BLOCKER (FEEDBACK TOAST: "🚨 Kendala berhasil dilaporkan ke PO")
   const handleReportBlockerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!blockerReason.trim() || !session?.user?.id) return;
@@ -836,7 +836,7 @@ export const App: React.FC = () => {
 
     setTaskStatus('Terkendala (Blocker)');
     setIsBlockerModalOpen(false);
-    showToast('🚨 Kendala berhasil dilaporkan ke Project Owner.');
+    showToast('🚨 Kendala berhasil dilaporkan ke PO');
   };
 
   // PO DASHBOARD INTERACTION HANDLERS (MODAL INPUT INSTRUKSI)
@@ -882,9 +882,13 @@ export const App: React.FC = () => {
     setIsRevisionModalOpen(true);
   };
 
+  // PO MINTA REVISI (FEEDBACK TOAST: "Catatan revisi terkirim ke {nama member}")
   const handleSubmitRevisionNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetTaskId || !inputRevisionNote.trim()) return;
+
+    const targetTask = allTasks.find(t => t.id === targetTaskId);
+    const targetMemberName = targetTask?.profiles?.full_name || 'Member';
 
     try {
       const { error } = await supabase
@@ -899,7 +903,7 @@ export const App: React.FC = () => {
         console.error("Request revision error:", error.message);
         showToast(`Gagal kirim catatan revisi: ${error.message}`);
       } else {
-        showToast('⚠️ Catatan revisi telah dikirimkan ke Member!');
+        showToast(`Catatan revisi terkirim ke ${targetMemberName}`);
         setIsRevisionModalOpen(false);
         setTargetTaskId(null);
         setInputRevisionNote('');
@@ -911,6 +915,7 @@ export const App: React.FC = () => {
     }
   };
 
+  // PO ACC TUGAS (FEEDBACK TOAST: "✓ Tugas disetujui & dipindahkan ke Selesai")
   const handleAcceptReview = async (taskId: string) => {
     try {
       const { error } = await supabase
@@ -928,7 +933,7 @@ export const App: React.FC = () => {
         console.error("Accept review error:", error.message);
         showToast(`Gagal ACC tugas: ${error.message}`);
       } else {
-        showToast('✅ Tugas telah di-ACC (Done)!');
+        showToast('✓ Tugas disetujui & dipindahkan ke Selesai');
         fetchPOData();
       }
     } catch (err: any) {
@@ -955,10 +960,12 @@ export const App: React.FC = () => {
     setDodPoints(updated);
   };
 
-  // SUBMIT PENUGASAN CEPAT WITH DEADLINE (PO VIEW)
+  // PO KIRIM TUGAS (FEEDBACK TOAST: "✓ Tugas berhasil dikirim ke {nama member}")
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
+
+    const assigneeName = memberProfiles.find(m => m.id === selectedAssigneeId)?.full_name || 'Member';
 
     const checklistItems = dodPoints
       .filter(p => p.trim().length > 0)
@@ -986,7 +993,7 @@ export const App: React.FC = () => {
         console.error("Create task error:", error.message);
         showToast(`Gagal penugasan: ${error.message}`);
       } else {
-        showToast('Tugas baru berhasil dikirim ke Member!');
+        showToast(`✓ Tugas berhasil dikirim ke ${assigneeName}`);
         setNewAssignTaskTitle('');
         setNewAssignDueDate('');
         setDodPoints([
@@ -1192,6 +1199,19 @@ export const App: React.FC = () => {
       <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-zinc-500/10 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-zinc-500/5 rounded-full blur-[160px] pointer-events-none" />
 
+      {/* TOP-RIGHT FLOATING MONOCHROME TOAST NOTIFICATION (3 Detik Auto Disappear) */}
+      {toastMessage && (
+        <div className="fixed top-5 right-5 z-50 max-w-xs sm:max-w-sm bg-neutral-900/95 border border-white/20 text-white px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-sans backdrop-blur-2xl shadow-2xl transition-all duration-300 ease-in-out">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-white shrink-0" />
+            <span className="font-medium leading-tight">{toastMessage}</span>
+          </div>
+          <button onClick={() => setToastMessage(null)} className="text-zinc-400 hover:text-white cursor-pointer transition-colors p-0.5 shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* MAIN CONTAINER */}
       <div className="relative z-10 w-full max-w-[1360px] mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-8 flex-1 min-h-screen justify-between font-sans">
         
@@ -1202,7 +1222,7 @@ export const App: React.FC = () => {
           
           {/* Logo Brand: SyncFlow */}
           <div className="flex items-center gap-2.5 cursor-pointer group">
-            <div className="w-9 h-9 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-105 transition-all">
+            <div className="w-9 h-9 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-105 transition-all duration-300">
               <Layers className="w-5 h-5 text-white" />
             </div>
             <span className="font-bold text-white text-base tracking-tight">
@@ -1215,7 +1235,7 @@ export const App: React.FC = () => {
             <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
               <button
                 onClick={() => setViewMode('po')}
-                className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
+                className={`px-4 py-2 rounded-full font-medium transition-all duration-300 ease-in-out cursor-pointer ${
                   viewMode === 'po'
                     ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
                     : 'text-zinc-400 hover:text-white hover:bg-white/10'
@@ -1225,7 +1245,7 @@ export const App: React.FC = () => {
               </button>
               <button
                 onClick={() => setViewMode('member')}
-                className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
+                className={`px-4 py-2 rounded-full font-medium transition-all duration-300 ease-in-out cursor-pointer ${
                   viewMode === 'member'
                     ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
                     : 'text-zinc-400 hover:text-white hover:bg-white/10'
@@ -1240,7 +1260,7 @@ export const App: React.FC = () => {
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-              className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors shadow-md font-sans"
+              className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300 shadow-md font-sans"
             >
               <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
               <span className="text-white font-semibold">{userName} — {userRole}</span>
@@ -1249,7 +1269,7 @@ export const App: React.FC = () => {
 
             {/* Profile Dropdown Menu */}
             {isProfileDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-neutral-900/95 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-2 z-50 space-y-1 text-xs font-sans">
+              <div className="absolute right-0 mt-2 w-56 bg-neutral-900/95 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-2 z-50 space-y-1 text-xs font-sans transition-all duration-300 ease-in-out">
                 <div className="p-2.5 border-b border-white/10 space-y-0.5">
                   <div className="font-bold text-white truncate">{userName}</div>
                   <div className="text-[11px] text-zinc-400 truncate">{session.user.email}</div>
@@ -1258,7 +1278,7 @@ export const App: React.FC = () => {
 
                 <button
                   onClick={handleSignOut}
-                  className="w-full p-2.5 text-left text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl flex items-center gap-2 font-medium cursor-pointer transition-colors"
+                  className="w-full p-2.5 text-left text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300"
                 >
                   <LogOut className="w-4 h-4 text-zinc-400" />
                   <span>Keluar (Logout)</span>
@@ -1268,30 +1288,17 @@ export const App: React.FC = () => {
           </div>
         </header>
 
-        {/* MONOCHROME TOAST NOTIFICATION */}
-        {toastMessage && (
-          <div className="p-4 bg-neutral-900/90 border border-white/15 text-white rounded-2xl flex items-center justify-between text-xs font-sans backdrop-blur-md shadow-2xl animate-fade-in">
-            <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-white" />
-              <span>{toastMessage}</span>
-            </div>
-            <button onClick={() => setToastMessage(null)} className="text-zinc-400 hover:text-white">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
         {/* ========================================================================= */}
         {/* VIEW ROUTER: STRICT ROLE-BASED ACCESS CONTROL GUARD */}
         {/* ========================================================================= */}
         {profile?.role !== 'owner' ? (
           /* ========================================================================= */
-          /* DASHBOARD MEMBER VIEW (MEMBER ACCOUNT HARD GUARDED) */
+          /* DASHBOARD MEMBER VIEW (RESPONSIVE BENTO GRID MOBILE & TABLET FRIENDLY) */
           /* ========================================================================= */
-          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
+          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
             
-            {/* GRID KIRI (7 Kolom / 60% Width) */}
-            <div className="lg:col-span-7 flex flex-col justify-between gap-6">
+            {/* GRID KIRI (7 Kolom di Desktop / 1 Kolom di Mobile & Tablet) */}
+            <div className="lg:col-span-7 flex flex-col justify-between gap-6 transition-all duration-300 ease-in-out">
               
               {/* TOP ROW KIRI: 2 Kartu */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1299,7 +1306,7 @@ export const App: React.FC = () => {
                 {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member / Empty State) */}
                 {!activeTask ? (
                   /* EMPTY STATE: TIDAK ADA TUGAS AKTIF */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all font-sans">
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
                     <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                       <span>Tugas Aktif</span>
                       <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-zinc-400 font-medium">
@@ -1327,12 +1334,12 @@ export const App: React.FC = () => {
                   </div>
                 ) : (
                   /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-200 space-y-3 font-sans">
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                         <span>Tugas Aktif</span>
                         {/* Top Right Status Badge on Member Card */}
-                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium ${
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium transition-colors duration-300 ${
                           taskStatus === 'Perlu Revisi'
                             ? 'bg-neutral-800 text-zinc-200 border-white/30'
                             : taskStatus === 'Terkendala (Blocker)'
@@ -1356,7 +1363,7 @@ export const App: React.FC = () => {
 
                         return (
                           <div className="pt-0.5">
-                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium tracking-tight font-sans ${
+                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium tracking-tight font-sans transition-colors duration-300 ${
                               rel.status === 'overdue'
                                 ? 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
                                 : rel.status === 'urgent'
@@ -1429,16 +1436,16 @@ export const App: React.FC = () => {
                         <div
                           key={item.id}
                           onClick={() => toggleDod(item.id)}
-                          className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors"
+                          className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors duration-300"
                         >
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0 ${
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all duration-300 shrink-0 ${
                             item.checked 
                               ? 'bg-white border-white text-zinc-950' 
                               : 'border-zinc-500 bg-transparent'
                           }`}>
                             {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
                           </div>
-                          <span className={`text-xs ${item.checked ? 'line-through text-white/40' : 'text-zinc-200'}`}>
+                          <span className={`text-xs transition-colors duration-300 ${item.checked ? 'line-through text-white/40' : 'text-zinc-200'}`}>
                             {item.text}
                           </span>
                         </div>
@@ -1448,7 +1455,7 @@ export const App: React.FC = () => {
                 )}
 
                 {/* KARTU TENGAH ATAS (Submit Deliverable - VALIDASI KETAT DOD & FORM UNLOCK & EMPTY STATE) */}
-                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
+                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-zinc-500">
                       Penyerahan Tugas
@@ -1487,14 +1494,14 @@ export const App: React.FC = () => {
                         placeholder="Link tugas..."
                         value={deliverableUrl}
                         onChange={e => setDeliverableUrl(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors disabled:opacity-50 font-sans"
+                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 disabled:opacity-50 font-sans"
                       />
                     )}
 
                     <button
                       type="submit"
                       disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted}
-                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-200 ${
+                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
                         !activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted
                           ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                           : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
@@ -1525,7 +1532,7 @@ export const App: React.FC = () => {
                     <button
                       onClick={() => setIsBlockerModalOpen(true)}
                       disabled={!activeTask}
-                      className={`w-full py-2 border text-xs rounded-full transition-colors flex items-center justify-center gap-1.5 ${
+                      className={`w-full py-2 border text-xs rounded-full transition-colors duration-300 flex items-center justify-center gap-1.5 ${
                         !activeTask
                           ? 'border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed'
                           : 'border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium cursor-pointer'
@@ -1540,7 +1547,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis Target) */}
-              <div className="space-y-2 pt-2 font-sans">
+              <div className="space-y-2 pt-2 font-sans transition-all duration-300 ease-in-out">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                   Halo, {userName}
                 </h1>
@@ -1553,11 +1560,11 @@ export const App: React.FC = () => {
 
             </div>
 
-            {/* GRID KANAN (5 Kolom / 40% Width - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
+            {/* GRID KANAN (5 Kolom di Desktop / 1 Kolom di Mobile & Tablet - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
+            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
               
               {/* KARTU KANAN (Aset Tim) */}
-              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all font-sans">
+              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
                 
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">
@@ -1579,7 +1586,7 @@ export const App: React.FC = () => {
                         href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
+                        className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-300 ease-in-out group/link"
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
@@ -1589,7 +1596,7 @@ export const App: React.FC = () => {
                             {link.title}
                           </span>
                         </div>
-                        <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors shrink-0" />
+                        <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
                       </a>
                     ))
                   )}
@@ -1606,16 +1613,16 @@ export const App: React.FC = () => {
           </main>
         ) : viewMode === 'po' ? (
           /* ========================================================================= */
-          /* PO DASHBOARD VIEW (BENTO GRID ALL-IN-ONE PO CONTROL CENTER - OWNER ONLY) */
+          /* PO DASHBOARD VIEW (RESPONSIVE BENTO GRID MOBILE & TABLET FRIENDLY - OWNER ONLY) */
           /* ========================================================================= */
-          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
+          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
             
             {/* ========================================================================= */}
             {/* KOLOM 1 (KIRI - LEBAR - 5 KOLOM): RADAR & STATUS TIM (MASTER TASK FEED) */}
             {/* ========================================================================= */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-6">
+            <div className="lg:col-span-5 flex flex-col justify-between gap-6 transition-all duration-300 ease-in-out">
               
-              <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all font-sans">
+              <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
                 <div className="space-y-4">
                   {/* Header & Tab Feed Switcher */}
                   <div className="flex flex-col gap-3">
@@ -1633,7 +1640,7 @@ export const App: React.FC = () => {
                     <div className="flex items-center p-1 bg-neutral-950 border border-white/10 rounded-2xl text-xs font-sans">
                       <button
                         onClick={() => setPoTaskFeedFilter('active')}
-                        className={`flex-1 py-1.5 rounded-xl font-medium text-[11px] transition-all cursor-pointer ${
+                        className={`flex-1 py-1.5 rounded-xl font-medium text-[11px] transition-all duration-300 ease-in-out cursor-pointer ${
                           poTaskFeedFilter === 'active'
                             ? 'bg-white text-zinc-950 font-bold shadow-xs'
                             : 'text-zinc-400 hover:text-white'
@@ -1643,7 +1650,7 @@ export const App: React.FC = () => {
                       </button>
                       <button
                         onClick={() => setPoTaskFeedFilter('done')}
-                        className={`flex-1 py-1.5 rounded-xl font-medium text-[11px] transition-all cursor-pointer ${
+                        className={`flex-1 py-1.5 rounded-xl font-medium text-[11px] transition-all duration-300 ease-in-out cursor-pointer ${
                           poTaskFeedFilter === 'done'
                             ? 'bg-white text-zinc-950 font-bold shadow-xs'
                             : 'text-zinc-400 hover:text-white'
@@ -1656,7 +1663,7 @@ export const App: React.FC = () => {
 
                   {/* EMPTY STATE PADA FEED PO (TAB AKTIF & REVIEW KOSONG) */}
                   {filteredMasterTasks.length === 0 ? (
-                    <div className="p-8 text-center bg-neutral-900/60 border border-white/10 rounded-2xl text-xs text-zinc-400 space-y-2 my-auto font-sans">
+                    <div className="p-8 text-center bg-neutral-900/60 border border-white/10 rounded-2xl text-xs text-zinc-400 space-y-2 my-auto font-sans transition-all duration-300 ease-in-out">
                       <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-xs">
                         <Sparkles className="w-5 h-5 text-zinc-300" />
                       </div>
@@ -1683,7 +1690,7 @@ export const App: React.FC = () => {
                         const formattedDate = t.created_at ? new Date(t.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
                         return (
-                          <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-all duration-200">
+                          <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-all duration-300 ease-in-out">
                             {/* Member Header */}
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-white text-xs">{t.profiles?.full_name || 'Member Tim'}</span>
@@ -1763,7 +1770,7 @@ export const App: React.FC = () => {
                                   </span>
                                   <button
                                     onClick={() => t.id && handleOpenResolveBlockerModal(t.id)}
-                                    className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-[11px] rounded-full transition-all duration-200 cursor-pointer flex items-center gap-1"
+                                    className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-[11px] rounded-full transition-all duration-300 cursor-pointer flex items-center gap-1"
                                   >
                                     <RotateCcw className="w-3 h-3" />
                                     <span>Selesaikan</span>
@@ -1791,7 +1798,7 @@ export const App: React.FC = () => {
                                         href={deliverableContent}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="text-xs text-white font-medium underline truncate flex items-center gap-1 hover:text-zinc-300 transition-colors"
+                                        className="text-xs text-white font-medium underline truncate flex items-center gap-1 hover:text-zinc-300 transition-colors duration-300"
                                       >
                                         <span className="truncate">{deliverableContent}</span>
                                         <ExternalLink className="w-3 h-3 text-zinc-400 shrink-0" />
@@ -1805,13 +1812,13 @@ export const App: React.FC = () => {
                                 <div className="flex items-center gap-2 pt-1">
                                   <button
                                     onClick={() => t.id && handleAcceptReview(t.id)}
-                                    className="flex-1 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-all duration-200 cursor-pointer text-center text-[11px]"
+                                    className="flex-1 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-all duration-300 cursor-pointer text-center text-[11px]"
                                   >
                                     Terima (ACC)
                                   </button>
                                   <button
                                     onClick={() => t.id && handleOpenRevisionModal(t.id)}
-                                    className="flex-1 py-1.5 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-all duration-200 cursor-pointer text-center text-[11px]"
+                                    className="flex-1 py-1.5 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-all duration-300 cursor-pointer text-center text-[11px]"
                                   >
                                     Minta Revisi
                                   </button>
@@ -1849,7 +1856,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* AREA BAWAH KIRI (Header Teks Sapaan Personal Dinamis PO) */}
-              <div className="space-y-2 pt-2 font-sans">
+              <div className="space-y-2 pt-2 font-sans transition-all duration-300 ease-in-out">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                   Halo, {userName}
                 </h1>
@@ -1863,9 +1870,9 @@ export const App: React.FC = () => {
             {/* ========================================================================= */}
             {/* KOLOM 2 (TENGAH - PUTIH SOLID - 4 KOLOM): BAGI TUGAS BARU */}
             {/* ========================================================================= */}
-            <div className="lg:col-span-4 flex flex-col justify-between">
+            <div className="lg:col-span-4 flex flex-col justify-between transition-all duration-300 ease-in-out">
               
-              <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-transform font-sans">
+              <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-zinc-500">
                     Penugasan Tim
@@ -1882,7 +1889,7 @@ export const App: React.FC = () => {
                     <select
                       value={selectedAssigneeId}
                       onChange={e => setSelectedAssigneeId(e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans cursor-pointer"
+                      className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 font-sans cursor-pointer"
                     >
                       {memberProfiles.length === 0 ? (
                         <option value="">Memuat daftar tim...</option>
@@ -1905,7 +1912,7 @@ export const App: React.FC = () => {
                       placeholder="Nama tugas..."
                       value={newAssignTaskTitle}
                       onChange={e => setNewAssignTaskTitle(e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans"
+                      className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 font-sans"
                     />
                   </div>
 
@@ -1919,21 +1926,21 @@ export const App: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleApplyDeadlinePreset(0)}
-                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors cursor-pointer"
+                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
                         >
                           Hari Ini (17:00)
                         </button>
                         <button
                           type="button"
                           onClick={() => handleApplyDeadlinePreset(1)}
-                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors cursor-pointer"
+                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
                         >
                           Besok (17:00)
                         </button>
                         <button
                           type="button"
                           onClick={() => handleApplyDeadlinePreset(3)}
-                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors cursor-pointer"
+                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
                         >
                           3 Hari
                         </button>
@@ -1943,7 +1950,7 @@ export const App: React.FC = () => {
                       type="datetime-local"
                       value={newAssignDueDate}
                       onChange={e => setNewAssignDueDate(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 transition-colors font-sans [color-scheme:light]"
+                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 transition-colors duration-300 font-sans [color-scheme:light]"
                     />
                   </div>
 
@@ -1957,7 +1964,7 @@ export const App: React.FC = () => {
                         <button
                           type="button"
                           onClick={handleAddDodPoint}
-                          className="text-[10px] font-bold text-zinc-900 hover:text-zinc-600 flex items-center gap-0.5 cursor-pointer transition-colors"
+                          className="text-[10px] font-bold text-zinc-900 hover:text-zinc-600 flex items-center gap-0.5 cursor-pointer transition-colors duration-300"
                         >
                           <Plus className="w-3 h-3" />
                           <span>+ Tambah Poin</span>
@@ -1980,7 +1987,7 @@ export const App: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleRemoveDodPoint(idx)}
-                              className="w-6 h-6 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center cursor-pointer transition-colors text-xs font-bold shrink-0"
+                              className="w-6 h-6 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center cursor-pointer transition-colors duration-300 text-xs font-bold shrink-0"
                             >
                               ×
                             </button>
@@ -1993,7 +2000,7 @@ export const App: React.FC = () => {
                   <button
                     type="submit"
                     disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
-                    className={`w-full py-3 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
+                    className={`w-full py-3 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
                       selectedAssigneeId && newAssignTaskTitle.trim()
                         ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
                         : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
@@ -2010,9 +2017,9 @@ export const App: React.FC = () => {
             {/* ========================================================================= */}
             {/* KOLOM 3 (KANAN - 3 KOLOM): DYNAMIC PROJECT LINKS (FULL CRUD) */}
             {/* ========================================================================= */}
-            <div className="lg:col-span-3 flex flex-col justify-between gap-6 font-sans">
+            <div className="lg:col-span-3 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
               
-              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all font-sans">
+              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
                 
                 <div className="space-y-4">
                   <div className="space-y-1">
@@ -2065,7 +2072,7 @@ export const App: React.FC = () => {
                           href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
+                          className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-300 ease-in-out group/link"
                         >
                           <div className="flex items-center gap-2.5">
                             <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
@@ -2075,7 +2082,7 @@ export const App: React.FC = () => {
                               {link.title}
                             </span>
                           </div>
-                          <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors shrink-0" />
+                          <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
                         </a>
                       ))
                     )}
@@ -2095,10 +2102,10 @@ export const App: React.FC = () => {
           /* ========================================================================= */
           /* DASHBOARD MEMBER VIEW FOR PO TOGGLE */
           /* ========================================================================= */
-          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
+          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
             
-            {/* GRID KIRI (7 Kolom / 60% Width) */}
-            <div className="lg:col-span-7 flex flex-col justify-between gap-6">
+            {/* GRID KIRI (7 Kolom di Desktop / 1 Kolom di Mobile & Tablet) */}
+            <div className="lg:col-span-7 flex flex-col justify-between gap-6 transition-all duration-300 ease-in-out">
               
               {/* TOP ROW KIRI: 2 Kartu */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -2106,7 +2113,7 @@ export const App: React.FC = () => {
                 {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member / Empty State) */}
                 {!activeTask ? (
                   /* EMPTY STATE: TIDAK ADA TUGAS AKTIF */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all font-sans">
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
                     <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                       <span>Tugas Aktif</span>
                       <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-zinc-400 font-medium">
@@ -2134,12 +2141,12 @@ export const App: React.FC = () => {
                   </div>
                 ) : (
                   /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-200 space-y-3 font-sans">
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                         <span>Tugas Aktif</span>
                         {/* Top Right Status Badge on Member Card */}
-                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium ${
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium transition-colors duration-300 ${
                           taskStatus === 'Perlu Revisi'
                             ? 'bg-neutral-800 text-zinc-200 border-white/30'
                             : taskStatus === 'Terkendala (Blocker)'
@@ -2163,7 +2170,7 @@ export const App: React.FC = () => {
 
                         return (
                           <div className="pt-0.5">
-                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium tracking-tight font-sans ${
+                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium tracking-tight font-sans transition-colors duration-300 ${
                               rel.status === 'overdue'
                                 ? 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
                                 : rel.status === 'urgent'
@@ -2236,16 +2243,16 @@ export const App: React.FC = () => {
                         <div
                           key={item.id}
                           onClick={() => toggleDod(item.id)}
-                          className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors"
+                          className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors duration-300"
                         >
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0 ${
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all duration-300 shrink-0 ${
                             item.checked 
                               ? 'bg-white border-white text-zinc-950' 
                               : 'border-zinc-500 bg-transparent'
                           }`}>
                             {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
                           </div>
-                          <span className={`text-xs ${item.checked ? 'line-through text-white/40' : 'text-zinc-200'}`}>
+                          <span className={`text-xs transition-colors duration-300 ${item.checked ? 'line-through text-white/40' : 'text-zinc-200'}`}>
                             {item.text}
                           </span>
                         </div>
@@ -2255,7 +2262,7 @@ export const App: React.FC = () => {
                 )}
 
                 {/* KARTU TENGAH ATAS (Submit Deliverable - VALIDASI KETAT DOD & FORM UNLOCK & EMPTY STATE) */}
-                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
+                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-zinc-500">
                       Penyerahan Tugas
@@ -2294,14 +2301,14 @@ export const App: React.FC = () => {
                         placeholder="Link tugas..."
                         value={deliverableUrl}
                         onChange={e => setDeliverableUrl(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors disabled:opacity-50 font-sans"
+                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 disabled:opacity-50 font-sans"
                       />
                     )}
 
                     <button
                       type="submit"
                       disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted}
-                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-200 ${
+                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
                         !activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted
                           ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                           : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
@@ -2332,7 +2339,7 @@ export const App: React.FC = () => {
                     <button
                       onClick={() => setIsBlockerModalOpen(true)}
                       disabled={!activeTask}
-                      className={`w-full py-2 border text-xs rounded-full transition-colors flex items-center justify-center gap-1.5 ${
+                      className={`w-full py-2 border text-xs rounded-full transition-colors duration-300 flex items-center justify-center gap-1.5 ${
                         !activeTask
                           ? 'border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed'
                           : 'border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium cursor-pointer'
@@ -2347,7 +2354,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis Target) */}
-              <div className="space-y-2 pt-2 font-sans">
+              <div className="space-y-2 pt-2 font-sans transition-all duration-300 ease-in-out">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                   Halo, {userName}
                 </h1>
@@ -2360,11 +2367,11 @@ export const App: React.FC = () => {
 
             </div>
 
-            {/* GRID KANAN (5 Kolom / 40% Width - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
+            {/* GRID KANAN (5 Kolom di Desktop / 1 Kolom di Mobile & Tablet - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
+            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
               
               {/* KARTU KANAN (Aset Tim) */}
-              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all font-sans">
+              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
                 
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">
@@ -2386,7 +2393,7 @@ export const App: React.FC = () => {
                         href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
+                        className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-300 ease-in-out group/link"
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
@@ -2396,7 +2403,7 @@ export const App: React.FC = () => {
                             {link.title}
                           </span>
                         </div>
-                        <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors shrink-0" />
+                        <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
                       </a>
                     ))
                   )}
@@ -2422,8 +2429,8 @@ export const App: React.FC = () => {
 
       {/* MODAL KELOLA TAUTAN TIM (FULL CRUD FOR PO VIEW) */}
       {isManageLinksModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans">
-          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs max-h-[90vh] flex flex-col justify-between">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
+          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs max-h-[90vh] flex flex-col justify-between transition-all duration-300 ease-in-out">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <Folder className="w-4 h-4 text-zinc-300" />
@@ -2446,7 +2453,7 @@ export const App: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleRemoveLinkRow(idx, link.id)}
-                        className="p-1 bg-white/5 hover:bg-rose-950/80 border border-white/10 hover:border-rose-800 text-zinc-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 bg-white/5 hover:bg-rose-950/80 border border-white/10 hover:border-rose-800 text-zinc-400 hover:text-rose-300 rounded-lg transition-colors duration-300 cursor-pointer"
                         title="Hapus Tautan"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -2493,7 +2500,7 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={handleAddLinkRow}
-                className="w-full py-2.5 border border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 rounded-2xl text-xs text-white font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="w-full py-2.5 border border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 rounded-2xl text-xs text-white font-medium flex items-center justify-center gap-1.5 transition-all duration-300 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>+ Tambah Tautan Baru</span>
@@ -2503,13 +2510,13 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsManageLinksModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors text-xs"
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300 text-xs"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full shadow-md transition-colors cursor-pointer text-xs"
+                  className="px-5 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full shadow-md transition-colors duration-300 cursor-pointer text-xs"
                 >
                   Simpan Perubahan
                 </button>
@@ -2521,8 +2528,8 @@ export const App: React.FC = () => {
 
       {/* MODAL INPUT ARANAN SOLUSI KENDALA (PO VIEW) */}
       {isResolveBlockerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs transition-all duration-300 ease-in-out">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <RotateCcw className="w-4 h-4 text-zinc-300" />
@@ -2553,14 +2560,14 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsResolveBlockerModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors"
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={!inputResolutionNote.trim()}
-                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all ${
+                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all duration-300 ${
                     inputResolutionNote.trim()
                       ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
                       : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
@@ -2576,8 +2583,8 @@ export const App: React.FC = () => {
 
       {/* MODAL INPUT CATATAN REVISI (PO VIEW - APA YANG PERLU DIPERBAIKI?) */}
       {isRevisionModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs transition-all duration-300 ease-in-out">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <AlertTriangle className="w-4 h-4 text-zinc-300" />
@@ -2608,14 +2615,14 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsRevisionModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors"
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={!inputRevisionNote.trim()}
-                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all ${
+                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all duration-300 ${
                     inputRevisionNote.trim()
                       ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
                       : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
@@ -2631,8 +2638,8 @@ export const App: React.FC = () => {
 
       {/* MODAL LAPORKAN KENDALA (MEMBER VIEW) */}
       {isBlockerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs transition-all duration-300 ease-in-out">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <AlertTriangle className="w-4 h-4 text-zinc-300" />
@@ -2660,14 +2667,14 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsBlockerModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors"
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={!blockerReason.trim()}
-                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all ${
+                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all duration-300 ${
                     blockerReason.trim()
                       ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
                       : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
