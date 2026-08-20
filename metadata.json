@@ -1,0 +1,6 @@
+{
+  "name": "Project Management & Development Monitoring System",
+  "description": "Internal project management and monitoring system for Project Owner, 3 Project Leaders, and 24 cross-functional team members across 4 pods.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
