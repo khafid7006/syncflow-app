@@ -202,7 +202,7 @@ export const App: React.FC = () => {
           setSubmittedUrl(null);
         } 
         // 2. IN REVIEW MODE (STATUS REVIEW)
-        else if (data.status === 'review' || data.status === 'UNDER_REVIEW') {
+        else if (data.status === 'review' || data.status === 'in_review' || data.status === 'UNDER_REVIEW') {
           setTaskStatus('Sedang Ditinjau PO');
           setSubmittedUrl(existingLink || 'Link Tugas');
         } 
@@ -267,7 +267,7 @@ export const App: React.FC = () => {
 
       if (bErr) console.error("Error fetching blocked tasks:", bErr.message);
 
-      // Fetch review tasks
+      // Fetch review tasks with status review, in_review, or UNDER_REVIEW
       const { data: reviewData, error: rErr } = await supabase
         .from('tasks')
         .select(`
@@ -278,7 +278,7 @@ export const App: React.FC = () => {
             pod
           )
         `)
-        .or('status.eq.review,status.eq.UNDER_REVIEW')
+        .or('status.eq.review,status.eq.in_review,status.eq.UNDER_REVIEW')
         .order('created_at', { ascending: false });
 
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
@@ -723,11 +723,16 @@ export const App: React.FC = () => {
   const blockedTasksCount = allTasks.filter(t => t.status === 'blocked' || t.is_blocked).length;
   const doneTasksCount = allTasks.filter(t => t.status === 'done').length;
 
+  // Review Tasks list filtered for PO review cards
+  const reviewTasksList = allTasks.filter(task => 
+    task.status === 'review' || task.status === 'in_review' || task.status === 'UNDER_REVIEW'
+  );
+
   // Sorted tasks for Master Task Feed (Blocked first, then Review, then In Progress, then Done)
   const sortedMasterTasks = [...allTasks].sort((a, b) => {
     const priorityScore = (task: MemberTask) => {
       if (task.status === 'blocked' || task.is_blocked) return 0;
-      if (task.status === 'review' || task.status === 'UNDER_REVIEW') return 1;
+      if (task.status === 'review' || task.status === 'in_review' || task.status === 'UNDER_REVIEW') return 1;
       if (task.status === 'in_progress') return 2;
       return 3;
     };
@@ -1024,8 +1029,9 @@ export const App: React.FC = () => {
                         const completedDod = t.checklist?.filter(c => c.checked || c.is_checked).length || 0;
                         const totalDod = t.checklist?.length || 0;
                         const isBlocked = t.status === 'blocked' || t.is_blocked;
-                        const isReview = t.status === 'review' || t.status === 'UNDER_REVIEW';
+                        const isReview = t.status === 'review' || t.status === 'in_review' || t.status === 'UNDER_REVIEW';
                         const isDone = t.status === 'done';
+                        const deliverableContent = t.deliverable_link || t.deliverable_url || '';
 
                         return (
                           <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-colors">
@@ -1069,24 +1075,34 @@ export const App: React.FC = () => {
                                     <Clock className="w-3 h-3 text-zinc-300" />
                                     <span>⏳ Butuh Review</span>
                                   </span>
-                                  {(t.deliverable_link || t.deliverable_url) && (
-                                    <a
-                                      href={t.deliverable_link || t.deliverable_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="px-2.5 py-1 bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg text-[10px] text-white flex items-center gap-1 transition-colors font-medium"
-                                    >
-                                      <span>Periksa Hasil</span>
-                                      <ExternalLink className="w-3 h-3 text-zinc-400" />
-                                    </a>
-                                  )}
                                 </div>
+
+                                {/* PREVIEW BOX DELIVERABLE HASIL KIRIMAN MEMBER */}
+                                {deliverableContent && (
+                                  <div className="p-2.5 bg-neutral-950 border border-white/10 rounded-xl space-y-1">
+                                    <span className="text-[10px] text-zinc-400 font-medium block">Hasil Kiriman Member:</span>
+                                    {deliverableContent.startsWith('http://') || deliverableContent.startsWith('https://') ? (
+                                      <a
+                                        href={deliverableContent}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-xs text-white font-medium underline truncate flex items-center gap-1 hover:text-zinc-300 transition-colors"
+                                      >
+                                        <span className="truncate">{deliverableContent}</span>
+                                        <ExternalLink className="w-3 h-3 text-zinc-400 shrink-0" />
+                                      </a>
+                                    ) : (
+                                      <p className="text-xs text-zinc-200 truncate">{deliverableContent}</p>
+                                    )}
+                                  </div>
+                                )}
+
                                 <div className="flex items-center gap-2 pt-1">
                                   <button
                                     onClick={() => t.id && handleAcceptReview(t.id)}
                                     className="flex-1 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center text-[11px]"
                                   >
-                                    ACC
+                                    Terima (ACC)
                                   </button>
                                   <button
                                     onClick={() => t.id && handleOpenRevisionModal(t.id)}
@@ -1625,7 +1641,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL INPUT CATATAN REVISI (PO VIEW) */}
+      {/* MODAL INPUT CATATAN REVISI (PO VIEW - APA YANG PERLU DIPERBAIKI?) */}
       {isRevisionModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
@@ -1644,11 +1660,11 @@ export const App: React.FC = () => {
 
             <form onSubmit={handleSubmitRevisionNote} className="space-y-4 font-sans">
               <div className="space-y-1">
-                <label className="block text-zinc-400 font-medium">Catatan Poin Revisi & Hal yang Harus Diperbaiki</label>
+                <label className="block text-zinc-400 font-medium">Apa yang perlu diperbaiki?</label>
                 <textarea
                   rows={3}
                   required
-                  placeholder="Tuliskan poin revisi..."
+                  placeholder="Tuliskan poin revisi & arahan..."
                   value={inputRevisionNote}
                   onChange={e => setInputRevisionNote(e.target.value)}
                   className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
