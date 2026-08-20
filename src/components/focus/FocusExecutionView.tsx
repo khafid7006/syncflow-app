@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { supabaseService } from '../../services/supabaseService';
 import { 
   Zap, ArrowLeft, ExternalLink, Plus, CheckSquare, Square, 
   ShieldCheck, Send, CheckCircle2, FileText, Calendar, 
@@ -213,7 +214,16 @@ export const FocusExecutionView: React.FC = () => {
       });
     }
 
-    setBoSuccessMessage(`Masukan strategis berhasil dikirimkan secara privat ke Project Owner ${targetTeam.name}!`);
+    // Save to Supabase community_messages table (channel_type: EXECUTIVE)
+    supabaseService.sendCommunityMessage({
+      id: `msg-bo-${Date.now()}`,
+      team_id: targetTeam.id,
+      channel_type: 'EXECUTIVE',
+      sender_id: currentUser.id,
+      message_text: `[Arahan Strategis BO untuk ${targetTeam.name}]: ${boInsightContent.trim()}`,
+    });
+
+    setBoSuccessMessage(`Masukan strategis berhasil dikirimkan ke Supabase & Project Owner ${targetTeam.name}!`);
     setBoInsightContent('');
     setSelectedBoTaskId('');
     setTimeout(() => setBoSuccessMessage(null), 5000);

@@ -23,7 +23,33 @@ export const supabaseService = {
     }
   },
 
-  // 2. Fetch Sprints from Supabase with Fallback
+  // 2. Fetch Users from Supabase with Fallback
+  async fetchUsers(fallbackUsers: User[]): Promise<User[]> {
+    if (!isSupabaseConfigured()) return fallbackUsers;
+
+    try {
+      const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: true });
+      if (error || !data || data.length === 0) return fallbackUsers;
+
+      return data.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatar_url: u.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=F59E0B&color=370000&bold=true`,
+        role: u.role as UserRole,
+        team_id: u.team_id || undefined,
+        pod_label: (u.pod_type as PodType) || 'PB',
+        is_pod_owner: u.role === 'POD_OWNER',
+        is_pod_lead: u.role === 'POD_OWNER',
+        title: u.role === 'BUSINESS_OWNER' ? 'Business Owner' : u.role === 'PROJECT_OWNER' ? 'Project Owner' : u.role === 'PROJECT_LEADER' ? 'Project Leader' : `Member (${u.pod_type || 'Pod'})`,
+      }));
+    } catch (err) {
+      console.warn('Supabase fetchUsers fallback:', err);
+      return fallbackUsers;
+    }
+  },
+
+  // 3. Fetch Sprints from Supabase with Fallback
   async fetchSprints(fallbackSprints: Sprint[]): Promise<Sprint[]> {
     if (!isSupabaseConfigured()) return fallbackSprints;
 
@@ -48,7 +74,7 @@ export const supabaseService = {
     }
   },
 
-  // 3. Fetch Tasks & DODs from Supabase with Fallback
+  // 4. Fetch Tasks & DODs from Supabase with Fallback
   async fetchTasks(fallbackTasks: Task[]): Promise<Task[]> {
     if (!isSupabaseConfigured()) return fallbackTasks;
 
@@ -92,7 +118,21 @@ export const supabaseService = {
     }
   },
 
-  // 4. Create Task in Supabase
+  // 5. Fetch Community Messages from Supabase
+  async fetchCommunityMessages(): Promise<any[]> {
+    if (!isSupabaseConfigured()) return [];
+
+    try {
+      const { data, error } = await supabase.from('community_messages').select('*').order('created_at', { ascending: true });
+      if (error || !data) return [];
+      return data;
+    } catch (err) {
+      console.warn('Supabase fetchCommunityMessages fallback:', err);
+      return [];
+    }
+  },
+
+  // 6. Create Task in Supabase
   async createTask(task: Task): Promise<boolean> {
     if (!isSupabaseConfigured()) return false;
 
@@ -117,7 +157,7 @@ export const supabaseService = {
     }
   },
 
-  // 5. Update Task Status in Supabase
+  // 7. Update Task Status in Supabase
   async updateTaskStatus(taskId: string, status: TaskStatus): Promise<boolean> {
     if (!isSupabaseConfigured()) return false;
 
@@ -131,7 +171,7 @@ export const supabaseService = {
     }
   },
 
-  // 6. Create Sprint in Supabase
+  // 8. Create Sprint in Supabase
   async createSprint(sprint: Sprint): Promise<boolean> {
     if (!isSupabaseConfigured()) return false;
 
@@ -153,7 +193,7 @@ export const supabaseService = {
     }
   },
 
-  // 7. Save Community Message in Supabase
+  // 9. Save Community Message in Supabase
   async sendCommunityMessage(msg: {
     id: string;
     team_id?: string;
@@ -165,10 +205,25 @@ export const supabaseService = {
     if (!isSupabaseConfigured()) return false;
 
     try {
+      const channelEnumMap: Record<string, 'ALL_TEAMS' | 'EXECUTIVE' | 'GOVERNANCE' | 'TEAM_INTERNAL' | 'POD_BA' | 'POD_PB' | 'POD_QA' | 'POD_MG'> = {
+        'forum-all-teams': 'ALL_TEAMS',
+        'executive-sync': 'EXECUTIVE',
+        'sprint-governance': 'GOVERNANCE',
+        'internal-team': 'TEAM_INTERNAL',
+        'pod-ba': 'POD_BA',
+        'pod-pb': 'POD_PB',
+        'pod-qa': 'POD_QA',
+        'pod-mg': 'POD_MG',
+        'EXECUTIVE': 'EXECUTIVE',
+        'GOVERNANCE': 'GOVERNANCE',
+      };
+
+      const mappedChannel = channelEnumMap[msg.channel_type] || 'ALL_TEAMS';
+
       const { error } = await supabase.from('community_messages').insert({
         id: msg.id,
         team_id: msg.team_id || null,
-        channel_type: msg.channel_type === 'all' ? 'ALL_TEAMS' : 'GOVERNANCE',
+        channel_type: mappedChannel,
         sender_id: msg.sender_id,
         message_text: msg.message_text,
         attachment_url: msg.attachment_url || null,
