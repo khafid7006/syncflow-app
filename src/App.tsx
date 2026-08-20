@@ -76,6 +76,54 @@ const getDeadlineStatus = (isoString?: string) => {
   return 'normal';
 };
 
+// BADGE DEADLINE RINGKAS & RELATIF WAKTU HELPER
+const getRelativeDeadlineString = (isoString?: string) => {
+  if (!isoString) return null;
+  const deadline = new Date(isoString);
+  if (isNaN(deadline.getTime())) return null;
+
+  const now = new Date();
+  const diffMs = deadline.getTime() - now.getTime();
+  const absDiffMs = Math.abs(diffMs);
+  const diffMinutes = Math.floor(absDiffMs / (1000 * 60));
+  const diffHours = Math.floor(absDiffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(absDiffMs / (1000 * 60 * 60 * 24));
+
+  const formattedDate = new Intl.DateTimeFormat('id-ID', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(deadline);
+
+  if (diffMs < 0) {
+    let overdueLabel = '';
+    if (diffDays >= 1) overdueLabel = `Terlewat ${diffDays} hari`;
+    else if (diffHours >= 1) overdueLabel = `Terlewat ${diffHours} jam`;
+    else overdueLabel = `Terlewat ${diffMinutes} menit`;
+
+    return {
+      status: 'overdue',
+      text: `🔴 ${overdueLabel} (${formattedDate})`
+    };
+  }
+
+  let remainingLabel = '';
+  if (diffDays >= 1) remainingLabel = `${diffDays} hari lagi`;
+  else if (diffHours >= 1) remainingLabel = `${diffHours} jam lagi`;
+  else remainingLabel = `${diffMinutes} menit lagi`;
+
+  const isUrgent = diffHours < 2;
+
+  return {
+    status: isUrgent ? 'urgent' : 'normal',
+    text: isUrgent
+      ? `⚠️ ${formattedDate} (${remainingLabel})`
+      : `📅 ${formattedDate} (${remainingLabel})`
+  };
+};
+
 export const App: React.FC = () => {
   // Auth & Profile state
   const [session, setSession] = useState<any>(null);
@@ -532,9 +580,7 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       setAuthError(err.message || 'Terjadi kesalahan autentikasi.');
-    } finally {
-      setAuthLoading(false);
-    }
+    } font-sans
   };
 
   // Auth Sign Out
@@ -1266,7 +1312,7 @@ export const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  /* KARTU TUGAS AKTIF BIASA DENGAN DEADLINE PILL */
+                  /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF */
                   <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-200 space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
@@ -1289,27 +1335,25 @@ export const App: React.FC = () => {
                         {taskTitle}
                       </h2>
 
-                      {/* DEADLINE PILL DI DASHBOARD MEMBER */}
-                      {activeTask?.due_date && (
-                        <div className="pt-0.5">
-                          {getDeadlineStatus(activeTask.due_date) === 'overdue' ? (
-                            <span className="bg-rose-500/10 border border-rose-500/20 text-rose-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
-                              <span>🔴 Terlewat Deadline</span>
-                              <span className="text-rose-400/70">({formatDeadline(activeTask.due_date)})</span>
+                      {/* BADGE DEADLINE RINGKAS & RELATIF WAKTU */}
+                      {activeTask?.due_date && (() => {
+                        const rel = getRelativeDeadlineString(activeTask.due_date);
+                        if (!rel) return null;
+
+                        return (
+                          <div className="pt-0.5">
+                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium tracking-tight font-sans ${
+                              rel.status === 'overdue'
+                                ? 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
+                                : rel.status === 'urgent'
+                                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
+                                  : 'bg-white/5 border border-white/10 text-white/70'
+                            }`}>
+                              <span>{rel.text}</span>
                             </span>
-                          ) : getDeadlineStatus(activeTask.due_date) === 'urgent' ? (
-                            <span className="bg-amber-500/10 border border-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
-                              <span>⚠️ Segera Berakhir</span>
-                              <span className="text-amber-400/70">({formatDeadline(activeTask.due_date)})</span>
-                            </span>
-                          ) : (
-                            <span className="bg-white/5 border border-white/10 text-zinc-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
-                              <span>Tenggat:</span>
-                              <span>{formatDeadline(activeTask.due_date)}</span>
-                            </span>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* PO Feedback Action Cards in Member Dashboard */}
@@ -1354,8 +1398,19 @@ export const App: React.FC = () => {
                       </div>
                     )}
 
+                    {/* HEADER & LABEL DOD (DEFINITION OF DONE) */}
+                    <div className="mt-4 mb-2 flex items-center justify-between border-t border-white/5 pt-3 font-sans">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold tracking-wider text-white/60 uppercase">Checklist DoD</span>
+                        <span className="text-[10px] text-white/30">(Definition of Done)</span>
+                      </div>
+                      <span className="text-[11px] font-medium text-white/40">
+                        {completedDodCount}/{totalDodCount} Selesai
+                      </span>
+                    </div>
+
                     {/* Render Array Checklist (DoD) dengan Realtime State */}
-                    <div className="space-y-2 pt-3 border-t border-white/10 text-xs font-sans">
+                    <div className="space-y-1.5 text-xs font-sans">
                       {dodItems.map(item => (
                         <div
                           key={item.id}
@@ -1369,7 +1424,7 @@ export const App: React.FC = () => {
                           }`}>
                             {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
                           </div>
-                          <span className={`text-xs ${item.checked ? 'line-through text-zinc-500' : 'text-zinc-200'}`}>
+                          <span className={`text-xs ${item.checked ? 'line-through text-white/40' : 'text-zinc-200'}`}>
                             {item.text}
                           </span>
                         </div>
@@ -2032,7 +2087,7 @@ export const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  /* KARTU TUGAS AKTIF BIASA DENGAN DEADLINE PILL */
+                  /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF */
                   <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-200 space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
@@ -2055,27 +2110,25 @@ export const App: React.FC = () => {
                         {taskTitle}
                       </h2>
 
-                      {/* DEADLINE PILL DI DASHBOARD MEMBER */}
-                      {activeTask?.due_date && (
-                        <div className="pt-0.5">
-                          {getDeadlineStatus(activeTask.due_date) === 'overdue' ? (
-                            <span className="bg-rose-500/10 border border-rose-500/20 text-rose-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
-                              <span>🔴 Terlewat Deadline</span>
-                              <span className="text-rose-400/70">({formatDeadline(activeTask.due_date)})</span>
+                      {/* BADGE DEADLINE RINGKAS & RELATIF WAKTU */}
+                      {activeTask?.due_date && (() => {
+                        const rel = getRelativeDeadlineString(activeTask.due_date);
+                        if (!rel) return null;
+
+                        return (
+                          <div className="pt-0.5">
+                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium tracking-tight font-sans ${
+                              rel.status === 'overdue'
+                                ? 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
+                                : rel.status === 'urgent'
+                                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
+                                  : 'bg-white/5 border border-white/10 text-white/70'
+                            }`}>
+                              <span>{rel.text}</span>
                             </span>
-                          ) : getDeadlineStatus(activeTask.due_date) === 'urgent' ? (
-                            <span className="bg-amber-500/10 border border-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
-                              <span>⚠️ Segera Berakhir</span>
-                              <span className="text-amber-400/70">({formatDeadline(activeTask.due_date)})</span>
-                            </span>
-                          ) : (
-                            <span className="bg-white/5 border border-white/10 text-zinc-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
-                              <span>Tenggat:</span>
-                              <span>{formatDeadline(activeTask.due_date)}</span>
-                            </span>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* PO Feedback Action Cards in Member Dashboard */}
@@ -2120,8 +2173,19 @@ export const App: React.FC = () => {
                       </div>
                     )}
 
+                    {/* HEADER & LABEL DOD (DEFINITION OF DONE) */}
+                    <div className="mt-4 mb-2 flex items-center justify-between border-t border-white/5 pt-3 font-sans">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold tracking-wider text-white/60 uppercase">Checklist DoD</span>
+                        <span className="text-[10px] text-white/30">(Definition of Done)</span>
+                      </div>
+                      <span className="text-[11px] font-medium text-white/40">
+                        {completedDodCount}/{totalDodCount} Selesai
+                      </span>
+                    </div>
+
                     {/* Render Array Checklist (DoD) dengan Realtime State */}
-                    <div className="space-y-2 pt-3 border-t border-white/10 text-xs font-sans">
+                    <div className="space-y-1.5 text-xs font-sans">
                       {dodItems.map(item => (
                         <div
                           key={item.id}
@@ -2135,7 +2199,7 @@ export const App: React.FC = () => {
                           }`}>
                             {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
                           </div>
-                          <span className={`text-xs ${item.checked ? 'line-through text-zinc-500' : 'text-zinc-200'}`}>
+                          <span className={`text-xs ${item.checked ? 'line-through text-white/40' : 'text-zinc-200'}`}>
                             {item.text}
                           </span>
                         </div>
