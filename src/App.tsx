@@ -136,7 +136,7 @@ const getRelativeDeadlineString = (isoString?: string) => {
   };
 };
 
-// NO WORKSPACE VIEW COMPONENT (DESAIN ONBOARDING TERPUSAT & ELEGAN)
+// NO WORKSPACE VIEW COMPONENT (ENHANCED COPYWRITING & ONBOARDING)
 const NoWorkspaceView: React.FC<{
   onCreateWorkspace: () => void;
   profile: UserProfile | null;
@@ -152,11 +152,11 @@ const NoWorkspaceView: React.FC<{
 
         <div className="space-y-2">
           <h2 className="text-xl font-bold tracking-tight text-white">
-            Belum Ada Workspace Aktif
+            Mulai dengan Membuat Workspace
           </h2>
-          <p className="text-xs text-white/60 leading-relaxed max-w-xs mx-auto">
+          <p className="text-xs text-white/60 leading-relaxed max-w-xs mx-auto font-sans">
             {isOwner
-              ? 'Kamu belum memiliki ruang kerja proyek. Buat workspace pertama untuk mulai membagi tugas dan mengelola tim.'
+              ? 'SyncFlow mengisolasi setiap proyek ke dalam ruang kerja mandiri. Buat workspace pertama untuk mulai membagi tugas ke tim.'
               : 'Kamu belum ditambahkan ke workspace proyek mana pun. Silakan hubungi Project Owner kamu untuk dimasukkan ke dalam tim.'}
           </p>
         </div>
@@ -167,7 +167,7 @@ const NoWorkspaceView: React.FC<{
               onClick={onCreateWorkspace}
               className="w-full py-2.5 px-4 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-200 transition-all shadow-md cursor-pointer font-sans"
             >
-              + Buat Workspace Baru
+              + Buat Workspace Pertama
             </button>
           ) : (
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/50 font-sans">
@@ -193,7 +193,6 @@ export const App: React.FC = () => {
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState<boolean>(false);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState<boolean>(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState<string>('');
-  const [newWorkspaceDescription, setNewWorkspaceDescription] = useState<string>('');
   const workspaceDropdownRef = useRef<HTMLDivElement>(null);
   
   // DEFAULT VIEW STATE: Set initial viewMode strictly to 'member' (anti-flash for members)
@@ -468,20 +467,18 @@ export const App: React.FC = () => {
     showToast(`Beralih ke workspace: ${ws.name}`);
   };
 
-  // CREATE NEW WORKSPACE HANDLER WITH LOCALSTORAGE PERSISTENCE
+  // CREATE NEW WORKSPACE HANDLER (INSTANT SINGLE INPUT WITH AUTO SWITCH)
   const handleCreateWorkspaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newWorkspaceName.trim() || !session?.user?.id) return;
 
     const wsName = newWorkspaceName.trim();
-    const wsDesc = newWorkspaceDescription.trim();
 
     try {
       const { data: newWs, error } = await supabase
         .from('workspaces')
         .insert([{
           name: wsName,
-          description: wsDesc || null,
           owner_id: session.user.id
         }])
         .select()
@@ -504,9 +501,9 @@ export const App: React.FC = () => {
         setUserWorkspaces([...userWorkspaces, newWsObj]);
         setCurrentWorkspace(newWsObj);
         setActiveWorkspaceRole('po');
+        setViewMode('po'); // Directly enter PO Dashboard View
         setIsCreateWorkspaceModalOpen(false);
         setNewWorkspaceName('');
-        setNewWorkspaceDescription('');
         localStorage.setItem('syncflow_active_ws', newWs.id);
         showToast(`✓ Workspace "${wsName}" berhasil dibuat!`);
       }
@@ -1569,7 +1566,7 @@ export const App: React.FC = () => {
         {/* ========================================================================= */}
         <header className="w-full flex items-center justify-between gap-4 font-sans text-xs">
           
-          {/* Logo Brand: SyncFlow & WORKSPACE SELECTOR DROPDOWN (KIRI ATAS) */}
+          {/* Logo Brand: SyncFlow & WORKSPACE SELECTOR DROPDOWN (KIRI ATAS - CONDITIONAL) */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 cursor-pointer group">
               <div className="w-9 h-9 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-105 transition-all duration-300">
@@ -1580,41 +1577,43 @@ export const App: React.FC = () => {
               </span>
             </div>
 
-            {/* WORKSPACE SELECTOR DROPDOWN */}
-            <div className="relative font-sans" ref={workspaceDropdownRef}>
-              <button 
-                onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
-                className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-all cursor-pointer"
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>{currentWorkspace?.name || "Pilih Workspace"}</span>
-                <span className="text-white/40 text-[10px]">▼</span>
-              </button>
+            {/* WORKSPACE SELECTOR DROPDOWN (1. HANYA DITAMPILKAN JIKA CURRENTWORKSPACE ADA & VALID) */}
+            {currentWorkspace && userWorkspaces.length > 0 && (
+              <div className="relative font-sans" ref={workspaceDropdownRef}>
+                <button 
+                  onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-all cursor-pointer"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>{currentWorkspace.name}</span>
+                  <span className="text-white/40 text-[10px]">▼</span>
+                </button>
 
-              {/* Menu Dropdown */}
-              {isWorkspaceMenuOpen && (
-                <div className="absolute left-0 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-950/90 backdrop-blur-xl p-1.5 shadow-2xl z-50 font-sans">
-                  <div className="px-2 py-1 text-[10px] font-semibold text-white/40 uppercase tracking-wider">Workspace Tim</div>
-                  {userWorkspaces.map(ws => (
+                {/* Menu Dropdown */}
+                {isWorkspaceMenuOpen && (
+                  <div className="absolute left-0 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-950/90 backdrop-blur-xl p-1.5 shadow-2xl z-50 font-sans">
+                    <div className="px-2 py-1 text-[10px] font-semibold text-white/40 uppercase tracking-wider">Workspace Tim</div>
+                    {userWorkspaces.map(ws => (
+                      <button
+                        key={ws.id}
+                        onClick={() => handleSelectWorkspace(ws)}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${currentWorkspace?.id === ws.id ? 'bg-white/10 text-white font-medium' : 'text-white/70 hover:bg-white/5'}`}
+                      >
+                        <span>{ws.name}</span>
+                        <span className="text-[10px] text-white/40 uppercase">{ws.role}</span>
+                      </button>
+                    ))}
+                    <div className="border-t border-white/5 my-1" />
                     <button
-                      key={ws.id}
-                      onClick={() => handleSelectWorkspace(ws)}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${currentWorkspace?.id === ws.id ? 'bg-white/10 text-white font-medium' : 'text-white/70 hover:bg-white/5'}`}
+                      onClick={() => { setIsCreateWorkspaceModalOpen(true); setIsWorkspaceMenuOpen(false); }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-white/80 hover:bg-white/10 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <span>{ws.name}</span>
-                      <span className="text-[10px] text-white/40 uppercase">{ws.role}</span>
+                      <span>+ Buat Workspace Baru</span>
                     </button>
-                  ))}
-                  <div className="border-t border-white/5 my-1" />
-                  <button
-                    onClick={() => { setIsCreateWorkspaceModalOpen(true); setIsWorkspaceMenuOpen(false); }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-white/80 hover:bg-white/10 flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <span>+ Buat Workspace Baru</span>
-                  </button>
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK WORKSPACE ROLE PO DAN PL) */}
@@ -2551,44 +2550,35 @@ export const App: React.FC = () => {
 
       </div>
 
-      {/* MODAL BUAT WORKSPACE BARU */}
+      {/* MODAL BUAT WORKSPACE BARU (2. UPGRADE INSTANT SINGLE INPUT MODAL) */}
       {isCreateWorkspaceModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out font-sans">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 font-sans text-xs">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <Folder className="w-4 h-4 text-zinc-300" />
-                <span>Buat Workspace Baru</span>
+              <div className="flex items-center gap-2.5 text-white font-bold text-sm">
+                <div className="w-7 h-7 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center">
+                  <Folder className="w-4 h-4 text-zinc-300" />
+                </div>
+                <span>Buat Ruang Kerja Baru</span>
               </div>
               <button
                 onClick={() => setIsCreateWorkspaceModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleCreateWorkspaceSubmit} className="space-y-4 font-sans">
-              <div className="space-y-1">
-                <label className="block text-zinc-400 font-medium">Nama Workspace *</label>
+              <div className="space-y-1.5">
+                <label className="block text-zinc-300 font-medium text-xs">Nama Workspace / Proyek *</label>
                 <input
                   type="text"
                   required
-                  placeholder="misal: Project Sprint Delta"
+                  placeholder="contoh: Redesign Landing Page, Sprint Klien A"
                   value={newWorkspaceName}
                   onChange={e => setNewWorkspaceName(e.target.value)}
-                  className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-zinc-400 font-medium">Deskripsi Singkat</label>
-                <textarea
-                  rows={3}
-                  placeholder="Konteks atau divisi pengerjaan..."
-                  value={newWorkspaceDescription}
-                  onChange={e => setNewWorkspaceDescription(e.target.value)}
-                  className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans resize-none"
+                  className="w-full bg-white/[0.04] border border-white/10 focus:border-white/40 focus:bg-white/[0.07] text-white rounded-xl px-4 py-2.5 text-xs outline-hidden font-sans transition-all"
                 />
               </div>
 
@@ -2596,20 +2586,20 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsCreateWorkspaceModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300"
+                  className="bg-white/5 hover:bg-white/10 text-white/60 text-xs px-4 py-2 rounded-xl cursor-pointer transition-colors font-sans"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={!newWorkspaceName.trim()}
-                  className={`px-5 py-2 font-bold rounded-full shadow-md flex items-center gap-1.5 transition-all duration-300 ${
+                  className={`bg-white text-zinc-950 hover:bg-zinc-200 font-semibold text-xs px-5 py-2 rounded-xl shadow-md transition-all font-sans ${
                     newWorkspaceName.trim()
-                      ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
-                      : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
+                      ? 'cursor-pointer'
+                      : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  <span>Buat Workspace</span>
+                  Buat Workspace
                 </button>
               </div>
             </form>
