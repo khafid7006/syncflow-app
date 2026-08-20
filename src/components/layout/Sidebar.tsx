@@ -1,44 +1,14 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
-  LayoutDashboard, CheckSquare, Timer, Users, 
-  Layers, Zap 
+  LayoutDashboard, CheckSquare, Zap, Layers 
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
   const { activeTab, setActiveTab, currentUser, tasks } = useApp();
 
-  const myTasksCount = tasks.filter(t => {
-    if (currentUser.role === 'BUSINESS_OWNER') return t.status !== 'SELESAI';
-    if (currentUser.role === 'PROJECT_OWNER') return t.team_id === currentUser.team_id && t.status !== 'SELESAI';
-    if (currentUser.role === 'PROJECT_LEADER') return t.team_id === currentUser.team_id && t.status !== 'SELESAI';
-    return t.assignee_id === currentUser.id && t.status !== 'SELESAI';
-  }).length;
-
-  const inProgressCount = tasks.filter(t => t.assignee_id === currentUser.id && t.status === 'DIKERJAKAN').length;
-
-  const getActionHubLabel = () => {
-    if (currentUser.role === 'BUSINESS_OWNER') return 'Insight Strategis';
-    if (currentUser.role === 'PROJECT_OWNER') return 'Tata Kelola PO';
-    if (currentUser.role === 'PROJECT_LEADER' || (currentUser.role === 'MEMBER' && currentUser.is_pod_lead)) return 'Review & Unblock';
-    return 'Fokus Lakukan';
-  };
-
-  const getActionHubBadge = () => {
-    if (currentUser.role === 'BUSINESS_OWNER') {
-      const overdueCount = tasks.filter(t => t.status !== 'SELESAI' && new Date(t.deadline) < new Date()).length;
-      return overdueCount > 0 ? overdueCount : undefined;
-    }
-    if (currentUser.role === 'PROJECT_LEADER') {
-      const revCount = tasks.filter(t => t.team_id === currentUser.team_id && t.status === 'REVIEW').length;
-      return revCount > 0 ? revCount : undefined;
-    }
-    if (currentUser.role === 'MEMBER' && currentUser.is_pod_lead) {
-      const revCount = tasks.filter(t => t.team_id === currentUser.team_id && t.pod_label === currentUser.pod_label && t.status === 'REVIEW').length;
-      return revCount > 0 ? revCount : undefined;
-    }
-    return inProgressCount > 0 ? inProgressCount : undefined;
-  };
+  const myTasksCount = tasks.filter(t => t.status !== 'DONE' && t.status !== 'SELESAI').length;
+  const blockedCount = tasks.filter(t => t.status === 'BLOCKED' || t.is_blocked).length;
 
   const navItems = [
     {
@@ -56,17 +26,12 @@ export const Sidebar: React.FC = () => {
       id: 'focus',
       label: 'Lakukan (/do)',
       icon: <Zap className="w-4 h-4 stroke-[2]" />,
-      badge: getActionHubBadge()
-    },
-    {
-      id: 'community',
-      label: 'Komunitas',
-      icon: <Users className="w-4 h-4 stroke-[2]" />
+      badge: blockedCount > 0 ? blockedCount : undefined
     }
   ];
 
   return (
-    <aside className="w-64 bg-white text-slate-900 flex flex-col border-r border-slate-200/80 h-screen sticky top-0 select-none shrink-0 shadow-xs z-30">
+    <aside className="w-64 bg-white text-slate-900 flex flex-col border-r border-slate-200/80 h-screen sticky top-0 select-none shrink-0 shadow-xs z-30 font-sans text-xs">
       {/* Brand Header */}
       <div className="h-20 px-6 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -76,9 +41,10 @@ export const Sidebar: React.FC = () => {
           <div>
             <div className="font-mono font-bold text-slate-900 text-base tracking-tight flex items-center gap-1.5">
               <span>SyncFlow</span>
+              <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-bold">1.0</span>
             </div>
             <div className="text-[10px] text-slate-400 font-mono tracking-wide uppercase">
-              Bento Agile Workspace
+              PKL INDITO Architecture
             </div>
           </div>
         </div>
@@ -87,11 +53,11 @@ export const Sidebar: React.FC = () => {
       {/* Navigation List */}
       <div className="p-4 space-y-4 flex-1 overflow-y-auto">
         <div className="px-3 text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
-          Navigasi Proyek
+          Navigasi Utama
         </div>
         <nav className="space-y-2">
           {navItems.map(item => {
-            const isActive = activeTab === item.id;
+            const isActive = activeTab === item.id || (item.id === 'focus' && activeTab === 'do');
             return (
               <button
                 key={item.id}
@@ -123,14 +89,14 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Bottom Status / Footer info */}
-      <div className="p-4 border-t border-slate-100">
+      <div className="p-4 border-t border-slate-100 font-mono">
         <div className="p-3 bg-slate-50 border border-slate-200/60 rounded-2xl space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-slate-800">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>SyncFlow v2.0 Bento</span>
+            <span>Live PKL System</span>
           </div>
           <p className="text-[10px] text-slate-400 font-sans">
-            Linear / Apple UI Minimalist
+            Strict 4 Roles • Real-time DB
           </p>
         </div>
       </div>

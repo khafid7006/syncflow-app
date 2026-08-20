@@ -115,7 +115,7 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Center: Floating Pill Navigation Tabs (Dasbor, Tugas, Lakukan, Tim) */}
+      {/* Center: Floating Pill Navigation Tabs (Dasbor, Tugas, Lakukan /do) */}
       <div className="flex items-center gap-1 p-1 bg-white/80 backdrop-blur-md rounded-full border border-white/70 shadow-sm font-mono text-xs">
         <button
           onClick={() => setActiveTab('dashboard')}
@@ -148,18 +148,7 @@ export const Header: React.FC = () => {
           }`}
         >
           <span className="w-1.5 h-1.5 rounded-full bg-[#EA580C]"></span>
-          <span>Lakukan</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('community')}
-          className={`px-4 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
-            activeTab === 'community' || activeTab === 'teams'
-              ? 'bg-[#18181B] text-white shadow-xs'
-              : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100/70'
-          }`}
-        >
-          Komunitas
+          <span>Lakukan (/do)</span>
         </button>
       </div>
 
