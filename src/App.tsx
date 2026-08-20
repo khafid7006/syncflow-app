@@ -168,15 +168,13 @@ export const App: React.FC = () => {
   const [isManageLinksModalOpen, setIsManageLinksModalOpen] = useState<boolean>(false);
 
   // PO Quick Assignment Form states (Dynamic DoD list, Description, max 10 points & Due Date)
+  const taskTitleInputRef = useRef<HTMLInputElement>(null);
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
   const [newAssignTaskTitle, setNewAssignTaskTitle] = useState<string>('');
   const [newAssignDescription, setNewAssignDescription] = useState<string>('');
   const [newAssignDueDate, setNewAssignDueDate] = useState<string>('');
-  const [dodPoints, setDodPoints] = useState<string[]>([
-    'Buat tampilan tombol dan form pembayaran',
-    'Sambungkan tombol ke halaman sukses',
-    'Lampirkan link hasil kerjaan',
-  ]);
+  const [dodPoints, setDodPoints] = useState<string[]>(['', '', '']);
+  const [isTaskSubmitSuccess, setIsTaskSubmitSuccess] = useState<boolean>(false);
 
   // PO Edit Task Modal States
   const [editingTask, setEditingTask] = useState<MemberTask | null>(null);
@@ -1084,7 +1082,7 @@ export const App: React.FC = () => {
     setDodPoints(updated);
   };
 
-  // PO KIRIM TUGAS (FEEDBACK TOAST: "✓ Tugas berhasil dikirim ke {nama member}")
+  // PO KIRIM TUGAS (AUTO-FOCUS & SMOOTH RESET FORM + BUTTON ANIMATION)
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
@@ -1119,14 +1117,22 @@ export const App: React.FC = () => {
         showToast(`Gagal penugasan: ${error.message}`);
       } else {
         showToast(`✓ Tugas berhasil dikirim ke ${assigneeName}`);
+        
+        // 1. Reset form state to defaults
         setNewAssignTaskTitle('');
         setNewAssignDescription('');
         setNewAssignDueDate('');
-        setDodPoints([
-          'Buat tampilan tombol dan form pembayaran',
-          'Sambungkan tombol ke halaman sukses',
-          'Lampirkan link hasil kerjaan',
-        ]);
+        setDodPoints(['', '', '']);
+
+        // 2. Trigger visual submit success animation
+        setIsTaskSubmitSuccess(true);
+        setTimeout(() => setIsTaskSubmitSuccess(false), 1500);
+
+        // 3. Auto-focus Judul Tugas input
+        setTimeout(() => {
+          taskTitleInputRef.current?.focus();
+        }, 100);
+
         fetchPOData();
       }
     } catch (err: any) {
@@ -1941,22 +1947,24 @@ export const App: React.FC = () => {
                                   </span>
                                 </div>
 
-                                {/* PREVIEW BOX DELIVERABLE HASIL KIRIMAN MEMBER */}
+                                {/* SMART EXTERNAL LINK BUTTON / BLOCKQUOTE PREVIEW HASIL KIRIMAN MEMBER */}
                                 {deliverableContent && (
-                                  <div className="p-2.5 bg-neutral-950 border border-white/10 rounded-xl space-y-1">
-                                    <span className="text-[10px] text-zinc-400 font-medium block">Hasil Kiriman Member:</span>
+                                  <div className="p-2.5 bg-neutral-950 border border-white/10 rounded-xl space-y-1.5 font-sans">
+                                    <span className="text-[10px] text-zinc-400 font-medium block uppercase tracking-wider">Hasil Kiriman Member:</span>
                                     {deliverableContent.startsWith('http://') || deliverableContent.startsWith('https://') ? (
                                       <a
                                         href={deliverableContent}
                                         target="_blank"
-                                        rel="noreferrer"
-                                        className="text-xs text-white font-medium underline truncate flex items-center gap-1 hover:text-zinc-300 transition-colors duration-300"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition-colors border border-white/10"
                                       >
-                                        <span className="truncate">{deliverableContent}</span>
-                                        <ExternalLink className="w-3 h-3 text-zinc-400 shrink-0" />
+                                        <span>Buka Link Hasil Kerja</span>
+                                        <ExternalLink className="w-3 h-3 text-white shrink-0" />
                                       </a>
                                     ) : (
-                                      <p className="text-xs text-zinc-200 truncate">{deliverableContent}</p>
+                                      <blockquote className="p-2.5 bg-neutral-900 border-l-2 border-white/30 text-xs text-zinc-300 rounded-r-xl italic leading-relaxed whitespace-pre-line font-sans">
+                                        {deliverableContent}
+                                      </blockquote>
                                     )}
                                   </div>
                                 )}
@@ -2055,10 +2063,11 @@ export const App: React.FC = () => {
                     </select>
                   </div>
 
-                  {/* Task Title Input */}
+                  {/* Task Title Input with Ref for Auto-Focus */}
                   <div className="space-y-1">
                     <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Judul Tugas</label>
                     <input
+                      ref={taskTitleInputRef}
                       type="text"
                       required
                       placeholder="Nama tugas..."
@@ -2142,7 +2151,6 @@ export const App: React.FC = () => {
                         <div key={idx} className="flex items-center gap-1.5">
                           <input
                             type="text"
-                            required
                             placeholder={`DoD ${idx + 1}...`}
                             value={point}
                             onChange={e => handleDodPointChange(idx, e.target.value)}
@@ -2166,13 +2174,24 @@ export const App: React.FC = () => {
                     type="submit"
                     disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
                     className={`w-full py-3 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
-                      selectedAssigneeId && newAssignTaskTitle.trim()
-                        ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
-                        : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
+                      isTaskSubmitSuccess
+                        ? 'bg-emerald-600 text-white cursor-default'
+                        : selectedAssigneeId && newAssignTaskTitle.trim()
+                          ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
+                          : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
                     }`}
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Kirim Tugas ke Member</span>
+                    {isTaskSubmitSuccess ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-white animate-bounce" />
+                        <span>✓ Tugas Terkirim</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Kirim Tugas ke Member</span>
+                      </>
+                    )}
                   </button>
                 </form>
               </div>
@@ -2703,7 +2722,6 @@ export const App: React.FC = () => {
                     <div key={idx} className="flex items-center gap-1.5">
                       <input
                         type="text"
-                        required
                         placeholder={`DoD ${idx + 1}...`}
                         value={point}
                         onChange={e => handleEditDodPointChange(idx, e.target.value)}
