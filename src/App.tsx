@@ -93,10 +93,15 @@ export const App: React.FC = () => {
 
   // DoD checklist state for Member View
   const [dodItems, setDodItems] = useState([
-    { id: 1, text: 'Buat tampilan tombol dan form pembayaran', checked: true },
-    { id: 2, text: 'Sambungkan tombol ke halaman sukses', checked: false },
-    { id: 3, text: 'Lampirkan link hasil kerjaan', checked: false },
+    { id: 1, text: 'Buat tampilan tombol dan form pembayaran', checked: true, is_checked: true },
+    { id: 2, text: 'Sambungkan tombol ke halaman sukses', checked: false, is_checked: false },
+    { id: 3, text: 'Lampirkan link hasil kerjaan', checked: false, is_checked: false },
   ]);
+
+  // Calculate DoD Completion for Member Dashboard
+  const completedDodCount = dodItems.filter(item => item.checked).length;
+  const totalDodCount = dodItems.length;
+  const isAllDoDCompleted = totalDodCount > 0 ? completedDodCount === totalDodCount : true;
 
   // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks
   useEffect(() => {
@@ -220,11 +225,15 @@ export const App: React.FC = () => {
         }
 
         if (data.checklist && Array.isArray(data.checklist) && data.checklist.length > 0) {
-          setDodItems(data.checklist.map((item: any, idx: number) => ({
-            id: item.id || idx + 1,
-            text: item.text || item.label || '',
-            checked: item.checked ?? item.is_checked ?? false
-          })));
+          setDodItems(data.checklist.map((item: any, idx: number) => {
+            const checkedVal = item.checked ?? item.is_checked ?? false;
+            return {
+              id: item.id || idx + 1,
+              text: item.text || item.label || '',
+              checked: checkedVal,
+              is_checked: checkedVal
+            };
+          }));
         }
       } else {
         // EMPTY STATE: TIDAK ADA TUGAS AKTIF
@@ -417,9 +426,15 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // CHECKLIST TOGGLE & SUPABASE PERSISTENCE FOR MEMBER
+  // CHECKLIST TOGGLE & SUPABASE REALTIME PERSISTENCE FOR MEMBER
   const toggleDod = async (id: number) => {
-    const updatedItems = dodItems.map(item => item.id === id ? { ...item, checked: !item.checked } : item);
+    const updatedItems = dodItems.map(item => {
+      if (item.id === id) {
+        const nextVal = !item.checked;
+        return { ...item, checked: nextVal, is_checked: nextVal };
+      }
+      return item;
+    });
     setDodItems(updatedItems);
 
     if (activeTask?.id) {
@@ -438,9 +453,16 @@ export const App: React.FC = () => {
     }
   };
 
-  // MEMBER: SUBMIT DELIVERABLE LINK (RESET REVISION & RESOLUTION NOTES + LOCK FORM TO REVIEW MODE)
+  // MEMBER: SUBMIT DELIVERABLE LINK (STRICT DOD VALIDATION + RESET REVISION & RESOLUTION NOTES)
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. VALIDASI KETAT DOD: Cegah submit jika ada poin yang belum dicentang
+    if (!isAllDoDCompleted) {
+      showToast(`Selesaikan semua checklist (${completedDodCount}/${totalDodCount}) untuk menyerahkan tugas.`);
+      return;
+    }
+
     if (!deliverableUrl.trim() || !session?.user?.id) return;
 
     const linkInput = deliverableUrl.trim();
@@ -454,6 +476,7 @@ export const App: React.FC = () => {
             deliverable_link: linkInput,
             deliverable_url: linkInput,
             status: 'review',
+            checklist: dodItems,
             revision_note: null,
             resolution_note: null
           })
@@ -480,6 +503,7 @@ export const App: React.FC = () => {
             deliverable_link: linkInput,
             deliverable_url: linkInput,
             status: 'review',
+            checklist: dodItems,
             revision_note: null,
             resolution_note: null
           })
@@ -662,7 +686,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // DYNAMIC DOD LIST HELPERS
+  // DYNAMIC DOD LIST HELPERS FOR PO ASSIGNMENT FORM
   const handleAddDodPoint = () => {
     if (dodPoints.length < 10) {
       setDodPoints([...dodPoints, '']);
@@ -681,7 +705,7 @@ export const App: React.FC = () => {
     setDodPoints(updated);
   };
 
-  // SUBMIT PENUGASAN CEPAT
+  // SUBMIT PENUGASAN CEPAT (PO VIEW)
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
@@ -1053,6 +1077,40 @@ export const App: React.FC = () => {
                             <div className="font-medium text-zinc-200 text-xs">
                               {t.title}
                             </div>
+
+                            {/* PREVIEW CHECKLIST DOD DETAIL ON PO CARDS (TRANSPARANSI PENUH) */}
+                            {t.checklist && Array.isArray(t.checklist) && t.checklist.length > 0 && (
+                              <div className="my-2 space-y-1.5 rounded-xl bg-neutral-950 p-2.5 text-[11px] border border-white/10 font-sans">
+                                <div className="flex items-center justify-between text-zinc-400 text-[10px] font-medium pb-1 border-b border-white/5">
+                                  <span>Progres Checklist DoD:</span>
+                                  {completedDod < totalDod ? (
+                                    <span className="text-zinc-300 font-semibold flex items-center gap-1">
+                                      ⚠️ DoD Belum Lengkap ({completedDod}/{totalDod})
+                                    </span>
+                                  ) : (
+                                    <span className="text-white font-medium flex items-center gap-1">
+                                      ✓ DoD Lengkap ({completedDod}/{totalDod})
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="space-y-1 pt-0.5">
+                                  {t.checklist.map((item: any, idx: number) => {
+                                    const isChecked = item.checked ?? item.is_checked ?? false;
+                                    return (
+                                      <div key={idx} className="flex items-center gap-2 text-zinc-300">
+                                        <span className={isChecked ? 'text-white font-bold' : 'text-zinc-500'}>
+                                          {isChecked ? '✓' : '○'}
+                                        </span>
+                                        <span className={isChecked ? 'line-through text-zinc-500' : 'text-zinc-200'}>
+                                          {item.text || item.label || `Poin ${idx + 1}`}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
 
                             {/* Status Indicator & Specific Action Controls (Modal Triggers) */}
                             {isBlocked ? (
@@ -1453,7 +1511,7 @@ export const App: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Render Array Checklist (DoD) */}
+                    {/* Render Array Checklist (DoD) dengan Realtime State */}
                     <div className="space-y-2 pt-3 border-t border-white/10 text-xs font-sans">
                       {dodItems.map(item => (
                         <div
@@ -1477,7 +1535,7 @@ export const App: React.FC = () => {
                   </div>
                 )}
 
-                {/* KARTU TENGAH ATAS (Submit Deliverable - LOGIKA REVISI & UNLOCK FORM & EMPTY STATE) */}
+                {/* KARTU TENGAH ATAS (Submit Deliverable - VALIDASI KETAT DOD & FORM UNLOCK) */}
                 <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-zinc-500">
@@ -1492,7 +1550,7 @@ export const App: React.FC = () => {
                     </h3>
                   </div>
 
-                  {/* Form Input Clean & Unlock / Disabled Logic */}
+                  {/* Form Input Clean & Lock / Validation Logic */}
                   <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans">
                     {!activeTask ? (
                       /* EMPTY STATE INPUT FORM TERKUNCI */
@@ -1523,9 +1581,9 @@ export const App: React.FC = () => {
 
                     <button
                       type="submit"
-                      disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO'}
+                      disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted}
                       className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
-                        !activeTask || taskStatus === 'Sedang Ditinjau PO'
+                        !activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted
                           ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                           : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
                       }`}
@@ -1541,6 +1599,13 @@ export const App: React.FC = () => {
                               : 'Kirim Hasil Tugas'}
                       </span>
                     </button>
+
+                    {/* Helper text jika DoD belum lengkap */}
+                    {activeTask && taskStatus !== 'Sedang Ditinjau PO' && !isAllDoDCompleted && (
+                      <p className="text-[10px] text-zinc-500 text-center font-sans font-medium pt-0.5">
+                        Selesaikan semua checklist ({completedDodCount}/{totalDodCount}) untuk menyerahkan tugas.
+                      </p>
+                    )}
                   </form>
 
                   {/* Tombol Laporkan Kendala */}
