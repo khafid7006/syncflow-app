@@ -193,6 +193,7 @@ export const App: React.FC = () => {
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState<boolean>(false);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState<boolean>(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState<string>('');
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState<boolean>(false);
   const workspaceDropdownRef = useRef<HTMLDivElement>(null);
   
   // DEFAULT VIEW STATE: Set initial viewMode strictly to 'member' (anti-flash for members)
@@ -467,49 +468,61 @@ export const App: React.FC = () => {
     showToast(`Beralih ke workspace: ${ws.name}`);
   };
 
-  // CREATE NEW WORKSPACE HANDLER (INSTANT SINGLE INPUT WITH AUTO SWITCH)
+  // REWRITTEN CREATE WORKSPACE MUTATION WITH ROBUST ERROR HANDLING & VISUAL FEEDBACK
   const handleCreateWorkspaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWorkspaceName.trim() || !session?.user?.id) return;
+    const userId = session?.user?.id;
+    if (!newWorkspaceName.trim() || !userId) return;
 
-    const wsName = newWorkspaceName.trim();
-
+    setIsCreatingWorkspace(true);
     try {
-      const { data: newWs, error } = await supabase
+      // 1. Insert Workspace Baru
+      const { data: newWs, error: wsError } = await supabase
         .from('workspaces')
-        .insert([{
-          name: wsName,
-          owner_id: session.user.id
+        .insert([{ 
+          name: newWorkspaceName.trim(),
+          created_by: userId,
+          owner_id: userId 
         }])
         .select()
         .single();
 
-      if (error) {
-        showToast(`Gagal membuat workspace: ${error.message}`);
-        return;
-      }
+      if (wsError) throw wsError;
 
-      if (newWs) {
-        // Set creator as 'po' in workspace_members
-        await supabase.from('workspace_members').insert([{
+      // 2. Daftarkan pembuat sebagai role 'po'
+      const { error: memberError } = await supabase
+        .from('workspace_members')
+        .insert([{
           workspace_id: newWs.id,
-          user_id: session.user.id,
-          role: 'po'
+          user_id: userId,
+          role: 'po',
+          pod: 'Project Owner'
         }]);
 
-        const newWsObj: Workspace = { ...newWs, role: 'po' };
-        setUserWorkspaces([...userWorkspaces, newWsObj]);
-        setCurrentWorkspace(newWsObj);
-        setActiveWorkspaceRole('po');
-        setViewMode('po'); // Directly enter PO Dashboard View
-        setIsCreateWorkspaceModalOpen(false);
-        setNewWorkspaceName('');
-        localStorage.setItem('syncflow_active_ws', newWs.id);
-        showToast(`✓ Workspace "${wsName}" berhasil dibuat!`);
+      if (memberError) {
+        console.warn("workspace_members insert note:", memberError.message);
       }
+
+      // 3. Update State Lokal & LocalStorage
+      const createdWsObj: Workspace = { ...newWs, role: 'po' };
+      setUserWorkspaces(prev => [createdWsObj, ...prev]);
+      setCurrentWorkspace(createdWsObj);
+      setActiveWorkspaceRole('po');
+      setViewMode('po');
+      localStorage.setItem('syncflow_active_ws', newWs.id);
+
+      // 4. Tutup Modal & Reset Form
+      setNewWorkspaceName('');
+      setIsCreateWorkspaceModalOpen(false);
+      
+      // 5. Trigger fetch ulang data PO
+      await fetchPOData(newWs.id);
+      showToast(`✓ Workspace "${newWs.name}" berhasil dibuat!`);
     } catch (err: any) {
-      console.error("Create workspace error:", err);
-      showToast(`Gagal membuat workspace: ${err.message || err}`);
+      console.error("Gagal membuat workspace:", err.message || err);
+      showToast(`Gagal membuat workspace: ${err.message || 'Terjadi kesalahan jaringan'}`);
+    } finally {
+      setIsCreatingWorkspace(false);
     }
   };
 
@@ -1577,7 +1590,7 @@ export const App: React.FC = () => {
               </span>
             </div>
 
-            {/* WORKSPACE SELECTOR DROPDOWN (1. HANYA DITAMPILKAN JIKA CURRENTWORKSPACE ADA & VALID) */}
+            {/* WORKSPACE SELECTOR DROPDOWN (HANYA DITAMPILKAN JIKA CURRENTWORKSPACE ADA & VALID) */}
             {currentWorkspace && userWorkspaces.length > 0 && (
               <div className="relative font-sans" ref={workspaceDropdownRef}>
                 <button 
@@ -2550,7 +2563,7 @@ export const App: React.FC = () => {
 
       </div>
 
-      {/* MODAL BUAT WORKSPACE BARU (2. UPGRADE INSTANT SINGLE INPUT MODAL) */}
+      {/* MODAL BUAT WORKSPACE BARU (2. FEEDBACK VISUAL LOADING SPINNER & REWRITTEN ERROR HANDLER) */}
       {isCreateWorkspaceModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out font-sans">
           <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 font-sans text-xs">
@@ -2562,8 +2575,9 @@ export const App: React.FC = () => {
                 <span>Buat Ruang Kerja Baru</span>
               </div>
               <button
-                onClick={() => setIsCreateWorkspaceModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer transition-colors"
+                onClick={() => !isCreatingWorkspace && setIsCreateWorkspaceModalOpen(false)}
+                disabled={isCreatingWorkspace}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer transition-colors disabled:opacity-40"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2575,31 +2589,40 @@ export const App: React.FC = () => {
                 <input
                   type="text"
                   required
+                  disabled={isCreatingWorkspace}
                   placeholder="contoh: Redesign Landing Page, Sprint Klien A"
                   value={newWorkspaceName}
                   onChange={e => setNewWorkspaceName(e.target.value)}
-                  className="w-full bg-white/[0.04] border border-white/10 focus:border-white/40 focus:bg-white/[0.07] text-white rounded-xl px-4 py-2.5 text-xs outline-hidden font-sans transition-all"
+                  className="w-full bg-white/[0.04] border border-white/10 focus:border-white/40 focus:bg-white/[0.07] text-white rounded-xl px-4 py-2.5 text-xs outline-hidden font-sans transition-all disabled:opacity-50"
                 />
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
+                  disabled={isCreatingWorkspace}
                   onClick={() => setIsCreateWorkspaceModalOpen(false)}
-                  className="bg-white/5 hover:bg-white/10 text-white/60 text-xs px-4 py-2 rounded-xl cursor-pointer transition-colors font-sans"
+                  className="bg-white/5 hover:bg-white/10 text-white/60 text-xs px-4 py-2 rounded-xl cursor-pointer transition-colors font-sans disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  disabled={!newWorkspaceName.trim()}
-                  className={`bg-white text-zinc-950 hover:bg-zinc-200 font-semibold text-xs px-5 py-2 rounded-xl shadow-md transition-all font-sans ${
-                    newWorkspaceName.trim()
+                  disabled={!newWorkspaceName.trim() || isCreatingWorkspace}
+                  className={`bg-white text-zinc-950 hover:bg-zinc-200 font-semibold text-xs px-5 py-2 rounded-xl shadow-md transition-all font-sans flex items-center justify-center gap-2 ${
+                    newWorkspaceName.trim() && !isCreatingWorkspace
                       ? 'cursor-pointer'
                       : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  Buat Workspace
+                  {isCreatingWorkspace ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin shrink-0" />
+                      <span>Membuat Workspace...</span>
+                    </>
+                  ) : (
+                    <span>Buat Workspace</span>
+                  )}
                 </button>
               </div>
             </form>
