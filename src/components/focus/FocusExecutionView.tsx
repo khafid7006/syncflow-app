@@ -984,12 +984,12 @@ export const FocusExecutionView: React.FC = () => {
         <div className="space-y-6">
           {/* BO Alert */}
           {boSuccessMessage && (
-            <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-2xl font-mono flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-2xl font-mono flex items-center justify-between shadow-2xs">
+              <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                <span>{boSuccessMessage}</span>
+                <span className="text-xs font-bold">{boSuccessMessage}</span>
               </div>
-              <button onClick={() => setBoSuccessMessage(null)} className="text-xs font-bold hover:underline">
+              <button onClick={() => setBoSuccessMessage(null)} className="text-xs font-bold text-emerald-800 hover:underline cursor-pointer">
                 Tutup
               </button>
             </div>
@@ -997,40 +997,51 @@ export const FocusExecutionView: React.FC = () => {
 
           {/* BO Header Card */}
           <div className="bento-card space-y-2">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#F59E0B]/20 text-[#EA580C] flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-2xl bg-[#F59E0B]/20 text-[#EA580C] flex items-center justify-center font-bold shrink-0">
                   <Crown className="w-5 h-5 text-[#F59E0B]" />
                 </div>
-                <h1 className="text-xl font-mono font-bold text-slate-900">
-                  Strategic Insight & Bottleneck Hub — Business Owner
-                </h1>
+                <div>
+                  <h1 className="text-lg sm:text-xl font-mono font-bold text-slate-900 tracking-tight">
+                    Strategic Insight & Bottleneck Hub — Business Owner
+                  </h1>
+                  <p className="text-xs text-slate-500 font-sans mt-0.5">
+                    Identifikasi potensi keterlambatan (bottleneck) lintas tim produk dan kirimkan arahan strategis privat langsung ke Project Owner.
+                  </p>
+                </div>
               </div>
-              <span className="text-xs font-mono font-bold bg-slate-100 text-slate-800 px-3.5 py-1.5 rounded-full border border-slate-200">
+              <span className="bg-amber-50 text-amber-700 border border-amber-200/60 text-xs px-3 py-1 rounded-full font-mono font-bold shadow-2xs">
                 Akses Eksekutif Read-Only
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-sans">
-              Identifikasi potensi keterlambatan (bottleneck) lintas tim produk dan kirimkan arahan strategis privat langsung ke Project Owner.
-            </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Bottleneck Detector */}
-            <div className="lg:col-span-6 space-y-6">
-              {/* Overdue & Stuck Tasks */}
-              <div className="bento-card space-y-4">
-                <div className="flex items-center justify-between font-mono">
+          {/* 12-COLUMN RESTRUCTURED BENTO GRID */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+            
+            {/* ========================================================================= */}
+            {/* KOLOM KIRI (5 Kolom / 40%): Panel Deteksi Bottleneck & Tugas Kritis */}
+            {/* ========================================================================= */}
+            <div className="lg:col-span-5 flex flex-col justify-between bento-card space-y-4 min-h-[460px]">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between font-mono border-b border-slate-100 pb-3">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600" />
+                    <Activity className="w-4 h-4 text-[#F59E0B]" />
                     <span>Deteksi Bottleneck & Tugas Kritis</span>
                   </h2>
-                  <span className="text-[10px] text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full font-bold border border-rose-200">
-                    {overdueTasks.length + stuckInReviewTasks.length} Perlu Perhatian
+                  <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
+                    overdueTasks.length + stuckInReviewTasks.length > 0
+                      ? 'bg-rose-50 text-rose-700 border-rose-200'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  }`}>
+                    {overdueTasks.length + stuckInReviewTasks.length > 0
+                      ? `${overdueTasks.length + stuckInReviewTasks.length} Perlu Perhatian`
+                      : 'Operasional Sehat'}
                   </span>
                 </div>
 
-                <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
                   {overdueTasks.map(t => {
                     const tm = teams.find(team => team.id === t.team_id);
                     return (
@@ -1040,7 +1051,7 @@ export const FocusExecutionView: React.FC = () => {
                           setSelectedBoTargetTeamId(t.team_id);
                           setSelectedBoTaskId(t.id);
                         }}
-                        className="p-3.5 bg-rose-50/60 hover:bg-rose-100/80 border border-rose-200 rounded-2xl cursor-pointer transition-colors space-y-1"
+                        className="p-3.5 bg-rose-50/70 hover:bg-rose-100/90 border border-rose-200/80 rounded-2xl cursor-pointer transition-all space-y-1.5 shadow-2xs"
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-mono font-bold text-xs text-rose-950">[{t.code}] {t.title}</span>
@@ -1065,7 +1076,7 @@ export const FocusExecutionView: React.FC = () => {
                           setSelectedBoTargetTeamId(t.team_id);
                           setSelectedBoTaskId(t.id);
                         }}
-                        className="p-3.5 bg-amber-50/60 hover:bg-amber-100/80 border border-amber-200 rounded-2xl cursor-pointer transition-colors space-y-1"
+                        className="p-3.5 bg-amber-50/70 hover:bg-amber-100/90 border border-amber-200/80 rounded-2xl cursor-pointer transition-all space-y-1.5 shadow-2xs"
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-mono font-bold text-xs text-slate-900">[{t.code}] {t.title}</span>
@@ -1081,18 +1092,51 @@ export const FocusExecutionView: React.FC = () => {
                     );
                   })}
 
+                  {/* Visualisasi Zero Bottleneck jika tidak ada issue */}
                   {overdueTasks.length === 0 && stuckInReviewTasks.length === 0 && (
-                    <div className="text-center py-12 text-slate-400 text-xs italic font-sans">
-                      Seluruh tim beroperasi optimal tanpa bottleneck kritis saat ini.
+                    <div className="py-8 px-4 text-center space-y-4">
+                      <div className="relative w-14 h-14 rounded-full bg-emerald-100/80 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-200/80 shadow-2xs">
+                        <ShieldCheck className="w-7 h-7 text-emerald-600 animate-pulse" />
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="font-mono font-bold text-slate-900 text-sm">
+                          Operasional Seluruh Tim Sehat
+                        </h3>
+                        <p className="text-xs text-slate-500 font-sans">
+                          (0 Critical Bottlenecks terdeteksi saat ini)
+                        </p>
+                      </div>
+
+                      {/* 3 Ringkasan Metrik Mini Bento */}
+                      <div className="grid grid-cols-3 gap-2.5 pt-3">
+                        <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 text-center space-y-1">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Tim Terpantau</div>
+                          <div className="font-mono font-bold text-emerald-700 text-xs">100% On-Track</div>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 text-center space-y-1">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Rata-rata Velocity</div>
+                          <div className="font-mono font-bold text-amber-600 text-xs">Normal</div>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 text-center space-y-1">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Menunggu Review</div>
+                          <div className="font-mono font-bold text-slate-800 text-xs">0 Blockers</div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
+
+              <div className="pt-3 border-t border-slate-100 font-mono text-[11px] text-slate-400 text-center">
+                Pemantauan real-time status sprint lintas tim
+              </div>
             </div>
 
-            {/* Right Column: Strategic Insight Dispatcher */}
-            <div className="lg:col-span-6 space-y-6">
-              <div className="bento-card space-y-4">
+            {/* ========================================================================= */}
+            {/* KOLOM KANAN (7 Kolom / 60%): Form Arahan Strategis ke PO */}
+            {/* ========================================================================= */}
+            <div className="lg:col-span-7 flex flex-col justify-between bento-card space-y-5 min-h-[460px]">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between font-mono border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
                     <Lock className="w-4 h-4 text-[#F59E0B]" />
@@ -1100,69 +1144,80 @@ export const FocusExecutionView: React.FC = () => {
                       Form Arahan Strategis (Khusus Project Owner)
                     </h2>
                   </div>
+                  <span className="text-[10px] text-slate-500 font-mono">Privat & Enkripsi BO</span>
                 </div>
 
-                <form onSubmit={handleSendBoInsight} className="space-y-3 font-mono">
-                  <div className="space-y-1">
-                    <label className="block font-bold text-slate-700 text-xs">Pilih Tim Tujuan *</label>
-                    <select
-                      value={selectedBoTargetTeamId}
-                      onChange={e => setSelectedBoTargetTeamId(e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono focus:bg-white focus:outline-hidden"
-                    >
-                      {teams.map(t => {
-                        const po = users.find(u => u.id === t.project_owner_id);
-                        return (
+                <form onSubmit={handleSendBoInsight} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 font-mono">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Pilih Tim Tujuan *
+                      </label>
+                      <select
+                        value={selectedBoTargetTeamId}
+                        onChange={e => setSelectedBoTargetTeamId(e.target.value)}
+                        className="w-full p-3 border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 bg-slate-50/50 rounded-xl text-xs font-mono focus:outline-hidden text-slate-900"
+                      >
+                        {teams.map(t => {
+                          const po = users.find(u => u.id === t.project_owner_id);
+                          return (
+                            <option key={t.id} value={t.id}>
+                              {t.name} (PO: {po?.name || 'Belum ada'})
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Kaitkan Tugas (Opsional)
+                      </label>
+                      <select
+                        value={selectedBoTaskId}
+                        onChange={e => setSelectedBoTaskId(e.target.value)}
+                        className="w-full p-3 border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 bg-slate-50/50 rounded-xl text-xs font-mono focus:outline-hidden text-slate-900"
+                      >
+                        <option value="">-- Arahan Umum Tim --</option>
+                        {tasks.filter(t => t.team_id === selectedBoTargetTeamId).map(t => (
                           <option key={t.id} value={t.id}>
-                            {t.name} (PO: {po?.name || 'Belum ada'})
+                            [{t.code}] {t.title} ({t.status})
                           </option>
-                        );
-                      })}
-                    </select>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="block font-bold text-slate-700 text-xs">Kaitkan ke Tugas Tertentu (Opsional)</label>
-                    <select
-                      value={selectedBoTaskId}
-                      onChange={e => setSelectedBoTaskId(e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono focus:bg-white focus:outline-hidden"
-                    >
-                      <option value="">-- Arahan Umum Tim (Tanpa Tugas Spesifik) --</option>
-                      {tasks.filter(t => t.team_id === selectedBoTargetTeamId).map(t => (
-                        <option key={t.id} value={t.id}>
-                          [{t.code}] {t.title} ({t.status})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="block font-bold text-slate-700 text-xs">Isi Arahan / Masukan Strategis *</label>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Isi Arahan / Masukan Strategis *
+                    </label>
                     <textarea
-                      rows={4}
+                      rows={5}
                       required
                       placeholder="Tuliskan arahan mitigasi risiko, prioritas deliverables, atau feedback bottleneck untuk Project Owner..."
                       value={boInsightContent}
                       onChange={e => setBoInsightContent(e.target.value)}
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-sans focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#F59E0B]"
+                      className="w-full min-h-[140px] p-4 border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 bg-slate-50/50 rounded-xl text-xs font-sans focus:outline-hidden text-slate-900 leading-relaxed"
                     />
                   </div>
 
-                  <div className="text-[10px] text-slate-400 italic font-mono">
-                    * Arahan ini bersifat rahasia dan hanya dikirimkan ke akun Project Owner terkait.
+                  <div className="text-[10px] text-slate-400 italic font-mono flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
+                    <span>* Arahan ini bersifat rahasia dan hanya dikirimkan secara langsung ke akun Project Owner terkait.</span>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3.5 bg-[#F59E0B] hover:bg-[#EA580C] text-slate-950 font-mono font-bold rounded-2xl text-xs cursor-pointer shadow-xs flex items-center justify-center gap-2 transition-colors"
+                    className="w-full py-3 px-5 rounded-xl font-mono font-bold text-xs shadow-sm hover:shadow-md transition-all active:scale-[0.99] bg-[#F59E0B] hover:bg-[#EA580C] text-slate-950 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <MessageSquare className="w-4 h-4" />
-                    <span>Kirim Pesan ke Ketua Tim</span>
+                    <span>Kirim Pesan ke Project Owner</span>
                   </button>
                 </form>
               </div>
             </div>
+
           </div>
         </div>
       )}
