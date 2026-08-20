@@ -160,7 +160,7 @@ const NoWorkspaceView: React.FC<{
   profile: UserProfile | null;
   onOpenAccessModal: (ws: Workspace) => void;
 }> = ({ onCreateWorkspace, profile, onOpenAccessModal }) => {
-  const isOwner = profile?.role === 'owner';
+  const isGlobalOwner = profile?.role === 'owner' || profile?.role === 'po';
   const [directoryWorkspaces, setDirectoryWorkspaces] = useState<any[]>([]);
   const [isLoadingDirectory, setIsLoadingDirectory] = useState<boolean>(true);
 
@@ -200,7 +200,7 @@ const NoWorkspaceView: React.FC<{
           Pilih ruang kerja tim proyek di bawah dan masukkan kode akses untuk bergabung.
         </p>
 
-        {isOwner && (
+        {isGlobalOwner && (
           <div className="pt-2">
             <button
               onClick={onCreateWorkspace}
@@ -221,7 +221,7 @@ const NoWorkspaceView: React.FC<{
       ) : directoryWorkspaces.length === 0 ? (
         <div className="max-w-md mx-auto rounded-2xl border border-white/10 bg-zinc-950/70 backdrop-blur-xl p-8 text-center shadow-2xl space-y-3 font-sans">
           <p className="text-xs text-zinc-400">Belum ada workspace proyek yang terdaftar di direktori.</p>
-          {isOwner && (
+          {isGlobalOwner && (
             <button
               onClick={onCreateWorkspace}
               className="w-full py-2.5 px-4 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-200 transition-all shadow-md cursor-pointer font-sans"
@@ -383,6 +383,7 @@ export const App: React.FC = () => {
 
   // Strict Role Check helper
   const isOwnerOrPo = profile?.role === 'owner' || activeWorkspaceRole === 'po';
+  const isGlobalOwner = profile?.role === 'owner' || profile?.role === 'po';
   const isPlRole = activeWorkspaceRole === 'pl';
   const isPoOrPlRole = isOwnerOrPo || isPlRole;
 
@@ -845,47 +846,52 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. REFACTOR LOGIKA FETCHING ANGGOTA WORKSPACE & REMOVE MEMBER
+  // 2. LOGIKA FETCHING ANGGOTA TIM (DIREKTORI ANGGOTA MODAL)
   const fetchWorkspaceMembersList = async () => {
     if (!currentWorkspace?.id) return;
     setIsLoadingMembers(true);
+
     try {
-      // 1. Ambil membership workspace
+      // 1. Ambil membership workspace ini
       const { data: memberRows, error: memErr } = await supabase
         .from('workspace_members')
-        .select('*')
+        .select('id, user_id, role, pod, created_at')
         .eq('workspace_id', currentWorkspace.id);
 
       if (memErr) throw memErr;
 
-      // 2. Ambil profil user terkait
-      const userIds = (memberRows || []).map((m: any) => m.user_id);
-      let profilesMap: Record<string, any> = {};
-
-      if (userIds.length > 0) {
-        const { data: profData } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', userIds);
-
-        (profData || []).forEach((p: any) => {
-          profilesMap[p.id] = p;
-        });
+      if (!memberRows || memberRows.length === 0) {
+        setWorkspaceMembersList([]);
+        return;
       }
 
-      // 3. Gabungkan data
-      const enrichedMembers = (memberRows || []).map((m: any) => ({
-        id: m.id,
-        user_id: m.user_id,
-        role: m.role || 'member',
-        pod: m.pod || 'General',
-        full_name: profilesMap[m.user_id]?.full_name || 'Anggota Tim',
-        email: profilesMap[m.user_id]?.email || '-'
-      }));
+      // 2. Ambil seluruh profil akun untuk mapping nama & email
+      const userIds = memberRows.map(m => m.user_id);
+      const { data: profData, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', userIds);
 
-      setWorkspaceMembersList(enrichedMembers);
+      if (profErr) throw profErr;
+
+      const profileLookup = new Map((profData || []).map(p => [p.id, p]));
+
+      // 3. Gabungkan data
+      const mergedList = memberRows.map(m => {
+        const userProf = profileLookup.get(m.user_id);
+        return {
+          id: m.id,
+          user_id: m.user_id,
+          role: m.role || 'member',
+          pod: m.pod || 'General',
+          full_name: userProf?.full_name || 'Member Tim',
+          email: userProf?.email || '-'
+        };
+      });
+
+      setWorkspaceMembersList(mergedList);
     } catch (err: any) {
-      console.error("Gagal load daftar anggota workspace:", err.message || err);
+      console.error("Gagal memuat list anggota:", err.message || err);
     } finally {
       setIsLoadingMembers(false);
     }
@@ -2023,13 +2029,17 @@ export const App: React.FC = () => {
                       })}
                     </div>
 
-                    <div className="border-t border-white/5 my-1" />
-                    <button
-                      onClick={() => { setIsCreateWorkspaceModalOpen(true); setIsWorkspaceMenuOpen(false); }}
-                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-white/80 hover:bg-white/10 flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <span>+ Buat Workspace Baru</span>
-                    </button>
+                    {isGlobalOwner && (
+                      <>
+                        <div className="border-t border-white/5 my-1" />
+                        <button
+                          onClick={() => { setIsCreateWorkspaceModalOpen(true); setIsWorkspaceMenuOpen(false); }}
+                          className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-white/80 hover:bg-white/10 flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <span>+ Buat Workspace Baru</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
