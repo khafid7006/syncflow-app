@@ -127,7 +127,7 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // 1. FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER
+  // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER
   const fetchActiveTask = async (userId: string) => {
     try {
       console.log("Current User ID:", userId);
@@ -461,9 +461,7 @@ export const App: React.FC = () => {
     showToast('🚨 Kendala berhasil dilaporkan ke Project Owner.');
   };
 
-  // =========================================================================
-  // PO DASHBOARD ACTIONS (RESOLVE BLOCKER, ACC REVIEW, REQUEST REVISION, QUICK ASSIGNMENT)
-  // =========================================================================
+  // PO DASHBOARD ACTIONS
   const handleResolveBlocker = async (taskId: string) => {
     try {
       const { error } = await supabase
@@ -475,7 +473,7 @@ export const App: React.FC = () => {
         console.error("Resolve blocker error:", error.message);
         showToast(`Gagal resolve blocker: ${error.message}`);
       } else {
-        showToast('🚨 Kendala berhasil ditandai Teratasi!');
+        showToast('Kendala berhasil ditandai Teratasi!');
         fetchPOData();
       }
     } catch (err: any) {
@@ -494,7 +492,7 @@ export const App: React.FC = () => {
         console.error("Accept review error:", error.message);
         showToast(`Gagal ACC tugas: ${error.message}`);
       } else {
-        showToast('✅ Tugas telah di-ACC (Done)!');
+        showToast('Tugas telah di-ACC (Done)!');
         fetchPOData();
       }
     } catch (err: any) {
@@ -513,7 +511,7 @@ export const App: React.FC = () => {
         console.error("Request revision error:", error.message);
         showToast(`Gagal minta revisi: ${error.message}`);
       } else {
-        showToast('🔄 Status tugas dikembalikan ke Dalam Pengerjaan (Revisi).');
+        showToast('Status tugas dikembalikan ke Dalam Pengerjaan.');
         fetchPOData();
       }
     } catch (err: any) {
@@ -545,7 +543,7 @@ export const App: React.FC = () => {
         console.error("Create task error:", error.message);
         showToast(`Gagal penugasan: ${error.message}`);
       } else {
-        showToast('📋 Tugas baru berhasil dikirim ke Member!');
+        showToast('Tugas baru berhasil dikirim ke Member!');
         setNewAssignTaskTitle('');
         fetchPOData();
       }
@@ -652,7 +650,7 @@ export const App: React.FC = () => {
                   <select
                     value={authPod}
                     onChange={e => setAuthPod(e.target.value as any)}
-                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30"
+                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans"
                   >
                     <option value="Product Builder">Product Builder</option>
                     <option value="BA">BA</option>
@@ -666,7 +664,7 @@ export const App: React.FC = () => {
                   <select
                     value={authRole}
                     onChange={e => setAuthRole(e.target.value as any)}
-                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30"
+                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans"
                   >
                     <option value="member">Member</option>
                     <option value="owner">Project Owner</option>
@@ -739,7 +737,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* View Mode Switcher Pill */}
-          <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs">
+          <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
             <button
               onClick={() => setViewMode('po')}
               className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
@@ -766,7 +764,7 @@ export const App: React.FC = () => {
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-              className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors shadow-md"
+              className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors shadow-md font-sans"
             >
               <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
               <span className="text-white font-semibold">{userName} — {userRole}</span>
@@ -779,7 +777,7 @@ export const App: React.FC = () => {
                 <div className="p-2.5 border-b border-white/10 space-y-0.5">
                   <div className="font-bold text-white truncate">{userName}</div>
                   <div className="text-[11px] text-zinc-400 truncate">{session.user.email}</div>
-                  <div className="text-[10px] text-zinc-500 font-mono">Peran: {profile?.role || 'member'}</div>
+                  <div className="text-[10px] text-zinc-400">Peran: {profile?.role || 'member'}</div>
                 </div>
 
                 <button
@@ -812,7 +810,7 @@ export const App: React.FC = () => {
         {/* ========================================================================= */}
         {viewMode === 'po' ? (
           /* ========================================================================= */
-          /* PO DASHBOARD VIEW (STRICT MONOCHROME GLASSMORPHISM) */
+          /* PO DASHBOARD VIEW (STRICT MONOCHROME GLASSMORPHISM - CLEAN & MINIMAL) */
           /* ========================================================================= */
           <main className="space-y-8 flex-1 my-auto font-sans">
             
@@ -829,15 +827,15 @@ export const App: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
-              {/* KARTU 1: RADAR KENDALA & BLOCKER (PRIORITAS ATAS - 6 KOLOM) */}
+              {/* KARTU 1: RADAR KENDALA (6 KOLOM) */}
               <div className="lg:col-span-6 rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl space-y-4 min-h-[360px] flex flex-col justify-between">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-white font-bold text-sm">
                       <AlertTriangle className="w-4 h-4 text-zinc-300" />
-                      <span>1. Radar Kendala & Blocker</span>
+                      <span>Radar Kendala</span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-mono text-zinc-300">
+                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-sans font-medium text-zinc-300">
                       {blockedTasks.length} Kendala
                     </span>
                   </div>
@@ -851,21 +849,22 @@ export const App: React.FC = () => {
                   ) : (
                     <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
                       {blockedTasks.map(t => (
-                        <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-2 text-xs">
+                        <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-2 text-xs font-sans">
                           <div className="flex items-center justify-between">
                             <span className="font-bold text-white">{t.profiles?.full_name || 'Member'}</span>
                             <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
                               {t.profiles?.pod || 'Pod'}
                             </span>
                           </div>
+                          {/* Clean Plain Text Blocker Message (No Quotes) */}
                           <p className="text-zinc-300 leading-relaxed font-sans bg-white/5 p-2.5 rounded-xl border border-white/5">
-                            "{t.blocker_reason || 'Terjadi kendala teknis'}"
+                            {t.blocker_reason || 'Terjadi kendala teknis'}
                           </p>
                           <div className="flex items-center justify-between pt-1">
-                            <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">Tugas: {t.title}</span>
+                            <span className="text-[10px] text-zinc-400 truncate max-w-[200px]">Tugas: {t.title}</span>
                             <button
                               onClick={() => t.id && handleResolveBlocker(t.id)}
-                              className="px-3 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-[11px] rounded-full transition-colors cursor-pointer flex items-center gap-1"
+                              className="px-3.5 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-medium text-xs rounded-full transition-colors cursor-pointer flex items-center gap-1"
                             >
                               <RotateCcw className="w-3 h-3" />
                               <span>Tandai Teratasi</span>
@@ -876,22 +875,18 @@ export const App: React.FC = () => {
                     </div>
                   )}
                 </div>
-
-                <div className="text-[10px] text-zinc-500 border-t border-white/5 pt-2 text-center">
-                  Mengubah status kembali ke Dalam Pengerjaan
-                </div>
               </div>
 
-              {/* KARTU 2: DAFTAR REVIEW TUGAS (DELIVERABLES IN-REVIEW - 6 KOLOM) */}
+              {/* KARTU 2: REVIEW TUGAS (6 KOLOM) */}
               <div className="lg:col-span-6 rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl space-y-4 min-h-[360px] flex flex-col justify-between">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-white font-bold text-sm">
                       <ClipboardCheck className="w-4 h-4 text-zinc-300" />
-                      <span>2. Daftar Review Tugas</span>
+                      <span>Review Tugas</span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-mono text-zinc-300">
-                      {reviewTasks.length} Menunggu Review
+                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-sans font-medium text-zinc-300">
+                      {reviewTasks.length} Menunggu
                     </span>
                   </div>
 
@@ -904,7 +899,7 @@ export const App: React.FC = () => {
                   ) : (
                     <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
                       {reviewTasks.map(t => (
-                        <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs">
+                        <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans">
                           <div className="flex items-center justify-between">
                             <div>
                               <div className="font-bold text-white">{t.title}</div>
@@ -915,7 +910,7 @@ export const App: React.FC = () => {
                                 href={t.deliverable_link || t.deliverable_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-[11px] text-white flex items-center gap-1 transition-colors"
+                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-[11px] text-white flex items-center gap-1 transition-colors font-medium"
                               >
                                 <span>Buka Link</span>
                                 <ExternalLink className="w-3 h-3 text-zinc-400" />
@@ -926,13 +921,13 @@ export const App: React.FC = () => {
                           <div className="flex items-center gap-2 pt-1 border-t border-white/5">
                             <button
                               onClick={() => t.id && handleAcceptReview(t.id)}
-                              className="flex-1 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center"
+                              className="flex-1 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center text-xs"
                             >
-                              Terima / ACC (Done)
+                              Terima (Done)
                             </button>
                             <button
                               onClick={() => t.id && handleRequestRevision(t.id)}
-                              className="flex-1 py-2 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-colors cursor-pointer text-center"
+                              className="flex-1 py-2 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-colors cursor-pointer text-center text-xs"
                             >
                               Minta Revisi
                             </button>
@@ -942,26 +937,23 @@ export const App: React.FC = () => {
                     </div>
                   )}
                 </div>
-
-                <div className="text-[10px] text-zinc-500 border-t border-white/5 pt-2 text-center">
-                  Review deliverable karya anak SMK PKL
-                </div>
               </div>
 
-              {/* KARTU 3: FORM PENUGASAN CEPAT (12 KOLOM) */}
+              {/* KARTU 3: BAGI TUGAS BARU (12 KOLOM) */}
               <div className="lg:col-span-12 rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl space-y-4">
                 <div className="flex items-center gap-2 text-white font-bold text-sm">
                   <PlusCircle className="w-4 h-4 text-zinc-300" />
-                  <span>3. Form Penugasan Cepat (Assign Member)</span>
+                  <span>Bagi Tugas Baru</span>
                 </div>
 
-                <form onSubmit={handleCreateNewTask} className="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs">
+                <form onSubmit={handleCreateNewTask} className="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs font-sans">
+                  {/* Clean Member Dropdown */}
                   <div className="md:col-span-4 space-y-1">
-                    <label className="block text-zinc-400 font-medium">Pilih Anggota Tim (Member) *</label>
+                    <label className="block text-zinc-400 font-medium">Pilih Member</label>
                     <select
                       value={selectedAssigneeId}
                       onChange={e => setSelectedAssigneeId(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 border border-white/15 rounded-2xl text-white focus:outline-hidden focus:border-white/30 font-sans"
+                      className="w-full px-4 py-2.5 bg-neutral-950 border border-white/10 rounded-2xl text-white text-xs focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
                     >
                       {memberProfiles.length === 0 ? (
                         <option value="">Tidak ada member terdaftar</option>
@@ -975,21 +967,22 @@ export const App: React.FC = () => {
                     </select>
                   </div>
 
+                  {/* Clean Minimal Task Title Input */}
                   <div className="md:col-span-8 space-y-1">
-                    <label className="block text-zinc-400 font-medium">Judul Tugas *</label>
+                    <label className="block text-zinc-400 font-medium">Judul Tugas</label>
                     <input
                       type="text"
                       required
-                      placeholder="Contoh: Slicing Komponen Navbar & Landing Page"
+                      placeholder="Nama tugas..."
                       value={newAssignTaskTitle}
                       onChange={e => setNewAssignTaskTitle(e.target.value)}
-                      className="w-full p-3 bg-neutral-950 border border-white/15 rounded-2xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                      className="w-full px-4 py-2.5 bg-neutral-950 border border-white/10 rounded-2xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans text-xs"
                     />
                   </div>
 
                   {/* 3 Input Checklist DoD */}
                   <div className="md:col-span-12 space-y-2 pt-2 border-t border-white/10">
-                    <label className="block text-zinc-400 font-medium">Definition of Done (3 Poin Checklist DoD)</label>
+                    <label className="block text-zinc-400 font-medium">Checklist Pekerjaan (DoD)</label>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <input
                         type="text"
@@ -1019,13 +1012,13 @@ export const App: React.FC = () => {
                     <button
                       type="submit"
                       disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
-                      className={`px-6 py-3 font-bold rounded-full shadow-lg flex items-center gap-2 transition-all ${
+                      className={`px-6 py-2.5 font-bold text-xs rounded-full shadow-lg flex items-center gap-2 transition-all ${
                         selectedAssigneeId && newAssignTaskTitle.trim()
                           ? 'bg-white hover:bg-zinc-200 text-zinc-950 cursor-pointer'
                           : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
                       }`}
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="w-3.5 h-3.5" />
                       <span>Kirim Tugas ke Member</span>
                     </button>
                   </div>
@@ -1090,7 +1083,7 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* KARTU TENGAH ATAS (Submit Deliverable - Update or Insert) */}
+                {/* KARTU TENGAH ATAS (Submit Deliverable) */}
                 <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-zinc-500">
