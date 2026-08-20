@@ -5,7 +5,7 @@ import {
   Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
   ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus,
   GitBranch, Activity, Clock, CheckCircle, Sparkles, Trash2, Link as LinkIcon,
-  Calendar, Edit3, UserPlus, Users
+  Calendar, Edit3, UserPlus, Users, Key
 } from 'lucide-react';
 
 export interface UserProfile {
@@ -154,46 +154,105 @@ const getRelativeDeadlineString = (isoString?: string) => {
   };
 };
 
-// NO WORKSPACE VIEW COMPONENT (ENHANCED COPYWRITING & ONBOARDING)
+// BENTO GRID KATALOG WORKSPACE DI NO-WORKSPACE VIEW (PIN-PROTECTED BENTO DIRECTORY)
 const NoWorkspaceView: React.FC<{
   onCreateWorkspace: () => void;
   profile: UserProfile | null;
-}> = ({ onCreateWorkspace, profile }) => {
+  publicWorkspaces: Workspace[];
+  isLoading: boolean;
+  onOpenAccessModal: (ws: Workspace) => void;
+}> = ({ onCreateWorkspace, profile, publicWorkspaces, isLoading, onOpenAccessModal }) => {
   const isOwner = profile?.role === 'owner';
 
   return (
-    <div className="min-h-[65vh] flex items-center justify-center p-4 font-sans">
-      <div className="max-w-md w-full rounded-2xl border border-white/10 bg-zinc-950/70 backdrop-blur-xl p-8 text-center shadow-2xl space-y-5 font-sans">
+    <div className="min-h-[65vh] flex flex-col justify-center p-4 font-sans max-w-5xl mx-auto w-full my-auto space-y-6">
+      {/* Header Halaman Bento Grid */}
+      <div className="text-center space-y-2 max-w-2xl mx-auto">
         <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-md">
           <Folder className="w-6 h-6 text-zinc-300" />
         </div>
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+          Pusat Direktori Workspace
+        </h2>
+        <p className="text-xs text-white/60 leading-relaxed font-sans">
+          Pilih ruang kerja tim proyek di bawah dan masukkan kode akses untuk bergabung.
+        </p>
 
-        <div className="space-y-2">
-          <h2 className="text-xl font-bold tracking-tight text-white">
-            Belum Ada Workspace Aktif
-          </h2>
-          <p className="text-xs text-white/60 leading-relaxed max-w-xs mx-auto font-sans">
-            {isOwner
-              ? 'SyncFlow mengisolasi setiap proyek ke dalam ruang kerja mandiri. Buat workspace pertama untuk mulai membagi tugas ke tim.'
-              : 'Kamu belum ditambahkan ke workspace proyek mana pun. Silakan hubungi Project Owner kamu untuk dimasukkan ke dalam tim.'}
-          </p>
+        {isOwner && (
+          <div className="pt-2">
+            <button
+              onClick={onCreateWorkspace}
+              className="py-2.5 px-5 rounded-xl bg-white text-zinc-950 font-bold text-xs hover:bg-zinc-200 transition-all shadow-md cursor-pointer font-sans"
+            >
+              + Buat Workspace Baru
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Grid Bento Responsive 3-Kolom */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12 text-xs text-zinc-400 gap-2 font-sans">
+          <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
+          <span>Memuat direktori proyek...</span>
         </div>
-
-        <div className="pt-2">
-          {isOwner ? (
+      ) : publicWorkspaces.length === 0 ? (
+        <div className="max-w-md mx-auto rounded-2xl border border-white/10 bg-zinc-950/70 backdrop-blur-xl p-8 text-center shadow-2xl space-y-3 font-sans">
+          <p className="text-xs text-zinc-400">Belum ada workspace proyek yang terdaftar di direktori.</p>
+          {isOwner && (
             <button
               onClick={onCreateWorkspace}
               className="w-full py-2.5 px-4 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-200 transition-all shadow-md cursor-pointer font-sans"
             >
               + Buat Workspace Pertama
             </button>
-          ) : (
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/50 font-sans">
-              ⏳ Menunggu Undangan PO
-            </div>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl w-full mx-auto px-4 mt-6">
+          {publicWorkspaces.map(ws => (
+            <div
+              key={ws.id}
+              onClick={() => onOpenAccessModal(ws)}
+              className="group relative rounded-2xl border border-white/10 bg-zinc-950/60 backdrop-blur-xl p-5 hover:border-white/30 hover:bg-zinc-900/80 transition-all cursor-pointer shadow-xl flex flex-col justify-between h-44 font-sans"
+            >
+              {/* Elemen Atas */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
+                    <Folder className="w-4 h-4 text-zinc-300" />
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-zinc-300 font-medium flex items-center gap-1">
+                    🔒 Terkunci
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white tracking-tight line-clamp-1">
+                  {ws.name}
+                </h3>
+                {ws.description && (
+                  <p className="text-[11px] text-zinc-400 line-clamp-1 font-sans">
+                    {ws.description}
+                  </p>
+                )}
+              </div>
+
+              {/* Elemen Bawah (Tombol Buka Ruang Kerja) */}
+              <div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenAccessModal(ws);
+                  }}
+                  className="w-full py-2 rounded-xl bg-white/5 group-hover:bg-white group-hover:text-zinc-950 text-white/80 font-semibold text-xs border border-white/10 group-hover:border-transparent transition-all flex items-center justify-center gap-2 cursor-pointer font-sans"
+                >
+                  🔑 Buka Ruang Kerja
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -216,6 +275,15 @@ export const App: React.FC = () => {
   const [newWorkspaceName, setNewWorkspaceName] = useState<string>('');
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState<boolean>(false);
   const workspaceDropdownRef = useRef<HTMLDivElement>(null);
+
+  // PIN-PROTECTED BENTO GRID WORKSPACE DIRECTORY STATES
+  const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
+  const [isPublicWorkspacesLoading, setIsPublicWorkspacesLoading] = useState<boolean>(false);
+  const [isAccessModalOpen, setIsAccessModalOpen] = useState<boolean>(false);
+  const [selectedTargetWs, setSelectedTargetWs] = useState<Workspace | null>(null);
+  const [inputInviteCode, setInputInviteCode] = useState<string>('');
+  const [selectedTargetPod, setSelectedTargetPod] = useState<string>('Product Builder');
+  const [isVerifyingCode, setIsVerifyingCode] = useState<boolean>(false);
   
   // DEFAULT VIEW STATE: Set initial viewMode strictly to 'member' (anti-flash for members)
   const [viewMode, setViewMode] = useState<'po' | 'member'>('member');
@@ -336,6 +404,100 @@ export const App: React.FC = () => {
       setEditDueDate(formatted);
     } else {
       setNewAssignDueDate(formatted);
+    }
+  };
+
+  // FETCH PUBLIC WORKSPACES FOR BENTO DIRECTORY ONBOARDING
+  const fetchPublicWorkspaces = async () => {
+    setIsPublicWorkspacesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('workspaces')
+        .select('id, name, description, created_at, invite_code, owner_id')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Gagal memuat direktori workspace:", error);
+      } else {
+        setPublicWorkspaces(data as Workspace[] || []);
+      }
+    } catch (err: any) {
+      console.error("Gagal memuat direktori workspace:", err);
+    } finally {
+      setIsPublicWorkspacesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!currentWorkspace || userWorkspaces.length === 0) {
+      fetchPublicWorkspaces();
+    }
+  }, [currentWorkspace?.id, userWorkspaces.length]);
+
+  const handleOpenAccessCodeModal = (ws: Workspace) => {
+    setSelectedTargetWs(ws);
+    setInputInviteCode('');
+    setSelectedTargetPod(profile?.pod || 'Product Builder');
+    setIsAccessModalOpen(true);
+  };
+
+  // LOGIKA VERIFIKASI DATABASE (PIN MODAL)
+  const handleVerifyAndJoinWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTargetWs?.id || !inputInviteCode.trim() || !session?.user?.id) return;
+
+    setIsVerifyingCode(true);
+    try {
+      // 1. Cek kecocokan kode akses
+      const { data: ws, error: checkErr } = await supabase
+        .from('workspaces')
+        .select('*')
+        .eq('id', selectedTargetWs.id)
+        .eq('invite_code', inputInviteCode.trim().toUpperCase())
+        .maybeSingle();
+
+      if (checkErr || !ws) {
+        showToast("❌ Kode akses salah. Hubungi PO untuk meminta kode yang benar.");
+        return;
+      }
+
+      // 2. Daftarkan user ke workspace_members
+      const { error: joinErr } = await supabase
+        .from('workspace_members')
+        .insert([{
+          workspace_id: ws.id,
+          user_id: session.user.id,
+          role: 'member',
+          pod: selectedTargetPod
+        }]);
+
+      if (joinErr && joinErr.code !== '23505') {
+        throw joinErr;
+      }
+
+      // 3. Masuk langsung ke Dashboard Member workspace tersebut
+      const activeObj: Workspace = { ...ws, role: 'member', pod: selectedTargetPod };
+      
+      setUserWorkspaces(prev => {
+        const exists = prev.some(w => w.id === ws.id);
+        return exists ? prev : [activeObj, ...prev];
+      });
+      setCurrentWorkspace(activeObj);
+      setActiveWorkspaceRole('member');
+      setViewMode('member');
+      localStorage.setItem('syncflow_active_ws', ws.id);
+      
+      setIsAccessModalOpen(false);
+      setInputInviteCode('');
+      showToast(`✓ Berhasil bergabung dengan workspace "${ws.name}"!`);
+
+      await fetchActiveTask(session.user.id, ws.id);
+      await fetchProjectLinks(ws.id);
+    } catch (err: any) {
+      console.error("Gagal bergabung:", err);
+      showToast(`Gagal bergabung: ${err.message || 'Terjadi kesalahan'}`);
+    } finally {
+      setIsVerifyingCode(false);
     }
   };
 
@@ -671,9 +833,10 @@ export const App: React.FC = () => {
       setNewWorkspaceName('');
       setIsCreateWorkspaceModalOpen(false);
       
-      // 5. Trigger fetch ulang data PO
+      // 5. Trigger fetch ulang data PO & Direktori Publik
       await fetchPOData(newWs.id);
-      showToast(`✓ Workspace "${newWs.name}" berhasil dibuat!`);
+      await fetchPublicWorkspaces();
+      showToast(`✓ Workspace "${newWs.name}" berhasil dibuat! Kode Akses: ${generatedInviteCode}`);
     } catch (err: any) {
       console.error("Gagal membuat workspace:", err.message || err);
       showToast(`Gagal membuat workspace: ${err.message || 'Terjadi kesalahan jaringan'}`);
@@ -1998,6 +2161,9 @@ export const App: React.FC = () => {
           <NoWorkspaceView
             onCreateWorkspace={() => setIsCreateWorkspaceModalOpen(true)}
             profile={profile}
+            publicWorkspaces={publicWorkspaces}
+            isLoading={isPublicWorkspacesLoading}
+            onOpenAccessModal={handleOpenAccessCodeModal}
           />
         ) : !isPoOrPlRole || viewMode === 'member' ? (
           /* ========================================================================= */
@@ -2875,6 +3041,97 @@ export const App: React.FC = () => {
         </footer>
 
       </div>
+
+      {/* MODAL VERIFIKASI KODE AKSES WORKSPACE (PIN MODAL) */}
+      {isAccessModalOpen && selectedTargetWs && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 font-sans text-xs">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5 text-white font-bold text-sm">
+                <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center">
+                  <Lock className="w-4 h-4 text-zinc-300" />
+                </div>
+                <span className="truncate max-w-[240px]">{selectedTargetWs.name}</span>
+              </div>
+              <button
+                onClick={() => !isVerifyingCode && setIsAccessModalOpen(false)}
+                disabled={isVerifyingCode}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer disabled:opacity-40"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleVerifyAndJoinWorkspace} className="space-y-4 font-sans">
+              {/* Input 1 (Kode Akses 6-digit monospaced center) */}
+              <div className="space-y-1.5 text-center">
+                <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">
+                  Masukkan Kode Akses (PIN) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  disabled={isVerifyingCode}
+                  placeholder="6 DIGIT"
+                  value={inputInviteCode}
+                  onChange={e => setInputInviteCode(e.target.value.toUpperCase())}
+                  className="w-full tracking-[0.3em] font-mono text-center text-lg font-bold bg-neutral-950 border border-white/10 text-white rounded-xl p-3 uppercase focus:outline-hidden focus:border-white/40 font-sans transition-all disabled:opacity-50"
+                />
+                <p className="text-[10px] text-zinc-500 font-sans">
+                  Minta 6 karakter kode akses workspace kepada Project Owner Anda.
+                </p>
+              </div>
+
+              {/* Input 2 (Pilih Pod / Divisi) */}
+              <div className="space-y-1">
+                <label className="block text-[10px] text-zinc-400 font-medium">Pilih Pod / Divisi Anda *</label>
+                <select
+                  value={selectedTargetPod}
+                  onChange={e => setSelectedTargetPod(e.target.value)}
+                  disabled={isVerifyingCode}
+                  className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer disabled:opacity-50"
+                >
+                  <option value="Product Builder">Product Builder</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="UI/UX Designer">UI/UX Designer</option>
+                  <option value="General">General</option>
+                </select>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+                <button
+                  type="button"
+                  disabled={isVerifyingCode}
+                  onClick={() => setIsAccessModalOpen(false)}
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-xl cursor-pointer hover:bg-neutral-700 transition-colors text-xs disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={!inputInviteCode.trim() || isVerifyingCode}
+                  className={`px-5 py-2.5 bg-white text-zinc-950 font-bold rounded-xl shadow-md text-xs transition-all flex items-center justify-center gap-1.5 ${
+                    inputInviteCode.trim() && !isVerifyingCode
+                      ? 'hover:bg-zinc-200 cursor-pointer'
+                      : 'opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  {isVerifyingCode ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin shrink-0" />
+                      <span>Memverifikasi...</span>
+                    </>
+                  ) : (
+                    <span>🔑 Verifikasi & Masuk Workspace</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 2. MODAL KELOLA ANGGOTA TIM WORKSPACE (PO VIEW) */}
       {isManageMembersModalOpen && (
