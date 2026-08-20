@@ -3,7 +3,7 @@ import { supabase } from './lib/supabase';
 import { 
   Layers, Check, Send, AlertTriangle, ExternalLink, 
   Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
-  ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2
+  ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus
 } from 'lucide-react';
 
 export interface UserProfile {
@@ -22,7 +22,7 @@ export interface MemberTask {
   deliverable_url?: string;
   blocker_reason?: string;
   is_blocked?: boolean;
-  checklist?: { id: number; text: string; checked: boolean }[];
+  checklist?: { id: number; text: string; checked: boolean; is_checked?: boolean }[];
   created_at?: string;
   profiles?: {
     full_name?: string;
@@ -63,12 +63,14 @@ export const App: React.FC = () => {
   const [reviewTasks, setReviewTasks] = useState<MemberTask[]>([]);
   const [memberProfiles, setMemberProfiles] = useState<UserProfile[]>([]);
 
-  // PO Quick Assignment Form states
+  // PO Quick Assignment Form states (Dynamic DoD list, max 10 points)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
   const [newAssignTaskTitle, setNewAssignTaskTitle] = useState<string>('');
-  const [dodInput1, setDodInput1] = useState<string>('Buat tampilan tombol dan form pembayaran');
-  const [dodInput2, setDodInput2] = useState<string>('Sambungkan tombol ke halaman sukses');
-  const [dodInput3, setDodInput3] = useState<string>('Lampirkan link hasil kerjaan');
+  const [dodPoints, setDodPoints] = useState<string[]>([
+    'Buat tampilan tombol dan form pembayaran',
+    'Sambungkan tombol ke halaman sukses',
+    'Lampirkan link hasil kerjaan',
+  ]);
   
   // Modals & Toasts
   const [isBlockerModalOpen, setIsBlockerModalOpen] = useState<boolean>(false);
@@ -115,6 +117,30 @@ export const App: React.FC = () => {
       fetchPOData();
     }
   }, [profile, viewMode, session]);
+
+  // 3. SUPABASE REALTIME SUBSCRIPTION
+  useEffect(() => {
+    if (!session?.user) return;
+
+    const channel = supabase
+      .channel('tasks-channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks' },
+        (payload) => {
+          console.log('Realtime task change received:', payload);
+          fetchPOData();
+          if (session?.user?.id) {
+            fetchActiveTask(session.user.id);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -168,7 +194,11 @@ export const App: React.FC = () => {
         }
 
         if (data.checklist && Array.isArray(data.checklist) && data.checklist.length > 0) {
-          setDodItems(data.checklist);
+          setDodItems(data.checklist.map((item: any, idx: number) => ({
+            id: item.id || idx + 1,
+            text: item.text || item.label || '',
+            checked: item.checked ?? item.is_checked ?? false
+          })));
         }
       }
     } catch (err: any) {
@@ -176,7 +206,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // FETCH PO DATA (BLOCKED TASKS, REVIEW TASKS, MEMBERS LIST)
+  // 2. FETCH DAFTAR MEMBER AKTIF FROM SUPABASE (select id, full_name, pod)
   const fetchPOData = async () => {
     try {
       // Fetch blocked tasks
@@ -197,10 +227,10 @@ export const App: React.FC = () => {
 
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
 
-      // Fetch member profiles
+      // Query: supabase.from('profiles').select('id, full_name, pod').order('full_name')
       const { data: membersData, error: mErr } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, full_name, pod')
         .order('full_name', { ascending: true });
 
       if (mErr) console.error("Error fetching members:", mErr.message);
@@ -519,15 +549,39 @@ export const App: React.FC = () => {
     }
   };
 
+  // 1. DYNAMIC DOD LIST HELPERS (MAX 10 POINTS)
+  const handleAddDodPoint = () => {
+    if (dodPoints.length < 10) {
+      setDodPoints([...dodPoints, '']);
+    }
+  };
+
+  const handleRemoveDodPoint = (index: number) => {
+    if (dodPoints.length > 1) {
+      setDodPoints(dodPoints.filter((_, idx) => idx !== index));
+    }
+  };
+
+  const handleDodPointChange = (index: number, value: string) => {
+    const updated = [...dodPoints];
+    updated[index] = value;
+    setDodPoints(updated);
+  };
+
+  // 1. CREATE NEW TASK WITH DYNAMIC DOD ARRAY SAVED TO SUPABASE
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
 
-    const checklistItems = [
-      { id: 1, text: dodInput1.trim() || 'Kerjakan tugas sesuai instruksi', checked: false },
-      { id: 2, text: dodInput2.trim() || 'Validasi fungsi dan komponen', checked: false },
-      { id: 3, text: dodInput3.trim() || 'Lampirkan link hasil kerjaan', checked: false },
-    ];
+    // Format array of DoD points to save to checklist column: [{ text: "...", is_checked: false }, ...]
+    const checklistItems = dodPoints
+      .filter(p => p.trim().length > 0)
+      .map((text, idx) => ({
+        id: idx + 1,
+        text: text.trim(),
+        checked: false,
+        is_checked: false,
+      }));
 
     try {
       const { error } = await supabase
@@ -545,6 +599,11 @@ export const App: React.FC = () => {
       } else {
         showToast('Tugas baru berhasil dikirim ke Member!');
         setNewAssignTaskTitle('');
+        setDodPoints([
+          'Buat tampilan tombol dan form pembayaran',
+          'Sambungkan tombol ke halaman sukses',
+          'Lampirkan link hasil kerjaan',
+        ]);
         fetchPOData();
       }
     } catch (err: any) {
@@ -607,7 +666,7 @@ export const App: React.FC = () => {
                     placeholder="Nama Anda"
                     value={authFullName}
                     onChange={e => setAuthFullName(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
+                    className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
                   />
                 </div>
               </div>
@@ -623,7 +682,7 @@ export const App: React.FC = () => {
                   placeholder="email@domain.com"
                   value={authEmail}
                   onChange={e => setAuthEmail(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
+                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
                 />
               </div>
             </div>
@@ -638,7 +697,7 @@ export const App: React.FC = () => {
                   placeholder="••••••••"
                   value={authPassword}
                   onChange={e => setAuthPassword(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
+                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
                 />
               </div>
             </div>
@@ -858,7 +917,7 @@ export const App: React.FC = () => {
                               <span className="text-[10px] text-zinc-400 truncate max-w-[140px]">Tugas: {t.title}</span>
                               <button
                                 onClick={() => t.id && handleResolveBlocker(t.id)}
-                                className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-medium text-[11px] rounded-full transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                                className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-medium text-[11px] rounded-full transition-colors cursor-pointer flex items-center gap-1 shrink-0 font-sans"
                               >
                                 <RotateCcw className="w-3 h-3" />
                                 <span>Selesaikan Kendala</span>
@@ -871,7 +930,7 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 2. KOLOM TENGAH (Putih Solid Kontras): Bagi Tugas Baru */}
+                {/* 2. KOLOM TENGAH (Putih Solid Kontras): Bagi Tugas Baru (Checklist DoD Dinamis Max 10) */}
                 <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[360px] hover:scale-[1.01] transition-transform font-sans">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-zinc-500">
@@ -883,6 +942,7 @@ export const App: React.FC = () => {
                   </div>
 
                   <form onSubmit={handleCreateNewTask} className="space-y-3 my-auto py-2 font-sans">
+                    {/* 2. DROPDOWN FIX: Format Label "[Nama] — [Pod]" from public.profiles */}
                     <div className="space-y-1">
                       <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Member</label>
                       <select
@@ -895,7 +955,7 @@ export const App: React.FC = () => {
                         ) : (
                           memberProfiles.map(m => (
                             <option key={m.id} value={m.id}>
-                              {m.full_name} ({m.pod})
+                              {m.full_name} — {m.pod || 'Pod'}
                             </option>
                           ))
                         )}
@@ -914,30 +974,47 @@ export const App: React.FC = () => {
                       />
                     </div>
 
-                    {/* 3 Input Ringkas DoD */}
+                    {/* 1. DYNAMIC DOD CHECKLIST LIST (MAX 10 POINTS) */}
                     <div className="space-y-1.5 pt-1">
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Checklist DoD (3 Poin)</label>
-                      <input
-                        type="text"
-                        placeholder="DoD 1..."
-                        value={dodInput1}
-                        onChange={e => setDodInput1(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans"
-                      />
-                      <input
-                        type="text"
-                        placeholder="DoD 2..."
-                        value={dodInput2}
-                        onChange={e => setDodInput2(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans"
-                      />
-                      <input
-                        type="text"
-                        placeholder="DoD 3..."
-                        value={dodInput3}
-                        onChange={e => setDodInput3(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans"
-                      />
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                          Checklist DoD ({dodPoints.length}/10 Poin)
+                        </label>
+                        {dodPoints.length < 10 && (
+                          <button
+                            type="button"
+                            onClick={handleAddDodPoint}
+                            className="text-[10px] font-bold text-zinc-900 hover:text-zinc-600 flex items-center gap-0.5 cursor-pointer transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>+ Tambah Poin</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                        {dodPoints.map((point, idx) => (
+                          <div key={idx} className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              required
+                              placeholder={`DoD ${idx + 1}...`}
+                              value={point}
+                              onChange={e => handleDodPointChange(idx, e.target.value)}
+                              className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans focus:outline-hidden focus:border-zinc-800"
+                            />
+                            {dodPoints.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDodPoint(idx)}
+                                className="w-6 h-6 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center cursor-pointer transition-colors text-xs font-bold shrink-0"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
                     <button
@@ -1019,13 +1096,13 @@ export const App: React.FC = () => {
                           <div className="flex items-center gap-2 pt-1 border-t border-white/5">
                             <button
                               onClick={() => t.id && handleAcceptReview(t.id)}
-                              className="flex-1 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center text-xs"
+                              className="flex-1 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center text-xs font-sans"
                             >
                               Terima (ACC)
                             </button>
                             <button
                               onClick={() => t.id && handleRequestRevision(t.id)}
-                              className="flex-1 py-2 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-colors cursor-pointer text-center text-xs"
+                              className="flex-1 py-2 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-colors cursor-pointer text-center text-xs font-sans"
                             >
                               Minta Revisi
                             </button>
@@ -1129,7 +1206,7 @@ export const App: React.FC = () => {
                         placeholder="Link tugas..."
                         value={deliverableUrl}
                         onChange={e => setDeliverableUrl(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors disabled:opacity-50"
+                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors disabled:opacity-50 font-sans"
                       />
                     )}
 
