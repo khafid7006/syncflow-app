@@ -136,6 +136,50 @@ const getRelativeDeadlineString = (isoString?: string) => {
   };
 };
 
+// NO WORKSPACE VIEW COMPONENT (DESAIN ONBOARDING TERPUSAT & ELEGAN)
+const NoWorkspaceView: React.FC<{
+  onCreateWorkspace: () => void;
+  profile: UserProfile | null;
+}> = ({ onCreateWorkspace, profile }) => {
+  const isOwner = profile?.role === 'owner';
+
+  return (
+    <div className="min-h-[65vh] flex items-center justify-center p-4 font-sans">
+      <div className="max-w-md w-full rounded-2xl border border-white/10 bg-zinc-950/70 backdrop-blur-xl p-8 text-center shadow-2xl space-y-5 font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-md">
+          <Folder className="w-6 h-6 text-zinc-300" />
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold tracking-tight text-white">
+            Belum Ada Workspace Aktif
+          </h2>
+          <p className="text-xs text-white/60 leading-relaxed max-w-xs mx-auto">
+            {isOwner
+              ? 'Kamu belum memiliki ruang kerja proyek. Buat workspace pertama untuk mulai membagi tugas dan mengelola tim.'
+              : 'Kamu belum ditambahkan ke workspace proyek mana pun. Silakan hubungi Project Owner kamu untuk dimasukkan ke dalam tim.'}
+          </p>
+        </div>
+
+        <div className="pt-2">
+          {isOwner ? (
+            <button
+              onClick={onCreateWorkspace}
+              className="w-full py-2.5 px-4 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-200 transition-all shadow-md cursor-pointer font-sans"
+            >
+              + Buat Workspace Baru
+            </button>
+          ) : (
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/50 font-sans">
+              ⏳ Menunggu Undangan PO
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const App: React.FC = () => {
   // Auth & Profile state
   const [session, setSession] = useState<any>(null);
@@ -363,10 +407,10 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // FETCH & MANAGE WORKSPACES (TERISOLASI)
+  // FETCH & MANAGE WORKSPACES (PERSISTENCE VIA LOCALSTORAGE)
   const fetchUserWorkspaces = async (userId: string, userProfileRole?: string) => {
     try {
-      // 1. Query workspace_members joining workspaces
+      // Query workspace_members joining workspaces
       const { data: memberData, error: mErr } = await supabase
         .from('workspace_members')
         .select(`
@@ -396,54 +440,35 @@ export const App: React.FC = () => {
           }));
       }
 
-      // If user has no workspace yet, create a default workspace "Workspace Utama"
-      if (loadedWorkspaces.length === 0) {
-        console.log("Belum ada workspace, membuat Workspace Utama...");
-        const initialRole = userProfileRole === 'owner' ? 'po' : 'member';
-        
-        const { data: newWs, error: createWsErr } = await supabase
-          .from('workspaces')
-          .insert([{
-            name: 'Workspace Utama',
-            description: 'Workspace utama tim SyncFlow',
-            owner_id: userId
-          }])
-          .select()
-          .single();
-
-        if (!createWsErr && newWs) {
-          await supabase.from('workspace_members').insert([{
-            workspace_id: newWs.id,
-            user_id: userId,
-            role: initialRole
-          }]);
-
-          const createdWorkspaceObj: Workspace = { ...newWs, role: initialRole };
-          loadedWorkspaces = [createdWorkspaceObj];
-        }
-      }
-
       setUserWorkspaces(loadedWorkspaces);
 
       if (loadedWorkspaces.length > 0) {
-        const activeWs = loadedWorkspaces[0];
+        // WORKSPACE PERSISTENCE: Baca dari localStorage agar tidak ter-reset saat refresh
+        const savedWsId = localStorage.getItem('syncflow_active_ws');
+        const foundSaved = savedWsId ? loadedWorkspaces.find(w => w.id === savedWsId) : null;
+        const activeWs = foundSaved || loadedWorkspaces[0];
+
         setCurrentWorkspace(activeWs);
         setActiveWorkspaceRole(activeWs.role || (userProfileRole === 'owner' ? 'po' : 'member'));
+        localStorage.setItem('syncflow_active_ws', activeWs.id);
+      } else {
+        setCurrentWorkspace(null);
       }
     } catch (err: any) {
       console.error("Fetch workspaces error:", err);
     }
   };
 
-  // SWITCH WORKSPACE HANDLER
+  // SWITCH WORKSPACE HANDLER WITH LOCALSTORAGE PERSISTENCE
   const handleSelectWorkspace = (ws: Workspace) => {
     setCurrentWorkspace(ws);
     setActiveWorkspaceRole(ws.role || (profile?.role === 'owner' ? 'po' : 'member'));
     setIsWorkspaceMenuOpen(false);
+    localStorage.setItem('syncflow_active_ws', ws.id);
     showToast(`Beralih ke workspace: ${ws.name}`);
   };
 
-  // CREATE NEW WORKSPACE HANDLER
+  // CREATE NEW WORKSPACE HANDLER WITH LOCALSTORAGE PERSISTENCE
   const handleCreateWorkspaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newWorkspaceName.trim() || !session?.user?.id) return;
@@ -482,6 +507,7 @@ export const App: React.FC = () => {
         setIsCreateWorkspaceModalOpen(false);
         setNewWorkspaceName('');
         setNewWorkspaceDescription('');
+        localStorage.setItem('syncflow_active_ws', newWs.id);
         showToast(`✓ Workspace "${wsName}" berhasil dibuat!`);
       }
     } catch (err: any) {
@@ -493,11 +519,11 @@ export const App: React.FC = () => {
   // FETCHING PROJECT LINKS FROM SUPABASE (PUBLIC.PROJECT_LINKS - FILTERED BY WORKSPACE)
   const fetchProjectLinks = async (wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
+    if (!targetWsId) return;
+
     try {
       let query = supabase.from('project_links').select('*');
-      if (targetWsId) {
-        query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-      }
+      query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
 
       const { data, error } = await query.order('created_at', { ascending: true });
 
@@ -537,6 +563,8 @@ export const App: React.FC = () => {
   // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER (FILTERED BY WORKSPACE & ASSIGNEE)
   const fetchActiveTask = async (userId: string, wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
+    if (!targetWsId) return;
+
     try {
       let query = supabase
         .from('tasks')
@@ -544,9 +572,7 @@ export const App: React.FC = () => {
         .eq('assignee_id', userId)
         .in('status', ['in_progress', 'review', 'blocked']);
 
-      if (targetWsId) {
-        query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-      }
+      query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
 
       const { data, error } = await query
         .order('created_at', { ascending: false })
@@ -613,6 +639,8 @@ export const App: React.FC = () => {
   // 1. FETCH ALL TASKS & WORKSPACE MEMBERS FOR PO FEED & ASSIGNMENT DROPDOWN
   const fetchPOData = async (wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
+    if (!targetWsId) return;
+
     try {
       let query = supabase
         .from('tasks')
@@ -625,9 +653,7 @@ export const App: React.FC = () => {
           )
         `);
 
-      if (targetWsId) {
-        query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-      }
+      query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
 
       const { data: allTasksData, error: aErr } = await query.order('created_at', { ascending: false });
 
@@ -647,9 +673,7 @@ export const App: React.FC = () => {
         `)
         .or('status.eq.blocked,is_blocked.eq.true');
 
-      if (targetWsId) {
-        blockedQuery = blockedQuery.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-      }
+      blockedQuery = blockedQuery.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
 
       const { data: blockedData, error: bErr } = await blockedQuery.order('created_at', { ascending: false });
       if (bErr) console.error("Error fetching blocked tasks:", bErr.message);
@@ -667,9 +691,7 @@ export const App: React.FC = () => {
         `)
         .or('status.eq.review,status.eq.in_review,status.eq.UNDER_REVIEW');
 
-      if (targetWsId) {
-        reviewQuery = reviewQuery.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-      }
+      reviewQuery = reviewQuery.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
 
       const { data: reviewData, error: rErr } = await reviewQuery.order('created_at', { ascending: false });
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
@@ -753,9 +775,7 @@ export const App: React.FC = () => {
         pod: user.user_metadata?.pod || 'Product Builder',
       };
       setProfile(fallback);
-    } finally {
-      setAuthLoading(false);
-    }
+    } font-sans
   };
 
   // Auth Submit (Login / Sign Up)
@@ -801,9 +821,7 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       setAuthError(err.message || 'Terjadi kesalahan autentikasi.');
-    } finally {
-      setAuthLoading(false);
-    }
+    } font-sans
   };
 
   // Auth Sign Out
@@ -1562,7 +1580,7 @@ export const App: React.FC = () => {
               </span>
             </div>
 
-            {/* WORKSPACE SELECTOR DROPDOWN (1. REVISED EXACT UI) */}
+            {/* WORKSPACE SELECTOR DROPDOWN */}
             <div className="relative font-sans" ref={workspaceDropdownRef}>
               <button 
                 onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
@@ -1600,7 +1618,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK WORKSPACE ROLE PO DAN PL) */}
-          {isPoOrPlRole && (
+          {isPoOrPlRole && currentWorkspace && (
             <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
               <button
                 onClick={() => setViewMode('po')}
@@ -1658,9 +1676,14 @@ export const App: React.FC = () => {
         </header>
 
         {/* ========================================================================= */}
-        {/* VIEW ROUTER: STRICT ROLE-BASED ACCESS CONTROL GUARD (WORKSPACES) */}
+        {/* 1. WORKSPACE CONDITIONAL RENDERING GUARD (STRICT ONBOARDING STATE) */}
         {/* ========================================================================= */}
-        {!isPoOrPlRole || viewMode === 'member' ? (
+        {!currentWorkspace || userWorkspaces.length === 0 ? (
+          <NoWorkspaceView
+            onCreateWorkspace={() => setIsCreateWorkspaceModalOpen(true)}
+            profile={profile}
+          />
+        ) : !isPoOrPlRole || viewMode === 'member' ? (
           /* ========================================================================= */
           /* DASHBOARD MEMBER VIEW (RESPONSIVE BENTO GRID MOBILE & TABLET FRIENDLY) */
           /* ========================================================================= */
@@ -2280,7 +2303,7 @@ export const App: React.FC = () => {
                 </div>
 
                 <form onSubmit={handleCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
-                  {/* Dropdown Select Member (3. REVISED FORMAT) */}
+                  {/* Dropdown Select Member */}
                   <div className="space-y-1">
                     <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
                     <select
