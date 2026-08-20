@@ -203,6 +203,9 @@ export const App: React.FC = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
 
+  // 1. INITIAL APP & WORKSPACE LOADING STATE
+  const [isAppInitializing, setIsAppInitializing] = useState<boolean>(true);
+
   // MULTI-WORKSPACE STATES & WORKSPACE ROLE HIERARCHY
   const [userWorkspaces, setUserWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
@@ -333,7 +336,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. Fetch Session & Profile on Mount + Fetch Workspaces
+  // 1. Fetch Session & Profile on Mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -341,6 +344,7 @@ export const App: React.FC = () => {
         fetchOrCreateProfile(session.user);
       } else {
         setAuthLoading(false);
+        setIsAppInitializing(false);
       }
     });
 
@@ -354,18 +358,83 @@ export const App: React.FC = () => {
         setUserWorkspaces([]);
         setCurrentWorkspace(null);
         setAuthLoading(false);
+        setIsAppInitializing(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch Workspaces whenever profile or session is ready
+  // 2. LOGIKA INIT WORKSPACES & LOCALSTORAGE PERSISTENCE (EXACT LIFECYCLE REWRITE)
   useEffect(() => {
+    const initUserDataAndWorkspaces = async () => {
+      const userId = session?.user?.id;
+      if (!userId) {
+        setIsAppInitializing(false);
+        return;
+      }
+
+      setIsAppInitializing(true);
+      try {
+        // 1. Fetch workspace di mana user menjadi anggota
+        const { data: memberRows, error } = await supabase
+          .from('workspace_members')
+          .select(`
+            role,
+            pod,
+            workspaces:workspace_id (
+              id,
+              name,
+              description,
+              owner_id,
+              created_at
+            )
+          `)
+          .eq('user_id', userId);
+
+        if (error) throw error;
+
+        const accessibleWorkspaces: Workspace[] = (memberRows || [])
+          .filter((row: any) => row.workspaces !== null && row.workspaces !== undefined)
+          .map((row: any) => ({
+            ...(row.workspaces as any),
+            role: row.role as 'po' | 'pl' | 'member',
+            pod: row.pod
+          }));
+
+        setUserWorkspaces(accessibleWorkspaces);
+
+        // 2. Baca workspace terakhir dari LocalStorage
+        const savedWsId = localStorage.getItem('syncflow_active_ws');
+        const matchedWs = savedWsId ? accessibleWorkspaces.find(ws => ws.id === savedWsId) : null;
+
+        if (matchedWs) {
+          // Pakai workspace terakhir yang disimpan
+          setCurrentWorkspace(matchedWs);
+          setActiveWorkspaceRole(matchedWs.role || (profile?.role === 'owner' ? 'po' : 'member'));
+        } else if (accessibleWorkspaces.length > 0) {
+          // Fallback ke workspace pertama jika yang di localstorage tidak cocok
+          setCurrentWorkspace(accessibleWorkspaces[0]);
+          setActiveWorkspaceRole(accessibleWorkspaces[0].role || (profile?.role === 'owner' ? 'po' : 'member'));
+          localStorage.setItem('syncflow_active_ws', accessibleWorkspaces[0].id);
+        } else {
+          // User benar-benar belum punya workspace
+          setCurrentWorkspace(null);
+          localStorage.removeItem('syncflow_active_ws');
+        }
+      } catch (err) {
+        console.error("Gagal inisialisasi workspace:", err);
+      } finally {
+        setIsAppInitializing(false);
+      }
+    };
+
     if (session?.user && profile) {
-      fetchUserWorkspaces(session.user.id, profile.role);
+      initUserDataAndWorkspaces();
+    } else if (!authLoading && !session) {
+      setIsAppInitializing(false);
     }
-  }, [session, profile]);
+  }, [session?.user?.id, profile?.id, authLoading]);
 
   // 2. STATE RESET SAAT SWITCH ATAU BUAT WORKSPACE & SCOPED FETCHING
   useEffect(() => {
@@ -465,64 +534,12 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // 1. HARD-FILTER WORKSPACE PER USER LOGIN (HANYA WORKSPACE DI MANA USER TERDAFTAR)
-  const fetchUserWorkspaces = async (userId: string, userProfileRole?: string) => {
-    try {
-      const { data: memberRows, error } = await supabase
-        .from('workspace_members')
-        .select(`
-          role,
-          pod,
-          workspaces:workspace_id (
-            id,
-            name,
-            description,
-            owner_id,
-            created_at
-          )
-        `)
-        .eq('user_id', userId);
-
-      if (error) {
-        console.warn("Gagal fetch workspace_members:", error.message);
-      }
-
-      // Map data ke format list workspace yang valid
-      const accessibleWorkspaces: Workspace[] = memberRows
-        ?.filter((row: any) => row.workspaces !== null && row.workspaces !== undefined)
-        .map((row: any) => ({
-          ...row.workspaces,
-          role: row.role as 'po' | 'pl' | 'member',
-          pod: row.pod
-        })) || [];
-
-      setUserWorkspaces(accessibleWorkspaces);
-
-      if (accessibleWorkspaces.length > 0) {
-        // WORKSPACE PERSISTENCE: Baca dari localStorage agar tidak ter-reset saat refresh
-        const savedWsId = localStorage.getItem('syncflow_active_ws');
-        const foundSaved = savedWsId ? accessibleWorkspaces.find(w => w.id === savedWsId) : null;
-        const activeWs = foundSaved || accessibleWorkspaces[0];
-
-        setCurrentWorkspace(activeWs);
-        setActiveWorkspaceRole(activeWs.role || (userProfileRole === 'owner' ? 'po' : 'member'));
-        localStorage.setItem('syncflow_active_ws', activeWs.id);
-      } else {
-        setCurrentWorkspace(null);
-      }
-    } catch (err: any) {
-      console.error("Fetch workspaces error:", err);
-      setUserWorkspaces([]);
-      setCurrentWorkspace(null);
-    }
-  };
-
-  // SWITCH WORKSPACE HANDLER WITH LOCALSTORAGE PERSISTENCE
+  // 3. GANTI ACTIVE WORKSPACE HANDLER (WITH LOCALSTORAGE PERSISTENCE)
   const handleSelectWorkspace = (ws: Workspace) => {
     setCurrentWorkspace(ws);
     setActiveWorkspaceRole(ws.role || (profile?.role === 'owner' ? 'po' : 'member'));
-    setIsWorkspaceMenuOpen(false);
     localStorage.setItem('syncflow_active_ws', ws.id);
+    setIsWorkspaceMenuOpen(false);
     showToast(`Beralih ke workspace: ${ws.name}`);
   };
 
@@ -1548,7 +1565,7 @@ export const App: React.FC = () => {
     }
   });
 
-  // Loading Screen
+  // Auth Session Loading Screen
   if (authLoading && !session) {
     return (
       <div className="min-h-screen w-full bg-[#0a0a0c] text-white flex items-center justify-center font-sans">
@@ -1688,6 +1705,18 @@ export const App: React.FC = () => {
               {isSignUp ? 'Sudah punya akun? Masuk' : 'Belum punya akun? Daftar disini'}
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 1 & 4. INITIAL WORKSPACE LOADING SKELETON / SPINNER GUARD
+  if (isAppInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c] text-white/50 text-xs font-sans">
+        <div className="flex items-center gap-2 font-sans">
+          <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
+          <span>Memuat Workspace...</span>
         </div>
       </div>
     );
@@ -2801,7 +2830,7 @@ export const App: React.FC = () => {
                 </div>
 
                 {availableProfilesToInvite.length === 0 ? (
-                  <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center">
+                  <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center font-sans">
                     Semua akun terdaftar sudah bergabung di workspace ini.
                   </div>
                 ) : (
