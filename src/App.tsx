@@ -341,14 +341,22 @@ export const App: React.FC = () => {
     }
   }, [session, profile]);
 
-  // Fetch Workspace-Scoped Data whenever currentWorkspace changes
+  // 2. STATE RESET SAAT SWITCH ATAU BUAT WORKSPACE & SCOPED FETCHING
   useEffect(() => {
     if (session?.user && currentWorkspace?.id) {
+      // Immediate State Reset untuk mencegah data lama dari workspace lain tampil!
+      setAllTasks([]);
+      setBlockedTasks([]);
+      setReviewTasks([]);
+      setProjectLinks([]);
+      setActiveTask(null);
+
+      // Fetch data baru khusus untuk workspace terpilih
       fetchActiveTask(session.user.id, currentWorkspace.id);
       fetchProjectLinks(currentWorkspace.id);
       fetchPOData(currentWorkspace.id);
     }
-  }, [currentWorkspace, session]);
+  }, [currentWorkspace?.id, session?.user?.id]);
 
   // FORCE DEFAULT VIEW BERDASARKAN ROLE WORKSPACE (ANTI-FLASH)
   useEffect(() => {
@@ -361,29 +369,39 @@ export const App: React.FC = () => {
     }
   }, [profile, activeWorkspaceRole, currentWorkspace]);
 
-  // 3. SUPABASE REALTIME SUBSCRIPTION FOR TASKS & PROJECT_LINKS
+  // 4. REALTIME LISTENER SCOPE WITH WORKSPACE_ID FILTER
   useEffect(() => {
     if (!session?.user || !currentWorkspace?.id) return;
 
+    const wsId = currentWorkspace.id;
+
     const channel = supabase
-      .channel('syncflow-realtime-channel')
+      .channel(`syncflow-realtime-ws-${wsId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks' },
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'tasks',
+          filter: `workspace_id=eq.${wsId}`
+        },
         (payload) => {
-          console.log('Realtime task change received:', payload);
-          if (isPoOrPlRole && currentWorkspace?.id) fetchPOData(currentWorkspace.id);
-          if (session?.user?.id && currentWorkspace?.id) {
-            fetchActiveTask(session.user.id, currentWorkspace.id);
-          }
+          console.log('Realtime task change received for workspace:', wsId, payload);
+          if (isPoOrPlRole) fetchPOData(wsId);
+          if (session?.user?.id) fetchActiveTask(session.user.id, wsId);
         }
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'project_links' },
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'project_links',
+          filter: `workspace_id=eq.${wsId}`
+        },
         (payload) => {
-          console.log('Realtime project_links change received:', payload);
-          if (currentWorkspace?.id) fetchProjectLinks(currentWorkspace.id);
+          console.log('Realtime project_links change received for workspace:', wsId, payload);
+          fetchProjectLinks(wsId);
         }
       )
       .subscribe();
@@ -391,7 +409,7 @@ export const App: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session, isPoOrPlRole, currentWorkspace]);
+  }, [session?.user?.id, currentWorkspace?.id, isPoOrPlRole]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -526,38 +544,27 @@ export const App: React.FC = () => {
     }
   };
 
-  // FETCHING PROJECT LINKS FROM SUPABASE (PUBLIC.PROJECT_LINKS - FILTERED BY WORKSPACE)
+  // 1. HARD-FILTER FETCHING PROJECT LINKS (PER WORKSPACE ID)
   const fetchProjectLinks = async (wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
 
     try {
-      let query = supabase.from('project_links').select('*');
-      query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-
-      const { data, error } = await query.order('created_at', { ascending: true });
+      const { data, error } = await supabase
+        .from('project_links')
+        .select('*')
+        .eq('workspace_id', targetWsId)
+        .order('created_at', { ascending: true });
 
       if (error) {
         console.warn("Gagal fetch project_links:", error.message);
-        setProjectLinks([
-          { id: '1', title: 'Drive Proyek', url: 'https://drive.google.com', icon_type: 'drive' },
-          { id: '2', title: 'Figma UI/UX', url: 'https://figma.com', icon_type: 'figma' },
-          { id: '3', title: 'Repository Code', url: 'https://github.com/khafid7006/syncflow-app', icon_type: 'github' },
-        ]);
-      } else if (data && data.length > 0) {
+        setProjectLinks([]);
+      } else if (data) {
         setProjectLinks(data as ProjectLink[]);
-      } else {
-        const defaults: ProjectLink[] = [
-          { workspace_id: targetWsId, title: 'Drive Proyek', url: 'https://drive.google.com', icon_type: 'drive' },
-          { workspace_id: targetWsId, title: 'Figma UI/UX', url: 'https://figma.com', icon_type: 'figma' },
-          { workspace_id: targetWsId, title: 'Repository Code', url: 'https://github.com/khafid7006/syncflow-app', icon_type: 'github' },
-        ];
-        const { data: insertedData } = await supabase.from('project_links').insert(defaults).select();
-        if (insertedData) setProjectLinks(insertedData as ProjectLink[]);
-        else setProjectLinks(defaults);
       }
     } catch (err: any) {
       console.error("Fetch project_links error:", err);
+      setProjectLinks([]);
     }
   };
 
@@ -570,21 +577,18 @@ export const App: React.FC = () => {
     return <LinkIcon className="w-3.5 h-3.5" />;
   };
 
-  // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER (FILTERED BY WORKSPACE & ASSIGNEE)
+  // 1. HARD-FILTER FETCHING ACTIVE TASK FOR MEMBER (PER WORKSPACE ID & ASSIGNEE ID)
   const fetchActiveTask = async (userId: string, wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
 
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('tasks')
         .select('*')
+        .eq('workspace_id', targetWsId)
         .eq('assignee_id', userId)
-        .in('status', ['in_progress', 'review', 'blocked']);
-
-      query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-
-      const { data, error } = await query
+        .in('status', ['in_progress', 'review', 'blocked'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -646,13 +650,14 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. FETCH ALL TASKS & WORKSPACE MEMBERS FOR PO FEED & ASSIGNMENT DROPDOWN
+  // 1. HARD-FILTER FETCHING PO DATA (PER WORKSPACE ID)
   const fetchPOData = async (wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
 
     try {
-      let query = supabase
+      // Fetch all tasks for PO Feed
+      const { data: allTasksData, error: aErr } = await supabase
         .from('tasks')
         .select(`
           *,
@@ -661,17 +666,15 @@ export const App: React.FC = () => {
             full_name,
             pod
           )
-        `);
-
-      query = query.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-
-      const { data: allTasksData, error: aErr } = await query.order('created_at', { ascending: false });
+        `)
+        .eq('workspace_id', targetWsId)
+        .order('created_at', { ascending: false });
 
       if (aErr) console.error("Error fetching all tasks:", aErr.message);
       if (allTasksData) setAllTasks(allTasksData);
 
       // Fetch blocked tasks
-      let blockedQuery = supabase
+      const { data: blockedData, error: bErr } = await supabase
         .from('tasks')
         .select(`
           *,
@@ -681,15 +684,14 @@ export const App: React.FC = () => {
             pod
           )
         `)
-        .or('status.eq.blocked,is_blocked.eq.true');
+        .eq('workspace_id', targetWsId)
+        .or('status.eq.blocked,is_blocked.eq.true')
+        .order('created_at', { ascending: false });
 
-      blockedQuery = blockedQuery.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-
-      const { data: blockedData, error: bErr } = await blockedQuery.order('created_at', { ascending: false });
       if (bErr) console.error("Error fetching blocked tasks:", bErr.message);
 
       // Fetch review tasks
-      let reviewQuery = supabase
+      const { data: reviewData, error: rErr } = await supabase
         .from('tasks')
         .select(`
           *,
@@ -699,34 +701,31 @@ export const App: React.FC = () => {
             pod
           )
         `)
-        .or('status.eq.review,status.eq.in_review,status.eq.UNDER_REVIEW');
+        .eq('workspace_id', targetWsId)
+        .or('status.eq.review,status.eq.in_review,status.eq.UNDER_REVIEW')
+        .order('created_at', { ascending: false });
 
-      reviewQuery = reviewQuery.or(`workspace_id.eq.${targetWsId},workspace_id.is.null`);
-
-      const { data: reviewData, error: rErr } = await reviewQuery.order('created_at', { ascending: false });
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
 
       // FIX DROPDOWN PENUGASAN: FETCH MEMBERS DARI PUBLIC.WORKSPACE_MEMBERS DENGAN FALLBACK PROFILES
       let parsedMembers: UserProfile[] = [];
 
-      if (targetWsId) {
-        const { data: wsMembers, error: wmErr } = await supabase
-          .from('workspace_members')
-          .select(`
-            user_id,
-            role,
-            profiles:user_id (id, full_name, email, pod, role)
-          `)
-          .eq('workspace_id', targetWsId);
+      const { data: wsMembers, error: wmErr } = await supabase
+        .from('workspace_members')
+        .select(`
+          user_id,
+          role,
+          profiles:user_id (id, full_name, email, pod, role)
+        `)
+        .eq('workspace_id', targetWsId);
 
-        if (!wmErr && wsMembers && wsMembers.length > 0) {
-          parsedMembers = wsMembers.map((item: any) => ({
-            id: item.profiles?.id || item.user_id,
-            full_name: item.profiles?.full_name || 'Anggota Tim',
-            role: item.role || item.profiles?.role || 'member',
-            pod: item.profiles?.pod || 'Product Builder'
-          }));
-        }
+      if (!wmErr && wsMembers && wsMembers.length > 0) {
+        parsedMembers = wsMembers.map((item: any) => ({
+          id: item.profiles?.id || item.user_id,
+          full_name: item.profiles?.full_name || 'Anggota Tim',
+          role: item.role || item.profiles?.role || 'member',
+          pod: item.profiles?.pod || 'Product Builder'
+        }));
       }
 
       // Fallback jika workspace_members kosong
@@ -847,7 +846,7 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // MODAL KELOLA TAUTAN TIM (FULL CRUD FOR PO VIEW)
+  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (KELOLA TAUTAN TIM)
   const handleOpenManageLinksModal = () => {
     setEditableLinks(JSON.parse(JSON.stringify(projectLinks)));
     setIsManageLinksModalOpen(true);
@@ -873,6 +872,7 @@ export const App: React.FC = () => {
 
   const handleSaveAllLinks = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentWorkspace?.id) return;
 
     const validLinks = editableLinks.filter(l => l.title.trim().length > 0 && l.url.trim().length > 0);
 
@@ -884,7 +884,7 @@ export const App: React.FC = () => {
             .update({ 
               title: link.title.trim(), 
               url: link.url.trim(),
-              workspace_id: currentWorkspace?.id
+              workspace_id: currentWorkspace.id
             })
             .eq('id', link.id);
         } else {
@@ -893,14 +893,14 @@ export const App: React.FC = () => {
             .insert([{ 
               title: link.title.trim(), 
               url: link.url.trim(),
-              workspace_id: currentWorkspace?.id
+              workspace_id: currentWorkspace.id
             }]);
         }
       }
 
       showToast('Daftar tautan tim berhasil diperbarui!');
       setIsManageLinksModalOpen(false);
-      if (currentWorkspace?.id) fetchProjectLinks(currentWorkspace.id);
+      fetchProjectLinks(currentWorkspace.id);
     } catch (err: any) {
       console.error("Save links error:", err);
       showToast(`Gagal menyimpan tautan: ${err.message || err}`);
@@ -934,7 +934,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // MEMBER: SUBMIT DELIVERABLE LINK (FEEDBACK TOAST: "✓ Hasil tugas berhasil dikirim untuk ditinjau")
+  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (SUBMIT DELIVERABLE LINK MEMBER)
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -944,7 +944,7 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (!deliverableUrl.trim() || !session?.user?.id) return;
+    if (!deliverableUrl.trim() || !session?.user?.id || !currentWorkspace?.id) return;
 
     const linkInput = deliverableUrl.trim();
     const nowIso = new Date().toISOString();
@@ -954,6 +954,7 @@ export const App: React.FC = () => {
         const { data, error } = await supabase
           .from('tasks')
           .update({ 
+            workspace_id: currentWorkspace.id,
             deliverable_link: linkInput,
             deliverable_url: linkInput,
             submitted_at: nowIso,
@@ -962,8 +963,7 @@ export const App: React.FC = () => {
             revision_note: null,
             resolution_note: null,
             blocker_reason: null,
-            is_blocked: false,
-            workspace_id: currentWorkspace?.id
+            is_blocked: false
           })
           .eq('id', activeTask.id)
           .select();
@@ -983,8 +983,8 @@ export const App: React.FC = () => {
         const { data, error } = await supabase
           .from('tasks')
           .insert({
+            workspace_id: currentWorkspace.id,
             assignee_id: session.user.id,
-            workspace_id: currentWorkspace?.id,
             title: taskTitle || 'Buat Halaman Pembayaran Aplikasi',
             deliverable_link: linkInput,
             deliverable_url: linkInput,
@@ -1021,10 +1021,10 @@ export const App: React.FC = () => {
     showToast('✓ Hasil tugas berhasil dikirim untuk ditinjau');
   };
 
-  // MEMBER: REPORT BLOCKER (FEEDBACK TOAST: "🚨 Kendala berhasil dilaporkan ke PO")
+  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (REPORT BLOCKER MEMBER)
   const handleReportBlockerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!blockerReason.trim() || !session?.user?.id) return;
+    if (!blockerReason.trim() || !session?.user?.id || !currentWorkspace?.id) return;
 
     const blockerInput = blockerReason.trim();
 
@@ -1033,6 +1033,7 @@ export const App: React.FC = () => {
         const { data, error } = await supabase
           .from('tasks')
           .update({ 
+            workspace_id: currentWorkspace.id,
             blocker_reason: blockerInput,
             is_blocked: true,
             status: 'blocked' 
@@ -1051,8 +1052,8 @@ export const App: React.FC = () => {
         const { data, error } = await supabase
           .from('tasks')
           .insert({
+            workspace_id: currentWorkspace.id,
             assignee_id: session.user.id,
-            workspace_id: currentWorkspace?.id,
             title: taskTitle || 'Tugas Member',
             blocker_reason: blockerInput,
             is_blocked: true,
@@ -1310,10 +1311,10 @@ export const App: React.FC = () => {
     setDodPoints(updated);
   };
 
-  // PO KIRIM TUGAS (AUTO-FOCUS & SMOOTH RESET FORM + WORKSPACE SCOPING)
+  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (PO KIRIM TUGAS BARU)
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
+    if (!selectedAssigneeId || !newAssignTaskTitle.trim() || !currentWorkspace?.id) return;
 
     const assigneeName = memberProfiles.find(m => m.id === selectedAssigneeId)?.full_name || 'Member';
 
@@ -1332,7 +1333,7 @@ export const App: React.FC = () => {
       const { error } = await supabase
         .from('tasks')
         .insert({
-          workspace_id: currentWorkspace?.id,
+          workspace_id: currentWorkspace.id,
           assignee_id: selectedAssigneeId,
           title: newAssignTaskTitle.trim(),
           description: newAssignDescription.trim() || null,
@@ -1362,7 +1363,7 @@ export const App: React.FC = () => {
           taskTitleInputRef.current?.focus();
         }, 100);
 
-        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
+        fetchPOData(currentWorkspace.id);
       }
     } catch (err: any) {
       console.error("Create task error:", err);
@@ -2563,7 +2564,7 @@ export const App: React.FC = () => {
 
       </div>
 
-      {/* MODAL BUAT WORKSPACE BARU (2. FEEDBACK VISUAL LOADING SPINNER & REWRITTEN ERROR HANDLER) */}
+      {/* MODAL BUAT WORKSPACE BARU */}
       {isCreateWorkspaceModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out font-sans">
           <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 font-sans text-xs">
