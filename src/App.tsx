@@ -584,14 +584,14 @@ export const App: React.FC = () => {
     }
   };
 
-  // 2. FITUR KELOLA ANGGOTA WORKSPACE: FETCH CURRENT MEMBERS & AVAILABLE UNINVITED PROFILES
+  // 1. FETCH DAFTAR ANGGOTA WORKSPACE & USER TERSEDIA (EXACT 2-STEP FETCHING)
   const fetchWorkspaceMembersAndAvailableProfiles = async (wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
 
     try {
-      // 1. Fetch current members in workspace_members
-      const { data: wmRows, error: wmErr } = await supabase
+      // 1. Ambil semua anggota yang SUDAH ADA di workspace saat ini
+      const { data: currentMembers, error: wmErr } = await supabase
         .from('workspace_members')
         .select(`
           id,
@@ -600,15 +600,15 @@ export const App: React.FC = () => {
           role,
           pod,
           created_at,
-          profiles:user_id (id, full_name, email, pod, role)
+          profiles:user_id (id, full_name, email)
         `)
         .eq('workspace_id', targetWsId);
 
       if (wmErr) console.error("Fetch workspace_members detail error:", wmErr.message);
 
-      const parsedMembers: WorkspaceMemberDetail[] = (wmRows || []).map((row: any) => ({
+      const parsedMembers: WorkspaceMemberDetail[] = (currentMembers || []).map((row: any) => ({
         id: row.id,
-        workspace_id: row.workspace_id,
+        workspace_id: targetWsId,
         user_id: row.user_id,
         role: row.role as 'po' | 'pl' | 'member',
         pod: row.pod || row.profiles?.pod || 'General',
@@ -618,7 +618,7 @@ export const App: React.FC = () => {
 
       setCurrentWorkspaceMembers(parsedMembers);
 
-      // 2. Fetch all profiles to find uninvited users
+      // 2. Ambil SEMUA akun dari tabel profiles
       const { data: allProfiles, error: pErr } = await supabase
         .from('profiles')
         .select('id, full_name, email, pod, role')
@@ -626,13 +626,14 @@ export const App: React.FC = () => {
 
       if (pErr) console.error("Fetch all profiles error:", pErr.message);
 
-      const memberUserIds = new Set(parsedMembers.map(m => m.user_id));
-      const uninvited = (allProfiles as UserProfile[] || []).filter(p => !memberUserIds.has(p.id));
+      // 3. Filter user yang BELUM terdaftar di workspace ini
+      const existingUserIds = new Set(parsedMembers.map(m => m.user_id));
+      const availableUsers = (allProfiles as UserProfile[] || []).filter(p => !existingUserIds.has(p.id));
 
-      setAvailableProfilesToInvite(uninvited);
-      if (uninvited.length > 0) {
-        setSelectedUserToInvite(uninvited[0].id);
-        setSelectedPodToInvite(uninvited[0].pod || 'Product Builder');
+      setAvailableProfilesToInvite(availableUsers);
+      if (availableUsers.length > 0) {
+        setSelectedUserToInvite(availableUsers[0].id);
+        setSelectedPodToInvite(availableUsers[0].pod || 'Product Builder');
       } else {
         setSelectedUserToInvite('');
       }
@@ -648,6 +649,7 @@ export const App: React.FC = () => {
     }
   };
 
+  // 4. EKSEKUSI INSERT & REALTIME SYNC (TAMBAH ANGGOTA KELOLA WORKSPACE)
   const handleAddMemberToWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserToInvite || !currentWorkspace?.id) return;
@@ -2743,7 +2745,7 @@ export const App: React.FC = () => {
             </div>
 
             <div className="space-y-4 flex-1 overflow-y-auto pr-1 font-sans">
-              {/* DAFTAR ANGGOTA SAAT INI */}
+              {/* DAFTAR ANGGOTA SAAT INI (KOLOM ATAS) */}
               <div className="space-y-2">
                 <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
                   Anggota Saat Ini ({currentWorkspaceMembers.length})
@@ -2760,7 +2762,7 @@ export const App: React.FC = () => {
                             {isSelf && <span className="text-[9px] bg-white/10 px-1.5 py-0.2 rounded text-zinc-400">(Anda)</span>}
                           </div>
                           <div className="text-[10px] text-zinc-400 truncate">
-                            {m.profiles?.email} • Pod: <span className="text-zinc-300">{m.pod}</span>
+                            {m.profiles?.email || 'Tanpa Email'} • Pod: <span className="text-zinc-300">{m.pod}</span>
                           </div>
                         </div>
 
@@ -2800,7 +2802,7 @@ export const App: React.FC = () => {
 
                 {availableProfilesToInvite.length === 0 ? (
                   <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center">
-                    Semua akun pengguna terdaftar telah dimasukkan ke dalam workspace ini.
+                    Semua akun terdaftar sudah bergabung di workspace ini.
                   </div>
                 ) : (
                   <form onSubmit={handleAddMemberToWorkspace} className="space-y-3 font-sans">
@@ -2818,7 +2820,7 @@ export const App: React.FC = () => {
                       >
                         {availableProfilesToInvite.map(p => (
                           <option key={p.id} value={p.id}>
-                            {p.full_name} ({p.email || 'Tanpa Email'}) — {p.pod || 'General'}
+                            {p.full_name} ({p.email || 'Tanpa Email'})
                           </option>
                         ))}
                       </select>
@@ -2850,6 +2852,7 @@ export const App: React.FC = () => {
                           <option value="BA">BA</option>
                           <option value="QA">QA</option>
                           <option value="Marketing">Marketing</option>
+                          <option value="UI/UX Designer">UI/UX Designer</option>
                           <option value="General">General</option>
                         </select>
                       </div>
