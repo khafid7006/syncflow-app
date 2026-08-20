@@ -25,8 +25,10 @@ export interface MemberTask {
   checklist?: { id: number; text: string; checked: boolean; is_checked?: boolean }[];
   created_at?: string;
   profiles?: {
+    id?: string;
     full_name?: string;
     pod?: string;
+    role?: string;
   };
 }
 
@@ -206,31 +208,47 @@ export const App: React.FC = () => {
     }
   };
 
-  // 2. FETCH DAFTAR MEMBER AKTIF FROM SUPABASE (select id, full_name, pod)
+  // 1. JOIN PROFIL DI RADAR KENDALA & REVIEW + 2. FETCH DROPDOWN MEMBER AKTIF
   const fetchPOData = async () => {
     try {
-      // Fetch blocked tasks
+      // 1. Fetch blocked tasks with explicit profiles:assignee_id join
       const { data: blockedData, error: bErr } = await supabase
         .from('tasks')
-        .select('*, profiles(full_name, pod)')
+        .select(`
+          *,
+          profiles:assignee_id (
+            id,
+            full_name,
+            pod,
+            role
+          )
+        `)
         .or('status.eq.blocked,is_blocked.eq.true')
         .order('created_at', { ascending: false });
 
       if (bErr) console.error("Error fetching blocked tasks:", bErr.message);
 
-      // Fetch review tasks
+      // 1. Fetch review tasks with explicit profiles:assignee_id join
       const { data: reviewData, error: rErr } = await supabase
         .from('tasks')
-        .select('*, profiles(full_name, pod)')
+        .select(`
+          *,
+          profiles:assignee_id (
+            id,
+            full_name,
+            pod,
+            role
+          )
+        `)
         .or('status.eq.review,status.eq.UNDER_REVIEW')
         .order('created_at', { ascending: false });
 
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
 
-      // Query: supabase.from('profiles').select('id, full_name, pod').order('full_name')
+      // 2. Query all users from public.profiles: select('id, full_name, pod, role').order('full_name')
       const { data: membersData, error: mErr } = await supabase
         .from('profiles')
-        .select('id, full_name, pod')
+        .select('id, full_name, pod, role')
         .order('full_name', { ascending: true });
 
       if (mErr) console.error("Error fetching members:", mErr.message);
@@ -239,7 +257,7 @@ export const App: React.FC = () => {
       if (reviewData) setReviewTasks(reviewData);
       if (membersData) {
         setMemberProfiles(membersData as UserProfile[]);
-        if (membersData.length > 0 && !selectedAssigneeId) {
+        if (membersData.length > 0 && (!selectedAssigneeId || !membersData.some(m => m.id === selectedAssigneeId))) {
           setSelectedAssigneeId(membersData[0].id);
         }
       }
@@ -549,7 +567,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. DYNAMIC DOD LIST HELPERS (MAX 10 POINTS)
+  // DYNAMIC DOD LIST HELPERS
   const handleAddDodPoint = () => {
     if (dodPoints.length < 10) {
       setDodPoints([...dodPoints, '']);
@@ -568,12 +586,11 @@ export const App: React.FC = () => {
     setDodPoints(updated);
   };
 
-  // 1. CREATE NEW TASK WITH DYNAMIC DOD ARRAY SAVED TO SUPABASE
+  // 3. SUBMIT PENUGASAN CEPAT
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
 
-    // Format array of DoD points to save to checklist column: [{ text: "...", is_checked: false }, ...]
     const checklistItems = dodPoints
       .filter(p => p.trim().length > 0)
       .map((text, idx) => ({
@@ -589,8 +606,8 @@ export const App: React.FC = () => {
         .insert({
           assignee_id: selectedAssigneeId,
           title: newAssignTaskTitle.trim(),
-          status: 'in_progress',
           checklist: checklistItems,
+          status: 'in_progress',
         });
 
       if (error) {
@@ -905,9 +922,9 @@ export const App: React.FC = () => {
                         {blockedTasks.map(t => (
                           <div key={t.id} className="p-3.5 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-2 text-xs font-sans">
                             <div className="flex items-center justify-between">
-                              <span className="font-bold text-white">{t.profiles?.full_name || 'Member'}</span>
+                              <span className="font-bold text-white">{t.profiles?.full_name || 'Tanpa Nama'}</span>
                               <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
-                                {t.profiles?.pod || 'Pod'}
+                                {t.profiles?.pod || 'Divisi Tim'}
                               </span>
                             </div>
                             <p className="text-zinc-300 leading-relaxed font-sans bg-white/5 p-2 rounded-xl border border-white/5 text-[11px]">
@@ -942,9 +959,9 @@ export const App: React.FC = () => {
                   </div>
 
                   <form onSubmit={handleCreateNewTask} className="space-y-3 my-auto py-2 font-sans">
-                    {/* 2. DROPDOWN FIX: Format Label "[Nama] — [Pod]" from public.profiles */}
+                    {/* 2. FETCH DROPDOWN: Render {member.full_name} — {member.pod} */}
                     <div className="space-y-1">
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Member</label>
+                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
                       <select
                         value={selectedAssigneeId}
                         onChange={e => setSelectedAssigneeId(e.target.value)}
@@ -955,7 +972,7 @@ export const App: React.FC = () => {
                         ) : (
                           memberProfiles.map(m => (
                             <option key={m.id} value={m.id}>
-                              {m.full_name} — {m.pod || 'Pod'}
+                              {m.full_name || 'Tanpa Nama'} — {m.pod || 'Divisi Tim'}
                             </option>
                           ))
                         )}
@@ -974,7 +991,7 @@ export const App: React.FC = () => {
                       />
                     </div>
 
-                    {/* 1. DYNAMIC DOD CHECKLIST LIST (MAX 10 POINTS) */}
+                    {/* DYNAMIC DOD CHECKLIST LIST */}
                     <div className="space-y-1.5 pt-1">
                       <div className="flex items-center justify-between">
                         <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
@@ -1078,7 +1095,9 @@ export const App: React.FC = () => {
                           <div className="flex items-center justify-between">
                             <div>
                               <div className="font-bold text-white">{t.title}</div>
-                              <div className="text-[11px] text-zinc-400">{t.profiles?.full_name || 'Member'} • {t.profiles?.pod || 'Pod'}</div>
+                              <div className="text-[11px] text-zinc-400">
+                                {t.profiles?.full_name || 'Tanpa Nama'} • {t.profiles?.pod || 'Divisi Tim'}
+                              </div>
                             </div>
                             {(t.deliverable_link || t.deliverable_url) && (
                               <a
