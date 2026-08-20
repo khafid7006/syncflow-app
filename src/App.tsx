@@ -550,6 +550,13 @@ export const App: React.FC = () => {
     };
   }, [session?.user?.id, currentWorkspace?.id, isPoOrPlRole]);
 
+  // AUTO FETCH REFRESH MEMBERS WHEN MANAGE MEMBERS MODAL OPENS
+  useEffect(() => {
+    if (isManageMembersModalOpen && currentWorkspace?.id) {
+      fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
+    }
+  }, [isManageMembersModalOpen, currentWorkspace?.id]);
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -676,15 +683,14 @@ export const App: React.FC = () => {
     if (!targetWsId) return;
 
     try {
-      // 1. Ambil seluruh profil akun yang sudah terdaftar di SyncFlow
+      // 1. Ambil seluruh akun profil terdaftar
       const { data: allProfiles, error: profErr } = await supabase
         .from('profiles')
-        .select('id, full_name, email, pod, role')
-        .order('full_name', { ascending: true });
+        .select('id, full_name, email, pod, role');
 
       if (profErr) throw profErr;
 
-      // 2. Ambil list anggota yang sudah masuk workspace ini
+      // 2. Ambil list anggota yang sudah tergabung di workspace aktif
       const { data: wsMembers, error: memErr } = await supabase
         .from('workspace_members')
         .select(`
@@ -699,6 +705,9 @@ export const App: React.FC = () => {
 
       if (memErr) throw memErr;
 
+      console.log("Semua profiles terdaftar:", allProfiles);
+      console.log("Anggota workspace saat ini:", wsMembers);
+
       const parsedMembers: WorkspaceMemberDetail[] = (wsMembers || []).map((row: any) => ({
         id: row.id,
         workspace_id: targetWsId,
@@ -711,9 +720,9 @@ export const App: React.FC = () => {
 
       setCurrentWorkspaceMembers(parsedMembers);
 
-      // 3. Filter: User yang belum masuk ke workspace ini
-      const enrolledUserIds = new Set((wsMembers || []).map(m => m.user_id));
-      const unenrolledProfiles = (allProfiles || []).filter(p => !enrolledUserIds.has(p.id));
+      // 3. Filter akun yang BELUM masuk ke workspace ini
+      const enrolledIds = new Set((wsMembers || []).map((m: any) => m.user_id));
+      const unenrolledProfiles = (allProfiles || []).filter((p: any) => !enrolledIds.has(p.id));
 
       setAvailableProfilesToInvite(unenrolledProfiles as UserProfile[]);
       if (unenrolledProfiles.length > 0) {
@@ -723,7 +732,7 @@ export const App: React.FC = () => {
         setSelectedUserToInvite('');
       }
     } catch (err: any) {
-      console.error("Gagal memuat daftar anggota:", err.message || err);
+      console.error("Gagal sinkronisasi data anggota:", err.message || err);
     }
   };
 
@@ -2926,7 +2935,7 @@ export const App: React.FC = () => {
 
                 {availableProfilesToInvite.length === 0 ? (
                   <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center font-sans">
-                    Semua akun terdaftar sudah bergabung di workspace ini.
+                    Semua akun terdaftar sudah bergabung di dalam workspace ini.
                   </div>
                 ) : (
                   <form onSubmit={handleAddMemberToWorkspace} className="space-y-3 font-sans">
@@ -2940,11 +2949,12 @@ export const App: React.FC = () => {
                           const p = availableProfilesToInvite.find(x => x.id === e.target.value);
                           if (p?.pod) setSelectedPodToInvite(p.pod);
                         }}
-                        className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                        className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
                       >
-                        {availableProfilesToInvite.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.full_name || 'Tanpa Nama'} — {p.email || 'Tanpa Email'}
+                        <option value="" disabled>Pilih akun terdaftar...</option>
+                        {availableProfilesToInvite.map(u => (
+                          <option key={u.id} value={u.id} className="bg-zinc-950 text-white">
+                            {u.full_name || 'Tanpa Nama'} ({u.email || 'Tanpa Email'})
                           </option>
                         ))}
                       </select>
@@ -2957,7 +2967,7 @@ export const App: React.FC = () => {
                         <select
                           value={selectedRoleToInvite}
                           onChange={e => setSelectedRoleToInvite(e.target.value as any)}
-                          className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                          className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
                         >
                           <option value="member">Member Tim (Pelaksana)</option>
                           <option value="pl">Project Leader (PL)</option>
@@ -2970,10 +2980,10 @@ export const App: React.FC = () => {
                         <select
                           value={selectedPodToInvite}
                           onChange={e => setSelectedPodToInvite(e.target.value)}
-                          className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                          className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
                         >
-                          <option value="Marketing">Marketing</option>
                           <option value="Product Builder">Product Builder</option>
+                          <option value="Marketing">Marketing</option>
                           <option value="UI/UX Designer">UI/UX Designer</option>
                           <option value="General">General</option>
                         </select>
@@ -2983,7 +2993,7 @@ export const App: React.FC = () => {
                     <button
                       type="submit"
                       disabled={isAddingMember || !selectedUserToInvite}
-                      className="w-full py-2.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full py-2 px-4 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       {isAddingMember ? 'Menambahkan...' : '+ Tambahkan ke Workspace'}
                     </button>
