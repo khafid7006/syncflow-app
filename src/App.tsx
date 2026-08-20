@@ -342,6 +342,8 @@ export const App: React.FC = () => {
   // PO Quick Assignment Form states (Dynamic DoD list, Description, max 10 points & Due Date)
   const taskTitleInputRef = useRef<HTMLInputElement>(null);
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
+  const [assigneeList, setAssigneeList] = useState<any[]>([]);
+  const [isLoadingAssignees, setIsLoadingAssignees] = useState<boolean>(false);
   const [newAssignTaskTitle, setNewAssignTaskTitle] = useState<string>('');
   const [newAssignDescription, setNewAssignDescription] = useState<string>('');
   const [newAssignDueDate, setNewAssignDueDate] = useState<string>('');
@@ -653,6 +655,7 @@ export const App: React.FC = () => {
       fetchActiveTask(session.user.id, currentWorkspace.id);
       fetchProjectLinks(currentWorkspace.id);
       fetchPOData(currentWorkspace.id);
+      fetchWorkspaceAssignees(currentWorkspace.id);
     }
   }, [currentWorkspace?.id, session?.user?.id]);
 
@@ -1119,6 +1122,61 @@ export const App: React.FC = () => {
       if (reviewData) setReviewTasks(reviewData);
     } catch (err: any) {
       console.error('Fetch PO Data error:', err);
+    }
+  };
+
+  // 1. REFACTOR FUNGSI FETCH ASSIGNEES DI APP.TSX
+  const fetchWorkspaceAssignees = async (workspaceId: string) => {
+    if (!workspaceId) return;
+    setIsLoadingAssignees(true);
+
+    try {
+      // 1. Ambil membership di workspace ini
+      const { data: memberRows, error: memberErr } = await supabase
+        .from('workspace_members')
+        .select('user_id, role, pod')
+        .eq('workspace_id', workspaceId);
+
+      if (memberErr) throw memberErr;
+
+      if (!memberRows || memberRows.length === 0) {
+        setAssigneeList([]);
+        return;
+      }
+
+      // 2. Ambil detail profil user
+      const userIds = memberRows.map(m => m.user_id);
+      const { data: profilesData, error: profileErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, pod')
+        .in('id', userIds);
+
+      if (profileErr) throw profileErr;
+
+      const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
+
+      // 3. Gabungkan data anggota untuk dropdown
+      const formattedAssignees = memberRows.map(m => {
+        const p = profileMap.get(m.user_id);
+        return {
+          id: m.user_id,
+          full_name: p?.full_name || 'Anggota Tim',
+          email: p?.email || '',
+          pod: m.pod || p?.pod || 'General',
+          role: m.role || 'member'
+        };
+      });
+
+      setAssigneeList(formattedAssignees);
+
+      // Auto-select anggota pertama jika form belum memilih
+      if (formattedAssignees.length > 0) {
+        setSelectedAssigneeId(formattedAssignees[0].id);
+      }
+    } catch (err) {
+      console.error("Gagal load assignees:", err);
+    } finally {
+      setIsLoadingAssignees(false);
     }
   };
 
@@ -2738,15 +2796,18 @@ export const App: React.FC = () => {
                     <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
                     <select
                       value={selectedAssigneeId}
-                      onChange={e => setSelectedAssigneeId(e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 font-sans cursor-pointer"
+                      onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                      disabled={isLoadingAssignees || assigneeList.length === 0}
+                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-900 outline-hidden transition-all focus:border-zinc-400 focus:bg-white disabled:opacity-50 font-sans cursor-pointer"
                     >
-                      {memberProfiles.length === 0 ? (
+                      {isLoadingAssignees ? (
+                        <option value="">Memuat daftar tim...</option>
+                      ) : assigneeList.length === 0 ? (
                         <option value="">Belum ada anggota tim terdaftar...</option>
                       ) : (
-                        memberProfiles.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.full_name} — {m.pod || 'General'} ({ (m.role || 'member').toUpperCase() })
+                        assigneeList.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.full_name} — {member.pod} ({member.role.toUpperCase()})
                           </option>
                         ))
                       )}
