@@ -98,17 +98,27 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // Fetch Active Task for Member from Supabase
+  // 1. PASTIKAN QUERY FETCHING BEKERJA & LOGGING
   const fetchActiveTask = async (userId: string) => {
     try {
-      // Query: supabase.from('tasks').select('*').eq('assignee_id', user.id).neq('status', 'done').limit(1).single()
+      console.log("Current User ID:", userId);
+
+      // Query: select active task for logged in member
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
         .eq('assignee_id', userId)
         .neq('status', 'done')
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching task:", error);
+        showToast(`Error fetching task: ${error.message}`);
+      }
+
+      console.log("Fetched Task Data:", data);
 
       if (data) {
         setActiveTask(data);
@@ -129,9 +139,13 @@ export const App: React.FC = () => {
         if (data.blocker_reason) {
           setBlockerReason(data.blocker_reason);
         }
+
+        if (data.checklist && Array.isArray(data.checklist) && data.checklist.length > 0) {
+          setDodItems(data.checklist);
+        }
       }
-    } catch (err) {
-      console.warn('Fetch active task error:', err);
+    } catch (err: any) {
+      console.error('Fetch active task error:', err);
     }
   };
 
@@ -232,60 +246,89 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const toggleDod = (id: number) => {
-    setDodItems(dodItems.map(item => item.id === id ? { ...item, checked: !item.checked } : item));
+  // 4. FIX CENTANG CHECKLIST (DOD) & SUPABASE PERSISTENCE
+  const toggleDod = async (id: number) => {
+    const updatedItems = dodItems.map(item => item.id === id ? { ...item, checked: !item.checked } : item);
+    setDodItems(updatedItems);
+
+    if (activeTask?.id) {
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .update({ checklist: updatedItems })
+          .eq('id', activeTask.id);
+
+        if (error) {
+          console.error("Error updating checklist:", error);
+        }
+      } catch (err) {
+        console.error("Error updating checklist:", err);
+      }
+    }
   };
 
-  // 2. SUBMIT HASIL TUGAS (TOMBOL KIRIM) TO SUPABASE
-  // Update: { deliverable_link: url, status: 'review' }
+  // 2. FIX MUTASI TOMBOL KIRIM
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deliverableUrl.trim()) return;
 
-    const url = deliverableUrl.trim();
+    const linkUrl = deliverableUrl.trim();
 
     try {
       if (activeTask?.id) {
-        await supabase
+        const { error } = await supabase
           .from('tasks')
           .update({ 
-            deliverable_link: url,
-            deliverable_url: url, 
+            deliverable_link: linkUrl, 
             status: 'review' 
           })
           .eq('id', activeTask.id);
+
+        if (error) {
+          console.error("Error updating deliverable link:", error);
+          showToast(`Gagal kirim deliverable: ${error.message}`);
+          return;
+        }
       }
-    } catch (err) {
-      console.warn('Supabase update deliverable error:', err);
+    } catch (err: any) {
+      console.error('Supabase update deliverable error:', err);
+      showToast(`Gagal kirim deliverable: ${err.message || err}`);
+      return;
     }
 
-    setSubmittedUrl(url);
+    setSubmittedUrl(linkUrl);
     setTaskStatus('Sedang Ditinjau PO');
     setDeliverableUrl('');
     showToast('Hasil tugas berhasil dikirim & sedang ditinjau PO.');
   };
 
-  // 3. LAPORKAN KENDALA (TOMBOL BLOCKER) TO SUPABASE
-  // Update: { blocker_reason: text, status: 'blocked' }
+  // 3. FIX MUTASI LAPOR KENDALA
   const handleReportBlockerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!blockerReason.trim()) return;
 
-    const text = blockerReason.trim();
+    const reasonText = blockerReason.trim();
 
     try {
       if (activeTask?.id) {
-        await supabase
+        const { error } = await supabase
           .from('tasks')
           .update({ 
-            blocker_reason: text,
-            is_blocked: true,
+            blocker_reason: reasonText, 
             status: 'blocked' 
           })
           .eq('id', activeTask.id);
+
+        if (error) {
+          console.error("Error updating blocker reason:", error);
+          showToast(`Gagal lapor kendala: ${error.message}`);
+          return;
+        }
       }
-    } catch (err) {
-      console.warn('Supabase update blocker error:', err);
+    } catch (err: any) {
+      console.error('Supabase update blocker error:', err);
+      showToast(`Gagal lapor kendala: ${err.message || err}`);
+      return;
     }
 
     setTaskStatus('Terkendala (Blocker)');
@@ -606,7 +649,7 @@ export const App: React.FC = () => {
                   </h3>
                 </div>
 
-                {/* Form Input Clean & Update Supabase: { deliverable_link: url, status: 'review' } */}
+                {/* Form Input Clean & Update Supabase: { deliverable_link: linkUrl, status: 'review' } */}
                 <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2">
                   {submittedUrl ? (
                     <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
@@ -736,7 +779,7 @@ export const App: React.FC = () => {
 
       </div>
 
-      {/* MODAL LAPORKAN KENDALA (Update Supabase: { blocker_reason: text, status: 'blocked' }) */}
+      {/* MODAL LAPORKAN KENDALA (Update Supabase: { blocker_reason: reasonText, status: 'blocked' }) */}
       {isBlockerModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
