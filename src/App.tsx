@@ -1,80 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import { 
-  Layers, Check, Send, AlertTriangle, ExternalLink, 
-  Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
-  ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus,
-  GitBranch, Activity, Clock, CheckCircle, Sparkles, Trash2, Link as LinkIcon,
-  Calendar, Edit3, UserPlus, Users, Key
+  Layers, Check, ExternalLink, 
+  Figma, X, Mail,
+  RotateCcw, Link as LinkIcon
 } from 'lucide-react';
+import { 
+  UserProfile, Workspace, WorkspaceMemberDetail, 
+  MemberTask, ProjectLink 
+} from './types';
 
-export interface UserProfile {
-  id: string;
-  full_name: string;
-  email?: string;
-  role: 'member' | 'owner';
-  pod: 'Product Builder' | 'BA' | 'QA' | 'Marketing' | string;
-}
+// Import Layout Components
+import { Navbar } from './components/layout/Navbar';
+import { NoWorkspaceView } from './components/layout/NoWorkspaceView';
+import { PODashboard } from './components/dashboard/PODashboard';
+import { MemberDashboard } from './components/dashboard/MemberDashboard';
 
-export interface Workspace {
-  id: string;
-  name: string;
-  description?: string;
-  owner_id?: string;
-  role?: 'po' | 'pl' | 'member';
-  invite_code?: string;
-  created_at?: string;
-}
-
-export interface WorkspaceMemberDetail {
-  id?: string;
-  workspace_id: string;
-  user_id: string;
-  role: 'po' | 'pl' | 'member';
-  pod: string;
-  created_at?: string;
-  profiles?: {
-    id: string;
-    full_name: string;
-    email?: string;
-    pod?: string;
-    role?: string;
-  };
-}
-
-export interface MemberTask {
-  id?: string;
-  workspace_id?: string;
-  assignee_id?: string;
-  title: string;
-  description?: string;
-  status: string;
-  deliverable_link?: string;
-  deliverable_url?: string;
-  blocker_reason?: string;
-  is_blocked?: boolean;
-  revision_note?: string;
-  resolution_note?: string;
-  due_date?: string;
-  submitted_at?: string;
-  checklist?: { id: number; text: string; checked: boolean; is_checked?: boolean }[];
-  created_at?: string;
-  profiles?: {
-    id?: string;
-    full_name?: string;
-    pod?: string;
-    role?: string;
-  };
-}
-
-export interface ProjectLink {
-  id?: string;
-  workspace_id?: string;
-  title: string;
-  url: string;
-  icon_type?: string;
-  created_at?: string;
-}
+// Import Modal Components
+import { AccessCodeModal } from './components/modals/AccessCodeModal';
+import { CreateWorkspaceModal } from './components/modals/CreateWorkspaceModal';
+import { ManageMembersModal } from './components/modals/ManageMembersModal';
+import { ManageLinksModal } from './components/modals/ManageLinksModal';
+import { EditTaskModal } from './components/modals/EditTaskModal';
+import { ResolveBlockerModal } from './components/modals/ResolveBlockerModal';
+import { RevisionModal } from './components/modals/RevisionModal';
+import { ReportBlockerModal } from './components/modals/ReportBlockerModal';
 
 // FORMAT DEADLINE & TIMESTAMPS HELPERS
 const formatDeadline = (isoString?: string) => {
@@ -98,169 +48,48 @@ const getDeadlineStatus = (isoString?: string) => {
   const diffMs = deadline.getTime() - now.getTime();
   const diffHours = diffMs / (1000 * 60 * 60);
 
-  if (diffMs < 0) {
-    return 'overdue';
-  } else if (diffHours <= 2) {
-    return 'urgent';
-  }
+  if (diffMs < 0) return 'overdue';
+  if (diffHours <= 6) return 'urgent';
   return 'normal';
 };
 
-// BADGE DEADLINE RINGKAS & RELATIF WAKTU HELPER
 const getRelativeDeadlineString = (isoString?: string) => {
   if (!isoString) return null;
   const deadline = new Date(isoString);
-  if (isNaN(deadline.getTime())) return null;
-
   const now = new Date();
   const diffMs = deadline.getTime() - now.getTime();
-  const absDiffMs = Math.abs(diffMs);
-  const diffMinutes = Math.floor(absDiffMs / (1000 * 60));
-  const diffHours = Math.floor(absDiffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(absDiffMs / (1000 * 60 * 60 * 24));
-
-  const formattedDate = new Intl.DateTimeFormat('id-ID', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(deadline);
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
 
   if (diffMs < 0) {
-    let overdueLabel = '';
-    if (diffDays >= 1) overdueLabel = `Terlewat ${diffDays} hari`;
-    else if (diffHours >= 1) overdueLabel = `Terlewat ${diffHours} jam`;
-    else overdueLabel = `Terlewat ${diffMinutes} menit`;
-
-    return {
-      status: 'overdue',
-      text: `🔴 ${overdueLabel} (${formattedDate})`
-    };
+    const overdueHours = Math.abs(diffHours);
+    if (overdueHours < 24) return { text: `Terlewat ${overdueHours} jam`, status: 'overdue' };
+    return { text: `Terlewat ${Math.abs(diffDays)} hari`, status: 'overdue' };
   }
 
-  let remainingLabel = '';
-  if (diffDays >= 1) remainingLabel = `${diffDays} hari lagi`;
-  else if (diffHours >= 1) remainingLabel = `${diffHours} jam lagi`;
-  else remainingLabel = `${diffMinutes} menit lagi`;
+  if (diffHours < 1) {
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    return { text: `Sisa ${diffMins} menit`, status: 'urgent' };
+  }
 
-  const isUrgent = diffHours < 2;
+  if (diffHours <= 6) {
+    return { text: `Sisa ${diffHours} jam lagi`, status: 'urgent' };
+  }
 
-  return {
-    status: isUrgent ? 'urgent' : 'normal',
-    text: isUrgent
-      ? `⚠️ ${formattedDate} (${remainingLabel})`
-      : `📅 ${formattedDate} (${remainingLabel})`
-  };
+  if (diffHours < 24) {
+    return { text: `Sisa ${diffHours} jam lagi`, status: 'normal' };
+  }
+
+  return { text: `Sisa ${diffDays} hari lagi`, status: 'normal' };
 };
 
-// BENTO GRID KATALOG WORKSPACE DI NO-WORKSPACE VIEW (PIN-PROTECTED BENTO DIRECTORY)
-const NoWorkspaceView: React.FC<{
-  onCreateWorkspace: () => void;
-  profile: UserProfile | null;
-  onOpenAccessModal: (ws: Workspace) => void;
-}> = ({ onCreateWorkspace, profile, onOpenAccessModal }) => {
-  const isGlobalOwner = profile?.role === 'owner' || profile?.role === 'po';
-  const [directoryWorkspaces, setDirectoryWorkspaces] = useState<any[]>([]);
-  const [isLoadingDirectory, setIsLoadingDirectory] = useState<boolean>(true);
-
-  const fetchDirectoryWorkspaces = async () => {
-    setIsLoadingDirectory(true);
-    try {
-      const { data, error } = await supabase
-        .from('workspaces')
-        .select('id, name, created_at, invite_code')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      console.log("-> Direktori Workspace ditemukan:", data);
-      setDirectoryWorkspaces(data || []);
-    } catch (err: any) {
-      console.error("Gagal load direktori workspace:", err.message || err);
-    } finally {
-      setIsLoadingDirectory(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDirectoryWorkspaces();
-  }, []);
-
-  return (
-    <div className="min-h-[65vh] flex flex-col justify-center p-4 font-sans max-w-5xl mx-auto w-full my-auto space-y-6">
-      {/* Header Halaman Bento Grid */}
-      <div className="text-center space-y-2 max-w-2xl mx-auto">
-        <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-md">
-          <Folder className="w-6 h-6 text-zinc-300" />
-        </div>
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-          Pusat Direktori Workspace
-        </h2>
-        <p className="text-xs text-white/60 leading-relaxed font-sans">
-          Pilih ruang kerja tim proyek di bawah dan masukkan kode akses untuk bergabung.
-        </p>
-
-        {isGlobalOwner && (
-          <div className="pt-2">
-            <button
-              onClick={onCreateWorkspace}
-              className="py-2.5 px-5 rounded-xl bg-white text-zinc-950 font-bold text-xs hover:bg-zinc-200 transition-all shadow-md cursor-pointer font-sans"
-            >
-              + Buat Workspace Baru
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Grid Bento Responsive 3-Kolom */}
-      {isLoadingDirectory ? (
-        <div className="flex items-center justify-center py-12 text-xs text-zinc-400 gap-2 font-sans">
-          <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
-          <span>Memuat direktori proyek...</span>
-        </div>
-      ) : directoryWorkspaces.length === 0 ? (
-        <div className="max-w-md mx-auto rounded-2xl border border-white/10 bg-zinc-950/70 backdrop-blur-xl p-8 text-center shadow-2xl space-y-3 font-sans">
-          <p className="text-xs text-zinc-400">Belum ada workspace proyek yang terdaftar di direktori.</p>
-          {isGlobalOwner && (
-            <button
-              onClick={onCreateWorkspace}
-              className="w-full py-2.5 px-4 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-200 transition-all shadow-md cursor-pointer font-sans"
-            >
-              + Buat Workspace Pertama
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl w-full mx-auto px-4 mt-6">
-          {directoryWorkspaces.map((ws) => (
-            <div
-              key={ws.id}
-              onClick={() => onOpenAccessModal(ws)}
-              className="group relative rounded-2xl border border-white/10 bg-zinc-950/70 backdrop-blur-xl p-5 hover:border-white/30 hover:bg-zinc-900/80 transition-all cursor-pointer shadow-xl flex flex-col justify-between h-44 text-left font-sans"
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70">
-                    📁
-                  </span>
-                  <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-white/50 font-sans">
-                    🔒 Terkunci
-                  </span>
-                </div>
-                <h3 className="text-sm font-bold text-white tracking-tight mt-3 truncate font-sans">
-                  {ws.name}
-                </h3>
-              </div>
-
-              <button className="w-full py-2 rounded-xl bg-white/5 group-hover:bg-white group-hover:text-zinc-950 text-white/80 font-semibold text-xs border border-white/10 group-hover:border-transparent transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans">
-                <span>🔑 Masukkan Kode PIN</span>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+// HELPER DYNAMIC RENDER ICON UNTUK ASET TIM
+const renderLinkIcon = (title: string, iconType?: string) => {
+  const t = title.toLowerCase();
+  if (iconType === 'figma' || t.includes('figma') || t.includes('desain') || t.includes('design') || t.includes('ui')) {
+    return <Figma className="w-4 h-4 text-white" />;
+  }
+  return <LinkIcon className="w-4 h-4 text-white" />;
 };
 
 export const App: React.FC = () => {
@@ -284,31 +113,39 @@ export const App: React.FC = () => {
 
   // PIN-PROTECTED BENTO GRID WORKSPACE DIRECTORY STATES
   const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
-  const [isPublicWorkspacesLoading, setIsPublicWorkspacesLoading] = useState<boolean>(false);
+  const [isPublicWorkspacesLoading, setIsPublicWorkspacesLoading] = useState<boolean>(true);
   const [isAccessModalOpen, setIsAccessModalOpen] = useState<boolean>(false);
   const [selectedTargetWs, setSelectedTargetWs] = useState<Workspace | null>(null);
   const [inputInviteCode, setInputInviteCode] = useState<string>('');
   const [selectedTargetPod, setSelectedTargetPod] = useState<string>('Product Builder');
   const [isVerifyingCode, setIsVerifyingCode] = useState<boolean>(false);
-  
-  // DEFAULT VIEW STATE: Set initial viewMode strictly to 'member' (anti-flash for members)
-  const [viewMode, setViewMode] = useState<'po' | 'member'>('member');
 
-  // Login / Signup form states
+  // Auth Form states
   const [isSignUp, setIsSignUp] = useState<boolean>(false);
-  const [authEmail, setAuthEmail] = useState<string>('');
-  const [authPassword, setAuthPassword] = useState<string>('');
-  const [authFullName, setAuthFullName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [fullName, setFullName] = useState<string>('');
+  const [pod, setPod] = useState<'Product Builder' | 'BA' | 'QA' | 'Marketing'>('Product Builder');
   const [authRole, setAuthRole] = useState<'member' | 'owner'>('member');
-  const [authPod, setAuthPod] = useState<'Product Builder' | 'BA' | 'QA' | 'Marketing'>('Product Builder');
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Profile dropdown menu state
+  // Profile Pill Dropdown State
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState<boolean>(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Mode View Switcher state ('po' vs 'member')
+  const [viewMode, setViewMode] = useState<'po' | 'member'>('member');
+
+  // Global Toast Notification state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => {
+      setToastMessage(prev => (prev === message ? null : prev));
+    }, 3000);
+  };
 
   // Dashboard Member Task & Workflow states
-  const [activeNav, setActiveNav] = useState<number>(0);
   const [activeTask, setActiveTask] = useState<MemberTask | null>(null);
   const [taskTitle, setTaskTitle] = useState<string>('Buat Halaman Pembayaran Aplikasi');
   const [deliverableUrl, setDeliverableUrl] = useState<string>('');
@@ -319,20 +156,12 @@ export const App: React.FC = () => {
   const [allTasks, setAllTasks] = useState<MemberTask[]>([]);
   const [blockedTasks, setBlockedTasks] = useState<MemberTask[]>([]);
   const [reviewTasks, setReviewTasks] = useState<MemberTask[]>([]);
-  const [memberProfiles, setMemberProfiles] = useState<UserProfile[]>([]);
   const [poTaskFeedFilter, setPoTaskFeedFilter] = useState<'active' | 'done'>('active');
 
   // WORKSPACE MEMBERS DIRECTORY STATES
   const [isManageMembersModalOpen, setIsManageMembersModalOpen] = useState<boolean>(false);
   const [workspaceMembersList, setWorkspaceMembersList] = useState<any[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState<boolean>(true);
-  const [allFetchedProfiles, setAllFetchedProfiles] = useState<UserProfile[]>([]);
-  const [currentWorkspaceMembers, setCurrentWorkspaceMembers] = useState<WorkspaceMemberDetail[]>([]);
-  const [availableProfilesToInvite, setAvailableProfilesToInvite] = useState<UserProfile[]>([]);
-  const [selectedUserToInvite, setSelectedUserToInvite] = useState<string>('');
-  const [selectedRoleToInvite, setSelectedRoleToInvite] = useState<'member' | 'pl'>('member');
-  const [selectedPodToInvite, setSelectedPodToInvite] = useState<string>('Product Builder');
-  const [isAddingMember, setIsAddingMember] = useState<boolean>(false);
 
   // Dynamic Project Links State (Full CRUD backed by Supabase public.project_links)
   const [projectLinks, setProjectLinks] = useState<ProjectLink[]>([]);
@@ -350,30 +179,30 @@ export const App: React.FC = () => {
   const [dodPoints, setDodPoints] = useState<string[]>(['', '', '']);
   const [isTaskSubmitSuccess, setIsTaskSubmitSuccess] = useState<boolean>(false);
 
-  // PO Edit Task Modal States
-  const [editingTask, setEditingTask] = useState<MemberTask | null>(null);
+  // EDIT TASK MODAL STATES (PO VIEW)
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState<boolean>(false);
+  const [editingTask, setEditingTask] = useState<MemberTask | null>(null);
   const [editTitle, setEditTitle] = useState<string>('');
   const [editDescription, setEditDescription] = useState<string>('');
   const [editDueDate, setEditDueDate] = useState<string>('');
-  const [editDodPoints, setEditDodPoints] = useState<string[]>([]);
+  const [editDodPoints, setEditDodPoints] = useState<string[]>(['']);
 
-  // PO Feedback Modals states
-  const [targetTaskId, setTargetTaskId] = useState<string | null>(null);
-  const [isResolveBlockerModalOpen, setIsResolveBlockerModalOpen] = useState<boolean>(false);
-  const [inputResolutionNote, setInputResolutionNote] = useState<string>('');
-
+  // PO ACTION MODALS (REVISION & RESOLUTION NOTES)
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState<boolean>(false);
+  const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<string | null>(null);
   const [inputRevisionNote, setInputRevisionNote] = useState<string>('');
 
-  // Member Modals & Toasts
+  const [isResolveBlockerModalOpen, setIsResolveBlockerModalOpen] = useState<boolean>(false);
+  const [selectedBlockerTaskId, setSelectedBlockerTaskId] = useState<string | null>(null);
+  const [inputResolutionNote, setInputResolutionNote] = useState<string>('');
+
+  // MEMBER BLOCKER MODAL STATE
   const [isBlockerModalOpen, setIsBlockerModalOpen] = useState<boolean>(false);
   const [blockerReason, setBlockerReason] = useState<string>('');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // DoD checklist state for Member View
-  const [dodItems, setDodItems] = useState([
-    { id: 1, text: 'Buat tampilan tombol dan form pembayaran', checked: true, is_checked: true },
+  // Member DoD Checklist Items
+  const [dodItems, setDodItems] = useState<{ id: number; text: string; checked: boolean; is_checked?: boolean }[]>([
+    { id: 1, text: 'Gunakan komponen UI dari Figma', checked: false, is_checked: false },
     { id: 2, text: 'Sambungkan tombol ke halaman sukses', checked: false, is_checked: false },
     { id: 3, text: 'Lampirkan link hasil kerjaan', checked: false, is_checked: false },
   ]);
@@ -417,7 +246,6 @@ export const App: React.FC = () => {
     }
   };
 
-  // FETCH PUBLIC WORKSPACES FOR BENTO DIRECTORY ONBOARDING
   const fetchPublicWorkspaces = async () => {
     setIsPublicWorkspacesLoading(true);
     try {
@@ -520,127 +348,25 @@ export const App: React.FC = () => {
         fetchOrCreateProfile(session.user);
       } else {
         setAuthLoading(false);
-        setIsAppInitializing(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user) {
         fetchOrCreateProfile(session.user);
       } else {
         setProfile(null);
-        setActiveTask(null);
         setUserWorkspaces([]);
         setCurrentWorkspace(null);
         setAuthLoading(false);
-        setIsAppInitializing(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  // 1. REFACTOR FUNGSI FETCH USER WORKSPACES DI APP.TSX (DIRECT 2-STEP FETCHING & HARD FALLBACK FOR CREATOR/OWNER)
-  const fetchUserWorkspaces = async (userId: string) => {
-    try {
-      // Langkah 1: Ambil membership user
-      const { data: memberRows, error: memberErr } = await supabase
-        .from('workspace_members')
-        .select('workspace_id, role, pod')
-        .eq('user_id', userId);
-
-      if (memberErr) throw memberErr;
-
-      if (!memberRows || memberRows.length === 0) {
-        // Fallback untuk Owner: Jika tabel member kosong, cari workspace buatan user ini
-        const { data: createdWorkspaces } = await supabase
-          .from('workspaces')
-          .select('*')
-          .eq('created_by', userId);
-
-        if (createdWorkspaces && createdWorkspaces.length > 0) {
-          const mappedCreated: Workspace[] = createdWorkspaces.map(w => ({
-            ...w,
-            role: 'po',
-            pod: 'Project Owner'
-          }));
-          setUserWorkspaces(mappedCreated);
-          return mappedCreated;
-        }
-        setUserWorkspaces([]);
-        return [];
-      }
-
-      // Langkah 2: Ambil detail workspace berdasarkan ID yang didapat
-      const wsIds = memberRows.map(m => m.workspace_id);
-      const { data: wsData, error: wsErr } = await supabase
-        .from('workspaces')
-        .select('*')
-        .in('id', wsIds);
-
-      if (wsErr) throw wsErr;
-
-      // Gabungkan detail workspace dengan role user
-      const fullWorkspaces: Workspace[] = (wsData || []).map(ws => {
-        const memberInfo = memberRows.find(m => m.workspace_id === ws.id);
-        return {
-          ...ws,
-          role: (memberInfo?.role || 'member') as 'po' | 'pl' | 'member',
-          pod: memberInfo?.pod || 'General'
-        };
-      });
-
-      setUserWorkspaces(fullWorkspaces);
-      return fullWorkspaces;
-    } catch (error) {
-      console.error("Gagal mengambil workspace:", error);
-      setUserWorkspaces([]);
-      return [];
-    }
-  };
-
-  // 2. LOGIKA SYNC ON MOUNT & LOCALSTORAGE PERSISTENCE (ISMOUNTED GUARD)
-  useEffect(() => {
-    let isMounted = true;
-
-    const initApp = async () => {
-      const userId = session?.user?.id;
-      if (!userId) {
-        if (isMounted) setIsAppInitializing(false);
-        return;
-      }
-
-      if (isMounted) setIsAppInitializing(true);
-      const workspaces = await fetchUserWorkspaces(userId);
-
-      if (!isMounted) return;
-
-      if (workspaces.length > 0) {
-        const savedWsId = localStorage.getItem('syncflow_active_ws');
-        const activeWs = workspaces.find(w => w.id === savedWsId) || workspaces[0];
-
-        setCurrentWorkspace(activeWs);
-        setActiveWorkspaceRole(activeWs.role || 'member');
-        localStorage.setItem('syncflow_active_ws', activeWs.id);
-      } else {
-        setCurrentWorkspace(null);
-        localStorage.removeItem('syncflow_active_ws');
-      }
-
-      setIsAppInitializing(false);
-    };
-
-    if (session?.user && profile) {
-      initApp();
-    } else if (!authLoading && !session) {
-      setIsAppInitializing(false);
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [session?.user?.id, profile?.id, authLoading]);
 
   // 2. STATE RESET SAAT SWITCH ATAU BUAT WORKSPACE & SCOPED FETCHING
   useEffect(() => {
@@ -686,12 +412,11 @@ export const App: React.FC = () => {
           event: '*', 
           schema: 'public', 
           table: 'tasks',
-          filter: `workspace_id=eq.${wsId}`
+          filter: `workspace_id=eq.${wsId}` 
         },
-        (payload) => {
-          console.log('Realtime task change received for workspace:', wsId, payload);
-          if (isPoOrPlRole) fetchPOData(wsId);
-          if (session?.user?.id) fetchActiveTask(session.user.id, wsId);
+        () => {
+          fetchActiveTask(session.user.id, wsId);
+          fetchPOData(wsId);
         }
       )
       .on(
@@ -700,10 +425,9 @@ export const App: React.FC = () => {
           event: '*', 
           schema: 'public', 
           table: 'project_links',
-          filter: `workspace_id=eq.${wsId}`
+          filter: `workspace_id=eq.${wsId}` 
         },
-        (payload) => {
-          console.log('Realtime project_links change received for workspace:', wsId, payload);
+        () => {
           fetchProjectLinks(wsId);
         }
       )
@@ -713,12 +437,11 @@ export const App: React.FC = () => {
           event: '*', 
           schema: 'public', 
           table: 'workspace_members',
-          filter: `workspace_id=eq.${wsId}`
+          filter: `workspace_id=eq.${wsId}` 
         },
-        (payload) => {
-          console.log('Realtime workspace_members change received for workspace:', wsId, payload);
+        () => {
           fetchPOData(wsId);
-          fetchWorkspaceMembersList();
+          fetchWorkspaceAssignees(wsId);
         }
       )
       .subscribe();
@@ -726,15 +449,15 @@ export const App: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, currentWorkspace?.id, isPoOrPlRole]);
+  }, [currentWorkspace?.id, session?.user?.id]);
 
-  // Close dropdowns on outside click
+  // Outside Click Listener for Profile Pill Dropdown & Workspace Selector
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
         setIsProfileDropdownOpen(false);
       }
-      if (workspaceDropdownRef.current && !workspaceDropdownRef.current.contains(e.target as Node)) {
+      if (workspaceDropdownRef.current && !workspaceDropdownRef.current.contains(event.target as Node)) {
         setIsWorkspaceMenuOpen(false);
       }
     };
@@ -767,16 +490,16 @@ export const App: React.FC = () => {
 
       if (error) throw error;
 
-      showToast(`✓ Workspace "${wsName}" berhasil dihapus.`);
+      // 2. Clear state lokal
+      const updatedWorkspaces = userWorkspaces.filter(w => w.id !== workspaceId);
+      setUserWorkspaces(updatedWorkspaces);
 
-      // 2. Update state lokal
-      const remainingWorkspaces = userWorkspaces.filter(w => w.id !== workspaceId);
-      setUserWorkspaces(remainingWorkspaces);
+      showToast(`Workspace "${wsName}" berhasil dihapus.`);
 
-      // 3. Jika workspace yang dihapus sedang aktif
+      // 3. Jika workspace yang dihapus sedang aktif, beralih ke workspace pertama / null
       if (currentWorkspace?.id === workspaceId) {
-        if (remainingWorkspaces.length > 0) {
-          const nextWs = remainingWorkspaces[0];
+        if (updatedWorkspaces.length > 0) {
+          const nextWs = updatedWorkspaces[0];
           setCurrentWorkspace(nextWs);
           setActiveWorkspaceRole(nextWs.role || 'member');
           localStorage.setItem('syncflow_active_ws', nextWs.id);
@@ -785,8 +508,10 @@ export const App: React.FC = () => {
           localStorage.removeItem('syncflow_active_ws');
         }
       }
+
+      await fetchPublicWorkspaces();
     } catch (err: any) {
-      console.error("Gagal menghapus workspace:", err);
+      console.error("Gagal menghapus workspace:", err.message || err);
       showToast(`Gagal menghapus workspace: ${err.message || 'Terjadi kesalahan'}`);
     }
   };
@@ -926,7 +651,10 @@ export const App: React.FC = () => {
       if (error) throw error;
       setWorkspaceMembersList(prev => prev.filter(m => m.id !== memberRowId));
       showToast("✓ Anggota berhasil dikeluarkan dari workspace.");
-      if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
+      if (currentWorkspace?.id) {
+        fetchPOData(currentWorkspace.id);
+        fetchWorkspaceAssignees(currentWorkspace.id);
+      }
     } catch (err: any) {
       alert(`Gagal mengeluarkan anggota: ${err.message || err}`);
     }
@@ -945,27 +673,106 @@ export const App: React.FC = () => {
         .order('created_at', { ascending: true });
 
       if (error) {
-        console.warn("Gagal fetch project_links:", error.message);
-        setProjectLinks([]);
-      } else if (data) {
-        setProjectLinks(data as ProjectLink[]);
+        console.error("Gagal memuat tautan proyek:", error.message);
+      } else {
+        setProjectLinks(data as ProjectLink[] || []);
       }
     } catch (err: any) {
-      console.error("Fetch project_links error:", err);
-      setProjectLinks([]);
+      console.error("Gagal memuat tautan proyek:", err);
     }
   };
 
-  // Helper render icon dinamis berdasarkan judul link
-  const renderLinkIcon = (title: string, iconType?: string) => {
-    const lower = (title || '').toLowerCase();
-    if (lower.includes('drive') || iconType === 'drive') return <Folder className="w-3.5 h-3.5" />;
-    if (lower.includes('figma') || iconType === 'figma') return <Figma className="w-3.5 h-3.5" />;
-    if (lower.includes('repo') || lower.includes('github') || lower.includes('git') || iconType === 'github') return <GitBranch className="w-3.5 h-3.5" />;
-    return <LinkIcon className="w-3.5 h-3.5" />;
+  const handleOpenManageLinksModal = () => {
+    setEditableLinks(JSON.parse(JSON.stringify(projectLinks)));
+    setIsManageLinksModalOpen(true);
   };
 
-  // 1. HARD-FILTER FETCHING ACTIVE TASK FOR MEMBER (PER WORKSPACE ID & ASSIGNEE ID)
+  const handleAddLinkRow = () => {
+    setEditableLinks(prev => [
+      ...prev,
+      { id: `temp-${Date.now()}`, title: '', url: '', icon_type: 'link' }
+    ]);
+  };
+
+  const handleRemoveLinkRow = async (index: number, linkId?: string) => {
+    if (linkId && !linkId.startsWith('temp-')) {
+      try {
+        await supabase
+          .from('project_links')
+          .delete()
+          .eq('id', linkId);
+      } catch (err) {
+        console.error("Gagal hapus link di db:", err);
+      }
+    }
+    setEditableLinks(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveAllLinks = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentWorkspace?.id) return;
+
+    try {
+      const validLinks = editableLinks.filter(l => l.title.trim() && l.url.trim());
+
+      for (const link of validLinks) {
+        if (link.id && !link.id.startsWith('temp-')) {
+          await supabase
+            .from('project_links')
+            .update({ 
+              title: link.title.trim(), 
+              url: link.url.trim(),
+              workspace_id: currentWorkspace.id
+            })
+            .eq('id', link.id);
+        } else {
+          await supabase
+            .from('project_links')
+            .insert([{ 
+              title: link.title.trim(), 
+              url: link.url.trim(),
+              workspace_id: currentWorkspace.id
+            }]);
+        }
+      }
+
+      showToast('Daftar tautan tim berhasil diperbarui!');
+      setIsManageLinksModalOpen(false);
+      fetchProjectLinks(currentWorkspace.id);
+    } catch (err: any) {
+      console.error("Save links error:", err);
+      showToast(`Gagal menyimpan tautan: ${err.message || err}`);
+    }
+  };
+
+  // CHECKLIST TOGGLE & SUPABASE REALTIME PERSISTENCE FOR MEMBER
+  const toggleDod = async (id: number) => {
+    const updatedItems = dodItems.map(item => {
+      if (item.id === id) {
+        const nextVal = !item.checked;
+        return { ...item, checked: nextVal, is_checked: nextVal };
+      }
+      return item;
+    });
+    setDodItems(updatedItems);
+
+    if (activeTask?.id) {
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .update({ checklist: updatedItems })
+          .eq('id', activeTask.id);
+
+        if (error) {
+          console.error("Error updating checklist:", error.message);
+        }
+      } catch (err) {
+        console.error("Error updating checklist:", err);
+      }
+    }
+  };
+
+  // 1. HARD-FILTER FETCH ACTIVE TASK MEMBER (PER WORKSPACE ID)
   const fetchActiveTask = async (userId: string, wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
@@ -976,7 +783,7 @@ export const App: React.FC = () => {
         .select('*')
         .eq('workspace_id', targetWsId)
         .eq('assignee_id', userId)
-        .in('status', ['in_progress', 'review', 'blocked'])
+        .neq('status', 'done')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1095,33 +902,6 @@ export const App: React.FC = () => {
 
       if (rErr) console.error("Error fetching review tasks:", rErr.message);
 
-      // DROPDOWN PENUGASAN: STRICT HANYA ANGGOTA DARI PUBLIC.WORKSPACE_MEMBERS WORKSPACE TERSEBUT
-      const { data: wsMembers, error: wmErr } = await supabase
-        .from('workspace_members')
-        .select(`
-          user_id,
-          role,
-          pod,
-          profiles:user_id (id, full_name, email, pod, role)
-        `)
-        .eq('workspace_id', targetWsId);
-
-      let parsedMembers: UserProfile[] = [];
-
-      if (!wmErr && wsMembers && wsMembers.length > 0) {
-        parsedMembers = wsMembers.map((item: any) => ({
-          id: item.profiles?.id || item.user_id,
-          full_name: item.profiles?.full_name || 'Anggota Tim',
-          role: item.role || item.profiles?.role || 'member',
-          pod: item.pod || item.profiles?.pod || 'Product Builder'
-        }));
-      }
-
-      setMemberProfiles(parsedMembers);
-      if (parsedMembers.length > 0 && (!selectedAssigneeId || !parsedMembers.some(m => m.id === selectedAssigneeId))) {
-        setSelectedAssigneeId(parsedMembers[0].id);
-      }
-
       if (blockedData) setBlockedTasks(blockedData);
       if (reviewData) setReviewTasks(reviewData);
 
@@ -1151,7 +931,7 @@ export const App: React.FC = () => {
 
       // 2. Ambil detail profil user
       const userIds = memberRows.map(m => m.user_id);
-      const { data: profilesData, error: profileErr } = await supabase
+      const { data: profilesData } = await supabase
         .from('profiles')
         .select('id, full_name, email, pod')
         .in('id', userIds);
@@ -1196,31 +976,99 @@ export const App: React.FC = () => {
         .maybeSingle();
 
       if (data) {
-        setProfile(data as UserProfile);
+        setProfile(data);
+        await loadUserWorkspaces(user.id, data);
       } else {
         const newProfile: UserProfile = {
           id: user.id,
-          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Anggota Tim',
-          role: user.user_metadata?.role || 'member',
-          pod: user.user_metadata?.pod || 'Product Builder',
+          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User SyncFlow',
+          email: user.email,
+          role: 'member',
+          pod: 'Product Builder'
         };
 
-        await supabase.from('profiles').insert([newProfile]);
+        const { error: insertErr } = await supabase.from('profiles').insert(newProfile);
+        if (insertErr) {
+          console.error("Error insert profile:", insertErr.message);
+        }
         setProfile(newProfile);
+        await loadUserWorkspaces(user.id, newProfile);
       }
-    } catch (err) {
-      console.warn('Fetch profile error:', err);
-      const fallback: UserProfile = {
-        id: user.id,
-        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Dimas',
-        role: user.user_metadata?.role || 'member',
-        pod: user.user_metadata?.pod || 'Product Builder',
-      };
-      setProfile(fallback);
-    } font-sans
+    } catch (err: any) {
+      console.error('Fetch profile error:', err);
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
-  // Auth Submit (Login / Sign Up)
+  // 1 & 3. MEMBACA WORKSPACE MEMBERSHIP & EMBEDDED WORKSPACE RELATIONSHIP
+  const loadUserWorkspaces = async (userId: string, userProfile: UserProfile) => {
+    try {
+      const { data: memberRows, error: memberErr } = await supabase
+        .from('workspace_members')
+        .select(`
+          workspace_id,
+          role,
+          pod,
+          workspaces:workspace_id (
+            id,
+            name,
+            description,
+            owner_id,
+            invite_code,
+            created_at
+          )
+        `)
+        .eq('user_id', userId);
+
+      if (memberErr) {
+        console.error("Error load workspace_members:", memberErr.message);
+      }
+
+      let parsedWorkspaces: Workspace[] = [];
+
+      if (memberRows && memberRows.length > 0) {
+        parsedWorkspaces = memberRows
+          .filter((m: any) => m.workspaces)
+          .map((m: any) => ({
+            id: m.workspaces.id,
+            name: m.workspaces.name,
+            description: m.workspaces.description,
+            owner_id: m.workspaces.owner_id,
+            invite_code: m.workspaces.invite_code,
+            created_at: m.workspaces.created_at,
+            role: m.role || 'member',
+            pod: m.pod || 'General'
+          }));
+      }
+
+      setUserWorkspaces(parsedWorkspaces);
+
+      if (parsedWorkspaces.length > 0) {
+        // Cek LocalStorage untuk Workspace Aktif Terakhir
+        const savedWsId = localStorage.getItem('syncflow_active_ws');
+        const matchedWs = parsedWorkspaces.find(w => w.id === savedWsId);
+        const targetWs = matchedWs || parsedWorkspaces[0];
+
+        setCurrentWorkspace(targetWs);
+        setActiveWorkspaceRole(targetWs.role || (userProfile.role === 'owner' ? 'po' : 'member'));
+
+        await fetchActiveTask(userId, targetWs.id);
+        await fetchProjectLinks(targetWs.id);
+        await fetchPOData(targetWs.id);
+      } else {
+        setCurrentWorkspace(null);
+        localStorage.removeItem('syncflow_active_ws');
+        await fetchPublicWorkspaces();
+      }
+    } catch (err: any) {
+      console.error("Load workspaces error:", err);
+    } finally {
+      setIsAppInitializing(false);
+    }
+  };
+
+  // Auth Submit Handlers
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -1229,519 +1077,197 @@ export const App: React.FC = () => {
     try {
       if (isSignUp) {
         const { data, error } = await supabase.auth.signUp({
-          email: authEmail,
-          password: authPassword,
+          email,
+          password,
           options: {
-            data: {
-              full_name: authFullName,
-              role: authRole,
-              pod: authPod,
-            }
+            data: { full_name: fullName }
           }
         });
 
         if (error) throw error;
         if (data.user) {
-          const newProfile: UserProfile = {
+          const newProf: UserProfile = {
             id: data.user.id,
-            full_name: authFullName || 'Anggota Tim',
+            full_name: fullName,
+            email: email,
             role: authRole,
-            pod: authPod,
+            pod: pod
           };
-          await supabase.from('profiles').insert([newProfile]);
-          setProfile(newProfile);
-          showToast('Akun berhasil dibuat & Anda berhasil masuk!');
+
+          await supabase.from('profiles').upsert(newProf);
+          setProfile(newProf);
+          showToast('Akun berhasil dibuat! Selamat datang di SyncFlow.');
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
-          email: authEmail,
-          password: authPassword,
+          email,
+          password
         });
-
         if (error) throw error;
         showToast('Berhasil masuk!');
       }
     } catch (err: any) {
-      setAuthError(err.message || 'Terjadi kesalahan autentikasi.');
-    } font-sans
+      setAuthError(err.message || 'Terjadi kesalahan autentikasi');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
-  // Auth Sign Out
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setIsProfileDropdownOpen(false);
-    showToast('Anda telah keluar.');
+    setProfile(null);
+    setUserWorkspaces([]);
+    setCurrentWorkspace(null);
+    localStorage.removeItem('syncflow_active_ws');
+    showToast('Berhasil keluar dari akun.');
   };
 
-  // TOAST HELPER (AUTOHIDE 3 DETIK)
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (KELOLA TAUTAN TIM)
-  const handleOpenManageLinksModal = () => {
-    setEditableLinks(JSON.parse(JSON.stringify(projectLinks)));
-    setIsManageLinksModalOpen(true);
-  };
-
-  const handleAddLinkRow = () => {
-    setEditableLinks([
-      ...editableLinks,
-      { id: `temp-${Date.now()}`, workspace_id: currentWorkspace?.id, title: '', url: 'https://' }
-    ]);
-  };
-
-  const handleRemoveLinkRow = async (index: number, linkId?: string) => {
-    if (linkId && !linkId.startsWith('temp-')) {
-      try {
-        await supabase.from('project_links').delete().eq('id', linkId);
-      } catch (err) {
-        console.error("Delete link error:", err);
-      }
-    }
-    setEditableLinks(editableLinks.filter((_, idx) => idx !== index));
-  };
-
-  const handleSaveAllLinks = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentWorkspace?.id) return;
-
-    const validLinks = editableLinks.filter(l => l.title.trim().length > 0 && l.url.trim().length > 0);
-
-    try {
-      for (const link of validLinks) {
-        if (link.id && !link.id.startsWith('temp-')) {
-          await supabase
-            .from('project_links')
-            .update({ 
-              title: link.title.trim(), 
-              url: link.url.trim(),
-              workspace_id: currentWorkspace.id
-            })
-            .eq('id', link.id);
-        } else {
-          await supabase
-            .from('project_links')
-            .insert([{ 
-              title: link.title.trim(), 
-              url: link.url.trim(),
-              workspace_id: currentWorkspace.id
-            }]);
-        }
-      }
-
-      showToast('Daftar tautan tim berhasil diperbarui!');
-      setIsManageLinksModalOpen(false);
-      fetchProjectLinks(currentWorkspace.id);
-    } catch (err: any) {
-      console.error("Save links error:", err);
-      showToast(`Gagal menyimpan tautan: ${err.message || err}`);
-    }
-  };
-
-  // CHECKLIST TOGGLE & SUPABASE REALTIME PERSISTENCE FOR MEMBER
-  const toggleDod = async (id: number) => {
-    const updatedItems = dodItems.map(item => {
-      if (item.id === id) {
-        const nextVal = !item.checked;
-        return { ...item, checked: nextVal, is_checked: nextVal };
-      }
-      return item;
-    });
-    setDodItems(updatedItems);
-
-    if (activeTask?.id) {
-      try {
-        const { error } = await supabase
-          .from('tasks')
-          .update({ checklist: updatedItems })
-          .eq('id', activeTask.id);
-
-        if (error) {
-          console.error("Error updating checklist:", error.message);
-        }
-      } catch (err: any) {
-        console.error("Error updating checklist:", err);
-      }
-    }
-  };
-
-  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (SUBMIT DELIVERABLE LINK MEMBER)
+  // 2. SUBMIT DELIVERABLE DENGAN TIMESTAMP PENGUMPULAN
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!deliverableUrl.trim() || !activeTask?.id) return;
 
-    // 1. VALIDASI KETAT DOD: Cegah submit jika ada poin yang belum dicentang
     if (!isAllDoDCompleted) {
-      showToast(`Selesaikan semua checklist (${completedDodCount}/${totalDodCount}) untuk menyerahkan tugas.`);
+      showToast('⚠️ Selesaikan semua poin checklist DoD terlebih dahulu!');
       return;
     }
-
-    if (!deliverableUrl.trim() || !session?.user?.id || !currentWorkspace?.id) return;
-
-    const linkInput = deliverableUrl.trim();
-    const nowIso = new Date().toISOString();
 
     try {
-      if (activeTask?.id) {
-        const { data, error } = await supabase
-          .from('tasks')
-          .update({ 
-            workspace_id: currentWorkspace.id,
-            deliverable_link: linkInput,
-            deliverable_url: linkInput,
-            submitted_at: nowIso,
-            status: 'review',
-            checklist: dodItems,
-            revision_note: null,
-            resolution_note: null,
-            blocker_reason: null,
-            is_blocked: false
-          })
-          .eq('id', activeTask.id)
-          .select();
+      const nowIso = new Date().toISOString();
 
-        if (error) {
-          console.error("Error updating deliverable link:", error.message);
-          showToast(`Gagal kirim tugas: ${error.message}`);
-          return;
-        }
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          deliverable_link: deliverableUrl.trim(),
+          deliverable_url: deliverableUrl.trim(),
+          status: 'review',
+          is_blocked: false,
+          blocker_reason: null,
+          revision_note: null,
+          submitted_at: nowIso,
+          checklist: dodItems
+        })
+        .eq('id', activeTask.id);
 
-        if (data && data[0]) {
-          setActiveTask(data[0]);
-          setTaskStatus('Sedang Ditinjau PO');
-          setSubmittedUrl(linkInput);
-        }
-      } else {
-        const { data, error } = await supabase
-          .from('tasks')
-          .insert({
-            workspace_id: currentWorkspace.id,
-            assignee_id: session.user.id,
-            title: taskTitle || 'Buat Halaman Pembayaran Aplikasi',
-            deliverable_link: linkInput,
-            deliverable_url: linkInput,
-            submitted_at: nowIso,
-            status: 'review',
-            checklist: dodItems,
-            revision_note: null,
-            resolution_note: null,
-            blocker_reason: null,
-            is_blocked: false
-          })
-          .select();
+      if (error) throw error;
 
-        if (error) {
-          console.error("Error inserting deliverable link:", error.message);
-          showToast(`Gagal kirim tugas: ${error.message}`);
-          return;
-        }
-
-        if (data && data[0]) {
-          setActiveTask(data[0]);
-          setTaskStatus('Sedang Ditinjau PO');
-          setSubmittedUrl(linkInput);
-        }
+      setTaskStatus('Sedang Ditinjau PO');
+      setSubmittedUrl(deliverableUrl.trim());
+      showToast('✓ Hasil pekerjaan berhasil diserahkan ke PO!');
+      if (session?.user?.id && currentWorkspace?.id) {
+        fetchActiveTask(session.user.id, currentWorkspace.id);
       }
     } catch (err: any) {
-      console.error('Supabase deliverable mutation error:', err);
-      showToast(`Gagal kirim tugas: ${err.message || err}`);
-      return;
+      showToast(`Gagal menyerahkan: ${err.message}`);
     }
-
-    setSubmittedUrl(linkInput);
-    setTaskStatus('Sedang Ditinjau PO');
-    showToast('✓ Hasil tugas berhasil dikirim untuk ditinjau');
   };
 
-  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (REPORT BLOCKER MEMBER)
+  // 3. MEMBER SUBMIT BLOCKER WITH SUPABASE PERSISTENCE
   const handleReportBlockerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!blockerReason.trim() || !session?.user?.id || !currentWorkspace?.id) return;
-
-    const blockerInput = blockerReason.trim();
+    if (!blockerReason.trim() || !activeTask?.id) return;
 
     try {
-      if (activeTask?.id) {
-        const { data, error } = await supabase
-          .from('tasks')
-          .update({ 
-            workspace_id: currentWorkspace.id,
-            blocker_reason: blockerInput,
-            is_blocked: true,
-            status: 'blocked' 
-          })
-          .eq('id', activeTask.id)
-          .select();
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          status: 'blocked',
+          is_blocked: true,
+          blocker_reason: blockerReason.trim()
+        })
+        .eq('id', activeTask.id);
 
-        if (error) {
-          console.error("Error updating blocker reason:", error.message);
-          showToast(`Gagal lapor kendala: ${error.message}`);
-          return;
-        }
+      if (error) throw error;
 
-        if (data && data[0]) setActiveTask(data[0]);
-      } else {
-        const { data, error } = await supabase
-          .from('tasks')
-          .insert({
-            workspace_id: currentWorkspace.id,
-            assignee_id: session.user.id,
-            title: taskTitle || 'Tugas Member',
-            blocker_reason: blockerInput,
-            is_blocked: true,
-            status: 'blocked'
-          })
-          .select();
-
-        if (error) {
-          console.error("Error inserting blocker task:", error.message);
-          showToast(`Gagal lapor kendala: ${error.message}`);
-          return;
-        }
-
-        if (data && data[0]) setActiveTask(data[0]);
+      setTaskStatus('Terkendala (Blocker)');
+      setIsBlockerModalOpen(false);
+      showToast('🚨 Kendala berhasil dilaporkan ke PO!');
+      if (session?.user?.id && currentWorkspace?.id) {
+        fetchActiveTask(session.user.id, currentWorkspace.id);
       }
     } catch (err: any) {
-      console.error('Supabase blocker mutation error:', err);
-      showToast(`Gagal lapor kendala: ${err.message || err}`);
-      return;
+      showToast(`Gagal melaporkan kendala: ${err.message}`);
     }
-
-    setTaskStatus('Terkendala (Blocker)');
-    setIsBlockerModalOpen(false);
-    showToast('🚨 Kendala berhasil dilaporkan ke PO');
   };
 
-  // PO DASHBOARD INTERACTION HANDLERS (MODAL INPUT INSTRUKSI)
+  // PO Action Handlers
+  const handleAcceptReview = async (taskId: string) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: 'done', is_blocked: false })
+        .eq('id', taskId);
+
+      if (error) throw error;
+      showToast('✓ Tugas berhasil di-ACC & ditandai Selesai!');
+      if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
+    } catch (err: any) {
+      showToast(`Gagal menyetujui: ${err.message}`);
+    }
+  };
+
+  const handleOpenRevisionModal = (taskId: string) => {
+    setSelectedReviewTaskId(taskId);
+    setInputRevisionNote('');
+    setIsRevisionModalOpen(true);
+  };
+
+  const handleSubmitRevisionNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReviewTaskId || !inputRevisionNote.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          status: 'in_progress',
+          revision_note: inputRevisionNote.trim()
+        })
+        .eq('id', selectedReviewTaskId);
+
+      if (error) throw error;
+
+      setIsRevisionModalOpen(false);
+      setSelectedReviewTaskId(null);
+      setInputRevisionNote('');
+      showToast('Catatan revisi berhasil dikirim ke Member!');
+      if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
+    } catch (err: any) {
+      showToast(`Gagal mengirim revisi: ${err.message}`);
+    }
+  };
+
   const handleOpenResolveBlockerModal = (taskId: string) => {
-    setTargetTaskId(taskId);
+    setSelectedBlockerTaskId(taskId);
     setInputResolutionNote('');
     setIsResolveBlockerModalOpen(true);
   };
 
   const handleSubmitResolveBlocker = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetTaskId || !inputResolutionNote.trim()) return;
-
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
-          status: 'in_progress', 
-          is_blocked: false,
-          resolution_note: inputResolutionNote.trim() 
-        })
-        .eq('id', targetTaskId);
-
-      if (error) {
-        console.error("Resolve blocker error:", error.message);
-        showToast(`Gagal kirim solusi: ${error.message}`);
-      } else {
-        showToast('💡 Solusi kendala telah dikirimkan ke Member!');
-        setIsResolveBlockerModalOpen(false);
-        setTargetTaskId(null);
-        setInputResolutionNote('');
-        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
-      }
-    } catch (err: any) {
-      console.error("Resolve blocker error:", err);
-      showToast(`Gagal kirim solusi: ${err.message || err}`);
-    }
-  };
-
-  const handleOpenRevisionModal = (taskId: string) => {
-    setTargetTaskId(taskId);
-    setInputRevisionNote('');
-    setIsRevisionModalOpen(true);
-  };
-
-  // PO MINTA REVISI (FEEDBACK TOAST: "Catatan revisi terkirim ke {nama member}")
-  const handleSubmitRevisionNote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!targetTaskId || !inputRevisionNote.trim()) return;
-
-    const targetTask = allTasks.find(t => t.id === targetTaskId);
-    const targetMemberName = targetTask?.profiles?.full_name || 'Member';
-
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
-          status: 'in_progress', 
-          revision_note: inputRevisionNote.trim() 
-        })
-        .eq('id', targetTaskId);
-
-      if (error) {
-        console.error("Request revision error:", error.message);
-        showToast(`Gagal kirim catatan revisi: ${error.message}`);
-      } else {
-        showToast(`Catatan revisi terkirim ke ${targetMemberName}`);
-        setIsRevisionModalOpen(false);
-        setTargetTaskId(null);
-        setInputRevisionNote('');
-        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
-      }
-    } catch (err: any) {
-      console.error("Request revision error:", err);
-      showToast(`Gagal kirim catatan revisi: ${err.message || err}`);
-    }
-  };
-
-  // PO ACC TUGAS (FEEDBACK TOAST: "✓ Tugas disetujui & dipindahkan ke Selesai")
-  const handleAcceptReview = async (taskId: string) => {
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
-          status: 'done',
-          revision_note: null,
-          resolution_note: null,
-          blocker_reason: null,
-          is_blocked: false
-        })
-        .eq('id', taskId);
-
-      if (error) {
-        console.error("Accept review error:", error.message);
-        showToast(`Gagal ACC tugas: ${error.message}`);
-      } else {
-        showToast('✓ Tugas disetujui & dipindahkan ke Selesai');
-        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
-      }
-    } catch (err: any) {
-      console.error("Accept review error:", err);
-    }
-  };
-
-  // PO EDIT TASK MODAL HANDLERS
-  const handleOpenEditTaskModal = (task: MemberTask) => {
-    setEditingTask(task);
-    setEditTitle(task.title || '');
-    setEditDescription(task.description || '');
-    
-    if (task.due_date) {
-      const d = new Date(task.due_date);
-      if (!isNaN(d.getTime())) {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        setEditDueDate(`${year}-${month}-${day}T${hours}:${minutes}`);
-      } else setEditDueDate('');
-    } else setEditDueDate('');
-
-    if (task.checklist && Array.isArray(task.checklist) && task.checklist.length > 0) {
-      setEditDodPoints(task.checklist.map(c => c.text || (c as any).label || ''));
-    } else {
-      setEditDodPoints(['']);
-    }
-
-    setIsEditTaskModalOpen(true);
-  };
-
-  const handleAddEditDodPoint = () => {
-    if (editDodPoints.length < 10) {
-      setEditDodPoints([...editDodPoints, '']);
-    }
-  };
-
-  const handleRemoveEditDodPoint = (index: number) => {
-    if (editDodPoints.length > 1) {
-      setEditDodPoints(editDodPoints.filter((_, idx) => idx !== index));
-    }
-  };
-
-  const handleEditDodPointChange = (index: number, value: string) => {
-    const updated = [...editDodPoints];
-    updated[index] = value;
-    setEditDodPoints(updated);
-  };
-
-  const handleSaveTaskEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingTask?.id || !editTitle.trim()) return;
-
-    const checklistItems = editDodPoints
-      .filter(p => p.trim().length > 0)
-      .map((text, idx) => ({
-        id: idx + 1,
-        text: text.trim(),
-        checked: false,
-        is_checked: false,
-      }));
-
-    const dueDateIso = editDueDate ? new Date(editDueDate).toISOString() : null;
+    if (!selectedBlockerTaskId || !inputResolutionNote.trim()) return;
 
     try {
       const { error } = await supabase
         .from('tasks')
         .update({
-          title: editTitle.trim(),
-          description: editDescription.trim() || null,
-          due_date: dueDateIso,
-          checklist: checklistItems,
+          status: 'in_progress',
+          is_blocked: false,
+          resolution_note: inputResolutionNote.trim()
         })
-        .eq('id', editingTask.id);
+        .eq('id', selectedBlockerTaskId);
 
-      if (error) {
-        console.error("Save task edit error:", error.message);
-        showToast(`Gagal memperbarui tugas: ${error.message}`);
-      } else {
-        showToast('✓ Detail tugas berhasil diperbarui');
-        setIsEditTaskModalOpen(false);
-        setEditingTask(null);
-        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
-      }
+      if (error) throw error;
+
+      setIsResolveBlockerModalOpen(false);
+      setSelectedBlockerTaskId(null);
+      setInputResolutionNote('');
+      showToast('💡 Arahan solusi berhasil dikirim ke Member!');
+      if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
     } catch (err: any) {
-      console.error("Save task edit error:", err);
-      showToast(`Gagal memperbarui tugas: ${err.message || err}`);
+      showToast(`Gagal menyelesaikan kendala: ${err.message}`);
     }
-  };
-
-  const handleDeleteTask = async () => {
-    if (!editingTask?.id) return;
-
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', editingTask.id);
-
-      if (error) {
-        console.error("Delete task error:", error.message);
-        showToast(`Gagal menghapus tugas: ${error.message}`);
-      } else {
-        showToast('🗑️ Tugas berhasil dihapus');
-        setIsEditTaskModalOpen(false);
-        setEditingTask(null);
-        if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
-      }
-    } catch (err: any) {
-      console.error("Delete task error:", err);
-      showToast(`Gagal menghapus tugas: ${err.message || err}`);
-    }
-  };
-
-  // DYNAMIC DOD LIST HELPERS FOR PO ASSIGNMENT FORM
-  const handleAddDodPoint = () => {
-    if (dodPoints.length < 10) {
-      setDodPoints([...dodPoints, '']);
-    }
-  };
-
-  const handleRemoveDodPoint = (index: number) => {
-    if (dodPoints.length > 1) {
-      setDodPoints(dodPoints.filter((_, idx) => idx !== index));
-    }
-  };
-
-  const handleDodPointChange = (index: number, value: string) => {
-    const updated = [...dodPoints];
-    updated[index] = value;
-    setDodPoints(updated);
   };
 
   // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (PO KIRIM TUGAS BARU)
@@ -1810,88 +1336,160 @@ export const App: React.FC = () => {
     }
   };
 
-  // Summary Metrics Calculation for Column 3
-  const activeTasksCount = allTasks.filter(t => t.status !== 'done').length;
+  const handleAddDodPoint = () => {
+    if (dodPoints.length < 10) {
+      setDodPoints([...dodPoints, '']);
+    }
+  };
+
+  const handleRemoveDodPoint = (index: number) => {
+    if (dodPoints.length > 1) {
+      setDodPoints(dodPoints.filter((_, idx) => idx !== index));
+    }
+  };
+
+  const handleDodPointChange = (index: number, value: string) => {
+    const updated = [...dodPoints];
+    updated[index] = value;
+    setDodPoints(updated);
+  };
+
+  // EDIT TASK MODAL HANDLERS
+  const handleOpenEditTaskModal = (task: MemberTask) => {
+    setEditingTask(task);
+    setEditTitle(task.title || '');
+    setEditDescription(task.description || '');
+
+    if (task.due_date) {
+      const d = new Date(task.due_date);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      setEditDueDate(`${year}-${month}-${day}T${hours}:${minutes}`);
+    } else {
+      setEditDueDate('');
+    }
+
+    if (task.checklist && Array.isArray(task.checklist) && task.checklist.length > 0) {
+      setEditDodPoints(task.checklist.map(item => item.text || item.label || ''));
+    } else {
+      setEditDodPoints(['']);
+    }
+
+    setIsEditTaskModalOpen(true);
+  };
+
+  const handleSaveTaskEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask?.id || !editTitle.trim()) return;
+
+    try {
+      const checklistItems = editDodPoints
+        .filter(p => p.trim().length > 0)
+        .map((text, idx) => ({
+          id: idx + 1,
+          text: text.trim(),
+          checked: false,
+          is_checked: false
+        }));
+
+      const dueDateIso = editDueDate ? new Date(editDueDate).toISOString() : null;
+
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          title: editTitle.trim(),
+          description: editDescription.trim() || null,
+          due_date: dueDateIso,
+          checklist: checklistItems
+        })
+        .eq('id', editingTask.id);
+
+      if (error) throw error;
+
+      showToast('✓ Detail tugas berhasil diperbarui!');
+      setIsEditTaskModalOpen(false);
+      setEditingTask(null);
+      if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
+    } catch (err: any) {
+      console.error("Save edit task error:", err);
+      showToast(`Gagal menyimpan edit: ${err.message || err}`);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!editingTask?.id) return;
+    if (!window.confirm(`Yakin ingin menghapus tugas "${editingTask.title}"?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', editingTask.id);
+
+      if (error) throw error;
+
+      showToast('✓ Tugas berhasil dihapus.');
+      setIsEditTaskModalOpen(false);
+      setEditingTask(null);
+      if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
+    } catch (err: any) {
+      console.error("Delete task error:", err);
+      showToast(`Gagal menghapus tugas: ${err.message || err}`);
+    }
+  };
+
+  // Filter tasks for PO Task Feed (Active vs Done)
+  const filteredMasterTasks = allTasks.filter(t => {
+    if (poTaskFeedFilter === 'done') {
+      return t.status === 'done';
+    }
+    return t.status !== 'done';
+  });
+
+  // Calculate metrics for PO View right column
+  const activeTasksCount = allTasks.filter(t => t.status !== 'done' && !t.is_blocked && t.status !== 'blocked').length;
   const blockedTasksCount = allTasks.filter(t => t.status === 'blocked' || t.is_blocked).length;
   const doneTasksCount = allTasks.filter(t => t.status === 'done').length;
 
-  // Filtered & Sorted Master Tasks for Column 1 Task Feed
-  const filteredMasterTasks = allTasks.filter(t => {
-    if (poTaskFeedFilter === 'active') {
-      return t.status !== 'done';
-    } else {
-      return t.status === 'done';
-    }
-  }).sort((a, b) => {
-    if (poTaskFeedFilter === 'active') {
-      const priorityScore = (task: MemberTask) => {
-        if (task.status === 'blocked' || task.is_blocked) return 0;
-        if (task.status === 'review' || task.status === 'in_review' || task.status === 'UNDER_REVIEW') return 1;
-        return 2;
-      };
-      return priorityScore(a) - priorityScore(b);
-    } else {
-      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-    }
-  });
-
-  // Auth Session Loading Screen
-  if (authLoading && !session) {
-    return (
-      <div className="min-h-screen w-full bg-[#0a0a0c] text-white flex items-center justify-center font-sans">
-        <div className="p-8 bg-neutral-900/80 backdrop-blur-2xl border border-white/10 rounded-3xl text-center space-y-3 shadow-2xl">
-          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs text-zinc-400 font-medium">Memuat sesi SyncFlow...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // AUTH SCREEN (LOGIN / SIGN UP)
+  // Login & SignUp Screen (Strict Dark Theme & Backdrop Blur)
   if (!session) {
     return (
-      <div className="min-h-screen w-full bg-[#0a0a0c] text-white flex items-center justify-center p-4 font-sans relative overflow-hidden">
+      <div className="min-h-screen bg-[#0a0a0c] text-white flex items-center justify-center p-4 font-sans relative overflow-hidden">
         <div 
-          className="fixed inset-0 bg-cover bg-center opacity-20 mix-blend-luminosity pointer-events-none scale-105"
+          className="fixed inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity pointer-events-none scale-105"
           style={{ backgroundImage: `url('/assets/dark_stone_bg_1787219104310.png')` }}
         />
-        <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-zinc-500/10 rounded-full blur-[140px] pointer-events-none" />
 
-        <div className="relative z-10 w-full max-w-md bg-neutral-900/80 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-2xl space-y-6">
+        <div className="relative z-10 w-full max-w-md bg-neutral-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl p-8 shadow-2xl space-y-6 font-sans">
           <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold mx-auto shadow-md">
+            <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-md">
               <Layers className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-white tracking-tight">
-              SyncFlow Auth
-            </h1>
-            <p className="text-xs text-zinc-400 font-sans">
-              {isSignUp ? 'Daftar akun baru' : 'Masuk ke Dashboard SyncFlow'}
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-white">SyncFlow</h1>
+            <p className="text-xs text-zinc-400 font-sans">Sistem Monitoring Agile & Manajemen Sprint Tim</p>
           </div>
 
           {authError && (
-            <div className="p-3 bg-rose-950/40 border border-rose-800/60 text-rose-200 rounded-xl text-xs flex items-center gap-2 font-sans">
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{authError}</span>
+            <div className="p-3 bg-rose-950/80 border border-rose-800 text-rose-200 text-xs rounded-xl font-sans">
+              {authError}
             </div>
           )}
 
-          <form onSubmit={handleAuthSubmit} className="space-y-4 text-xs font-sans">
+          <form onSubmit={handleAuthSubmit} className="space-y-4 font-sans text-xs">
             {isSignUp && (
               <div className="space-y-1">
                 <label className="block text-zinc-400 font-medium">Nama Lengkap *</label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nama Anda"
-                    value={authFullName}
-                    onChange={e => setAuthFullName(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                  />
-                </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="Nama Lengkap"
+                  value={fullName}
+                  onChange={e => setFullName(e.target.value)}
+                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans"
+                />
               </div>
             )}
 
@@ -1902,41 +1500,38 @@ export const App: React.FC = () => {
                 <input
                   type="email"
                   required
-                  placeholder="email@domain.com"
-                  value={authEmail}
-                  onChange={e => setAuthEmail(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                  placeholder="email@example.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full p-2.5 pl-9 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <label className="block text-zinc-400 font-medium">Kata Sandi *</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={authPassword}
-                  onChange={e => setAuthPassword(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
+              <label className="block text-zinc-400 font-medium">Password *</label>
+              <input
+                type="password"
+                required
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans"
+              />
             </div>
 
             {isSignUp && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-zinc-400 font-medium">Pod *</label>
+                  <label className="block text-zinc-400 font-medium">Pod / Divisi *</label>
                   <select
-                    value={authPod}
-                    onChange={e => setAuthPod(e.target.value as any)}
+                    value={pod}
+                    onChange={e => setPod(e.target.value as any)}
                     className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans"
                   >
                     <option value="Product Builder">Product Builder</option>
-                    <option value="BA">BA</option>
-                    <option value="QA">QA</option>
+                    <option value="BA">Business Analyst</option>
+                    <option value="QA">QA & Testing</option>
                     <option value="Marketing">Marketing</option>
                   </select>
                 </div>
@@ -2026,156 +1621,32 @@ export const App: React.FC = () => {
       {/* MAIN CONTAINER */}
       <div className="relative z-10 w-full max-w-[1360px] mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-8 flex-1 min-h-screen justify-between font-sans">
         
-        {/* ========================================================================= */}
-        {/* TOP BAR NAVBAR (MULTI-WORKSPACE SELECTOR & ROLE CONTROL) */}
-        {/* ========================================================================= */}
-        <header className="w-full flex items-center justify-between gap-4 font-sans text-xs">
-          
-          {/* Logo Brand: SyncFlow & WORKSPACE SELECTOR DROPDOWN (KIRI ATAS - CONDITIONAL) */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 cursor-pointer group">
-              <div className="w-9 h-9 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-105 transition-all duration-300">
-                <Layers className="w-5 h-5 text-white" />
-              </div>
-              <span className="font-bold text-white text-base tracking-tight hidden sm:inline">
-                SyncFlow
-              </span>
-            </div>
+        {/* TOP BAR NAVBAR */}
+        <Navbar
+          currentWorkspace={currentWorkspace}
+          userWorkspaces={userWorkspaces}
+          isWorkspaceMenuOpen={isWorkspaceMenuOpen}
+          setIsWorkspaceMenuOpen={setIsWorkspaceMenuOpen}
+          workspaceDropdownRef={workspaceDropdownRef}
+          isGlobalOwner={isGlobalOwner}
+          onSelectWorkspace={handleSelectWorkspace}
+          onDeleteWorkspace={handleDeleteWorkspace}
+          onOpenCreateWorkspaceModal={() => setIsCreateWorkspaceModalOpen(true)}
+          isPoOrPlRole={isPoOrPlRole}
+          isOwnerOrPo={isOwnerOrPo}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          isProfileDropdownOpen={isProfileDropdownOpen}
+          setIsProfileDropdownOpen={setIsProfileDropdownOpen}
+          profileDropdownRef={profileDropdownRef}
+          userName={userName}
+          userRoleDisplay={userRoleDisplay}
+          userEmail={session?.user?.email}
+          onSignOut={handleSignOut}
+          profile={profile}
+        />
 
-            {/* WORKSPACE SELECTOR DROPDOWN (HANYA DITAMPILKAN JIKA CURRENTWORKSPACE ADA & VALID) */}
-            {currentWorkspace && userWorkspaces.length > 0 && (
-              <div className="relative font-sans" ref={workspaceDropdownRef}>
-                <button 
-                  onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
-                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-all cursor-pointer"
-                >
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span>{currentWorkspace.name}</span>
-                  <span className="text-white/40 text-[10px]">▼</span>
-                </button>
-
-                {/* Menu Dropdown */}
-                {isWorkspaceMenuOpen && (
-                  <div className="absolute left-0 mt-2 w-60 rounded-xl border border-white/10 bg-zinc-950/90 backdrop-blur-xl p-1.5 shadow-2xl z-50 font-sans">
-                    <div className="px-2 py-1 text-[10px] font-semibold text-white/40 uppercase tracking-wider">Workspace Tim</div>
-                    
-                    {/* DROPDOWN MAX-HEIGHT & SCROLLABLE CONTAINER */}
-                    <div className="max-h-60 overflow-y-auto space-y-0.5 custom-scrollbar pr-0.5">
-                      {userWorkspaces.map(ws => {
-                        const isSelected = currentWorkspace?.id === ws.id;
-                        const canDelete = ws.role === 'po' || profile?.role === 'owner';
-
-                        return (
-                          <div
-                            key={ws.id}
-                            className={`group flex items-center justify-between w-full rounded-lg px-2.5 py-1.5 transition-colors ${
-                              isSelected ? 'bg-white/10 text-white font-medium' : 'text-white/70 hover:bg-white/5'
-                            }`}
-                          >
-                            <button
-                              onClick={() => handleSelectWorkspace(ws)}
-                              className="flex-1 text-left flex items-center justify-between mr-2 truncate text-xs cursor-pointer"
-                            >
-                              <span className="truncate">{ws.name}</span>
-                              <span className="text-[10px] text-white/40 uppercase ml-2 shrink-0">{ws.role}</span>
-                            </button>
-
-                            {/* Tombol Hapus (Hanya untuk Creator/PO/Owner) */}
-                            {canDelete && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteWorkspace(ws.id, ws.name);
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-1 text-white/30 hover:text-rose-400 hover:bg-white/10 transition-all rounded cursor-pointer shrink-0"
-                                title="Hapus Workspace"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {isGlobalOwner && (
-                      <>
-                        <div className="border-t border-white/5 my-1" />
-                        <button
-                          onClick={() => { setIsCreateWorkspaceModalOpen(true); setIsWorkspaceMenuOpen(false); }}
-                          className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-white/80 hover:bg-white/10 flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <span>+ Buat Workspace Baru</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK WORKSPACE ROLE PO DAN PL) */}
-          {isPoOrPlRole && currentWorkspace && (
-            <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
-              <button
-                onClick={() => setViewMode('po')}
-                className={`px-4 py-2 rounded-full font-medium transition-all duration-300 ease-in-out cursor-pointer ${
-                  viewMode === 'po'
-                    ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                <span>{isOwnerOrPo ? 'Papan PO' : 'Papan PL'}</span>
-              </button>
-              <button
-                onClick={() => setViewMode('member')}
-                className={`px-4 py-2 rounded-full font-medium transition-all duration-300 ease-in-out cursor-pointer ${
-                  viewMode === 'member'
-                    ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                <span>Dashboard Member</span>
-              </button>
-            </nav>
-          )}
-
-          {/* Right Controls: User Profile Pill Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-              className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300 shadow-md font-sans"
-            >
-              <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-              <span className="text-white font-semibold">{userName} — {userRoleDisplay}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
-            </button>
-
-            {/* Profile Dropdown Menu */}
-            {isProfileDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-neutral-900/95 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-2 z-50 space-y-1 text-xs font-sans transition-all duration-300 ease-in-out">
-                <div className="p-2.5 border-b border-white/10 space-y-0.5">
-                  <div className="font-bold text-white truncate">{userName}</div>
-                  <div className="text-[11px] text-zinc-400 truncate">{session.user.email}</div>
-                  <div className="text-[10px] text-zinc-400">Role: {userRoleDisplay}</div>
-                </div>
-
-                <button
-                  onClick={handleSignOut}
-                  className="w-full p-2.5 text-left text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300"
-                >
-                  <LogOut className="w-4 h-4 text-zinc-400" />
-                  <span>Keluar (Logout)</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
-
-        {/* ========================================================================= */}
-        {/* 1. WORKSPACE CONDITIONAL RENDERING GUARD (STRICT ONBOARDING STATE) */}
-        {/* ========================================================================= */}
+        {/* WORKSPACE CONDITIONAL RENDERING GUARD */}
         {!currentWorkspace || userWorkspaces.length === 0 ? (
           <NoWorkspaceView
             onCreateWorkspace={() => setIsCreateWorkspaceModalOpen(true)}
@@ -2183,876 +1654,67 @@ export const App: React.FC = () => {
             onOpenAccessModal={handleOpenAccessCodeModal}
           />
         ) : !isPoOrPlRole || viewMode === 'member' ? (
-          /* ========================================================================= */
-          /* DASHBOARD MEMBER VIEW (RESPONSIVE BENTO GRID MOBILE & TABLET FRIENDLY) */
-          /* ========================================================================= */
-          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
-            
-            {/* GRID KIRI (7 Kolom di Desktop / 1 Kolom di Mobile & Tablet) */}
-            <div className="lg:col-span-7 flex flex-col justify-between gap-6 transition-all duration-300 ease-in-out">
-              
-              {/* TOP ROW KIRI: 2 Kartu */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                
-                {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member / Empty State) */}
-                {!activeTask ? (
-                  /* EMPTY STATE: TIDAK ADA TUGAS AKTIF */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
-                    <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                      <span>Tugas Aktif</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-zinc-400 font-medium">
-                        Standby
-                      </span>
-                    </div>
-
-                    <div className="text-center my-auto py-4 space-y-2">
-                      <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-md">
-                        <CheckCircle2 className="w-6 h-6 text-zinc-300" />
-                      </div>
-                      <div className="space-y-1">
-                        <h3 className="text-xs font-bold text-white tracking-tight leading-snug">
-                          Semua tugas selesai di workspace {currentWorkspace?.name}.
-                        </h3>
-                        <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
-                          Tunggu instruksi tugas berikutnya dari Project Owner / Lead.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="text-[10px] text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                      SyncFlow Status: Standby ({currentWorkspace?.name})
-                    </div>
-                  </div>
-                ) : (
-                  /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF & BRIEF BOX */
-                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out space-y-3 font-sans">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                        <span>Tugas Aktif</span>
-                        {/* Top Right Status Badge on Member Card */}
-                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium transition-colors duration-300 ${
-                          taskStatus === 'Perlu Revisi'
-                            ? 'bg-neutral-800 text-zinc-200 border-white/30'
-                            : taskStatus === 'Terkendala (Blocker)'
-                              ? 'bg-neutral-800 text-zinc-300 border-white/20'
-                              : taskStatus === 'Sedang Ditinjau PO'
-                                ? 'bg-white/10 text-white border-white/20'
-                                : 'bg-white/5 text-zinc-400 border-white/10'
-                        }`}>
-                          {taskStatus}
-                        </span>
-                      </div>
-                      {/* Render Judul Tugas */}
-                      <h2 className="text-base font-bold text-white tracking-tight leading-snug">
-                        {taskTitle}
-                      </h2>
-
-                      {/* BADGE DEADLINE RINGKAS & RELATIF WAKTU */}
-                      {activeTask?.due_date && (() => {
-                        const rel = getRelativeDeadlineString(activeTask.due_date);
-                        if (!rel) return null;
-
-                        return (
-                          <div className="pt-0.5">
-                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium tracking-tight font-sans transition-colors duration-300 ${
-                              rel.status === 'overdue'
-                                ? 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
-                                : rel.status === 'urgent'
-                                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
-                                  : 'bg-white/5 border border-white/10 text-white/70'
-                            }`}>
-                              <span>{rel.text}</span>
-                            </span>
-                          </div>
-                        );
-                      })()}
-
-                      {/* TAMPILKAN DESKRIPSI BRIEF DI DASHBOARD MEMBER */}
-                      {activeTask?.description && (
-                        <div className="my-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/80 leading-relaxed whitespace-pre-line font-sans">
-                          <span className="text-white/40 block font-medium mb-1 uppercase tracking-wider text-[10px]">Brief Tugas:</span>
-                          {activeTask.description}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* PO Feedback Action Cards in Member Dashboard */}
-                    {activeTask?.revision_note && (
-                      <div className="p-3 bg-neutral-900 border border-white/20 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
-                        <div className="font-semibold text-white text-[11px] flex items-center gap-1">
-                          <span>⚠️ Catatan Revisi PO:</span>
-                        </div>
-                        <p className="text-zinc-300 text-[11px] leading-relaxed">
-                          {activeTask.revision_note}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* REDESAIN KARTU SOLUSI PO: TAMPILKAN RIWAYAT KENDALA VS SOLUSI PO */}
-                    {activeTask?.resolution_note && (
-                      <div className="my-3 rounded-2xl border border-white/10 bg-neutral-900/90 p-3.5 space-y-2 text-xs font-sans">
-                        {/* Baris 1: Kendala Member */}
-                        {activeTask.blocker_reason && (
-                          <div>
-                            <span className="text-zinc-400 block font-medium text-[10px] uppercase tracking-wider">
-                              Kendala yang Kamu Laporkan:
-                            </span>
-                            <p className="text-zinc-300 mt-0.5 line-through decoration-zinc-500 text-[11px]">
-                              {activeTask.blocker_reason}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Divider halus */}
-                        {activeTask.blocker_reason && <div className="border-t border-white/10" />}
-
-                        {/* Baris 2: Solusi PO */}
-                        <div>
-                          <span className="text-white block font-semibold text-[11px] flex items-center gap-1.5">
-                            💡 Solusi / Arahan PO:
-                          </span>
-                          <p className="text-zinc-200 font-normal mt-0.5 text-xs leading-relaxed">
-                            {activeTask.resolution_note}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* HEADER & LABEL DOD (DEFINITION OF DONE) */}
-                    <div className="mt-4 mb-2 flex items-center justify-between border-t border-white/5 pt-3 font-sans">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-semibold tracking-wider text-white/60 uppercase">Checklist DoD</span>
-                        <span className="text-[10px] text-white/30">(Definition of Done)</span>
-                      </div>
-                      <span className="text-[11px] font-medium text-white/40">
-                        {completedDodCount}/{totalDodCount} Selesai
-                      </span>
-                    </div>
-
-                    {/* Render Array Checklist (DoD) dengan Realtime State */}
-                    <div className="space-y-1.5 text-xs font-sans">
-                      {dodItems.map(item => (
-                        <div
-                          key={item.id}
-                          onClick={() => toggleDod(item.id)}
-                          className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors duration-300"
-                        >
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all duration-300 shrink-0 ${
-                            item.checked 
-                              ? 'bg-white border-white text-zinc-950' 
-                              : 'border-zinc-500 bg-transparent'
-                          }`}>
-                            {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
-                          </div>
-                          <span className={`text-xs transition-colors duration-300 ${item.checked ? 'line-through text-white/40' : 'text-zinc-200'}`}>
-                            {item.text}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* KARTU TENGAH ATAS (Submit Deliverable - VALIDASI KETAT DOD & FORM UNLOCK & EMPTY STATE) */}
-                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium text-zinc-500">
-                      Penyerahan Tugas
-                    </span>
-                    <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                      {!activeTask
-                        ? 'Kirim Hasil Tugas'
-                        : taskStatus === 'Perlu Revisi'
-                          ? 'Kirim Hasil Revisi'
-                          : 'Kirim Hasil Tugas'}
-                    </h3>
-                  </div>
-
-                  {/* Form Input Clean & Lock / Validation Logic */}
-                  <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans">
-                    {!activeTask ? (
-                      /* EMPTY STATE INPUT FORM TERKUNCI */
-                      <input
-                        type="text"
-                        disabled
-                        placeholder="Menunggu tugas aktif..."
-                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-400 placeholder-zinc-400 cursor-not-allowed font-sans"
-                      />
-                    ) : submittedUrl && taskStatus === 'Sedang Ditinjau PO' ? (
-                      <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
-                        <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
-                        <a href={submittedUrl} target="_blank" rel="noreferrer" className="text-zinc-900 underline truncate block font-medium">
-                          {submittedUrl}
-                        </a>
-                      </div>
-                    ) : (
-                      <input
-                        type="text"
-                        required
-                        disabled={taskStatus === 'Sedang Ditinjau PO'}
-                        placeholder="Link tugas..."
-                        value={deliverableUrl}
-                        onChange={e => setDeliverableUrl(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 disabled:opacity-50 font-sans"
-                      />
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted}
-                      className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
-                        !activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted
-                          ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-                          : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
-                      }`}
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>
-                        {!activeTask
-                          ? 'Belum Ada Tugas'
-                          : taskStatus === 'Sedang Ditinjau PO'
-                            ? 'Sedang Ditinjau PO'
-                            : taskStatus === 'Perlu Revisi'
-                              ? 'Kirim Hasil Revisi'
-                              : 'Kirim Hasil Tugas'}
-                      </span>
-                    </button>
-
-                    {/* Helper text jika DoD belum lengkap */}
-                    {activeTask && taskStatus !== 'Sedang Ditinjau PO' && !isAllDoDCompleted && (
-                      <p className="text-[10px] text-zinc-500 text-center font-sans font-medium pt-0.5">
-                        Selesaikan semua checklist ({completedDodCount}/{totalDodCount}) untuk menyerahkan tugas.
-                      </p>
-                    )}
-                  </form>
-
-                  {/* Tombol Laporkan Kendala */}
-                  <div className="pt-2 border-t border-zinc-100 font-sans">
-                    <button
-                      onClick={() => setIsBlockerModalOpen(true)}
-                      disabled={!activeTask}
-                      className={`w-full py-2 border text-xs rounded-full transition-colors duration-300 flex items-center justify-center gap-1.5 ${
-                        !activeTask
-                          ? 'border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed'
-                          : 'border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium cursor-pointer'
-                      }`}
-                    >
-                      <AlertTriangle className={`w-3.5 h-3.5 ${!activeTask ? 'text-zinc-400' : 'text-zinc-600'}`} />
-                      <span>🚨 Laporkan Kendala</span>
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis Target) */}
-              <div className="space-y-2 pt-2 font-sans transition-all duration-300 ease-in-out">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
-                  Halo, {userName}
-                </h1>
-                <p className="text-base text-zinc-400 font-sans">
-                  {activeTask
-                    ? `Target (${currentWorkspace?.name}): ${taskTitle}`
-                    : `Workspace: ${currentWorkspace?.name || 'Utama'} • Standby`}
-                </p>
-              </div>
-
-            </div>
-
-            {/* GRID KANAN (5 Kolom di Desktop / 1 Kolom di Mobile & Tablet - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
-              
-              {/* KARTU KANAN (Aset Tim Workspace) */}
-              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
-                
-                <div className="space-y-1">
-                  <span className="text-xs font-medium text-zinc-400">
-                    Aset Tim ({currentWorkspace?.name})
-                  </span>
-                  <h3 className="text-base font-bold text-white tracking-tight">
-                    Tautan Utama ({projectLinks.length})
-                  </h3>
-                </div>
-
-                {/* Dynamic Links List (Read-Only for Member) */}
-                <div className="space-y-3 pt-4 flex-1">
-                  {projectLinks.length === 0 ? (
-                    <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim di workspace ini.</p>
-                  ) : (
-                    projectLinks.map(link => (
-                      <a
-                        key={link.id || link.title}
-                        href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-300 ease-in-out group/link"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                            {renderLinkIcon(link.title, link.icon_type)}
-                          </div>
-                          <span className="font-semibold text-white truncate max-w-[200px] sm:max-w-[260px]">
-                            {link.title}
-                          </span>
-                        </div>
-                        <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
-                      </a>
-                    ))
-                  )}
-                </div>
-
-                <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                  SyncFlow Dashboard ({currentWorkspace?.name})
-                </div>
-
-              </div>
-
-            </div>
-
-          </main>
+          <MemberDashboard
+            currentWorkspace={currentWorkspace}
+            activeTask={activeTask}
+            taskStatus={taskStatus}
+            taskTitle={taskTitle}
+            userName={userName}
+            getRelativeDeadlineString={getRelativeDeadlineString}
+            completedDodCount={completedDodCount}
+            totalDodCount={totalDodCount}
+            dodItems={dodItems}
+            onToggleDod={toggleDod}
+            deliverableUrl={deliverableUrl}
+            setDeliverableUrl={setDeliverableUrl}
+            submittedUrl={submittedUrl}
+            onSubmitDeliverable={handleSubmitDeliverable}
+            isAllDoDCompleted={isAllDoDCompleted}
+            onOpenReportBlockerModal={() => setIsBlockerModalOpen(true)}
+            projectLinks={projectLinks}
+            renderLinkIcon={renderLinkIcon}
+          />
         ) : (
-          /* ========================================================================= */
-          /* PO / PL CONTROL CENTER VIEW (RESPONSIVE BENTO GRID MOBILE & TABLET FRIENDLY) */
-          /* ========================================================================= */
-          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
-            
-            {/* ========================================================================= */}
-            {/* KOLOM 1 (KIRI - LEBAR - 5 KOLOM): RADAR & STATUS TIM (MASTER TASK FEED) */}
-            {/* ========================================================================= */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-6 transition-all duration-300 ease-in-out">
-              
-              <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
-                <div className="space-y-4">
-                  {/* Header & Tab Feed Switcher */}
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-white font-bold text-sm">
-                        <Activity className="w-4 h-4 text-zinc-300" />
-                        <span>Radar Tim ({currentWorkspace?.name})</span>
-                      </div>
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
-                        {allTasks.length} Total
-                      </span>
-                    </div>
-
-                    {/* MONOCHROME TAB TOGGLE: Aktif & Review vs Selesai */}
-                    <div className="flex items-center p-1 bg-neutral-950 border border-white/10 rounded-2xl text-xs font-sans">
-                      <button
-                        onClick={() => setPoTaskFeedFilter('active')}
-                        className={`flex-1 py-1.5 rounded-xl font-medium text-[11px] transition-all duration-300 ease-in-out cursor-pointer ${
-                          poTaskFeedFilter === 'active'
-                            ? 'bg-white text-zinc-950 font-bold shadow-xs'
-                            : 'text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        Aktif & Review ({allTasks.filter(t => t.status !== 'done').length})
-                      </button>
-                      <button
-                        onClick={() => setPoTaskFeedFilter('done')}
-                        className={`flex-1 py-1.5 rounded-xl font-medium text-[11px] transition-all duration-300 ease-in-out cursor-pointer ${
-                          poTaskFeedFilter === 'done'
-                            ? 'bg-white text-zinc-950 font-bold shadow-xs'
-                            : 'text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        Selesai ({allTasks.filter(t => t.status === 'done').length})
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* EMPTY STATE PADA FEED PO (TAB AKTIF & REVIEW KOSONG) */}
-                  {filteredMasterTasks.length === 0 ? (
-                    <div className="p-8 text-center bg-neutral-900/60 border border-white/10 rounded-2xl text-xs text-zinc-400 space-y-2 my-auto font-sans transition-all duration-300 ease-in-out">
-                      <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-xs">
-                        <Sparkles className="w-5 h-5 text-zinc-300" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-bold text-white text-xs">
-                          {poTaskFeedFilter === 'active' ? 'Semua tugas aktif beres.' : 'Belum ada tugas selesai.'}
-                        </p>
-                        <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
-                          {poTaskFeedFilter === 'active'
-                            ? 'Tidak ada kendala aktif maupun antrean deliverable yang menunggu review.'
-                            : 'Tugas yang di-ACC akan tercatat di tab ini.'}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
-                      {filteredMasterTasks.map(t => {
-                        const completedDod = t.checklist?.filter(c => c.checked || c.is_checked).length || 0;
-                        const totalDod = t.checklist?.length || 0;
-                        const isBlocked = t.status === 'blocked' || t.is_blocked;
-                        const isReview = t.status === 'review' || t.status === 'in_review' || t.status === 'UNDER_REVIEW';
-                        const isDone = t.status === 'done';
-                        const deliverableContent = t.deliverable_link || t.deliverable_url || '';
-                        const formattedDate = t.created_at ? new Date(t.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
-
-                        return (
-                          <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-all duration-300 ease-in-out">
-                            {/* Member Header & Edit Button */}
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-white text-xs">{t.profiles?.full_name || 'Member Tim'}</span>
-                              <div className="flex items-center gap-1.5">
-                                {formattedDate && <span className="text-[10px] text-zinc-500">{formattedDate}</span>}
-                                <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
-                                  {t.profiles?.pod || 'Umum'}
-                                </span>
-                                {isPoOrPlRole && (
-                                  <button
-                                    onClick={() => handleOpenEditTaskModal(t)}
-                                    className="px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/15 border border-white/10 text-[10px] text-zinc-300 hover:text-white font-medium cursor-pointer transition-colors duration-300 flex items-center gap-1"
-                                    title="Edit Tugas"
-                                  >
-                                    <Edit3 className="w-3 h-3" />
-                                    <span>Edit</span>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Task Title & Description Brief */}
-                            <div className="space-y-1">
-                              <div className="font-medium text-zinc-200 text-xs">
-                                {t.title}
-                              </div>
-                              {t.description && (
-                                <div className="text-[11px] text-zinc-300 bg-white/5 p-2 rounded-xl border border-white/5 font-sans leading-relaxed whitespace-pre-line">
-                                  <span className="text-[10px] text-zinc-500 uppercase font-medium block">Brief:</span>
-                                  {t.description}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* PREVIEW CHECKLIST DOD DETAIL ON PO CARDS */}
-                            {t.checklist && Array.isArray(t.checklist) && t.checklist.length > 0 && (
-                              <div className="my-2 space-y-1.5 rounded-xl bg-neutral-950 p-2.5 text-[11px] border border-white/10 font-sans">
-                                <div className="flex items-center justify-between text-zinc-400 text-[10px] font-medium pb-1 border-b border-white/5">
-                                  <span>Progres Checklist DoD:</span>
-                                  {completedDod < totalDod ? (
-                                    <span className="text-zinc-300 font-semibold flex items-center gap-1">
-                                      ⚠️ DoD Belum Lengkap ({completedDod}/{totalDod})
-                                    </span>
-                                  ) : (
-                                    <span className="text-white font-medium flex items-center gap-1">
-                                      ✓ DoD Lengkap ({completedDod}/{totalDod})
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="space-y-1 pt-0.5">
-                                  {t.checklist.map((item: any, idx: number) => {
-                                    const isChecked = item.checked ?? item.is_checked ?? false;
-                                    return (
-                                      <div key={idx} className="flex items-center gap-2 text-zinc-300">
-                                        <span className={isChecked ? 'text-white font-bold' : 'text-zinc-500'}>
-                                          {isChecked ? '✓' : '○'}
-                                        </span>
-                                        <span className={isChecked ? 'line-through text-zinc-500' : 'text-zinc-200'}>
-                                          {item.text || item.label || `Poin ${idx + 1}`}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* TIMESTAMP PENGUMPULAN & PERBANDINGAN DI PO REVIEW */}
-                            {t.submitted_at ? (
-                              <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400 border-t border-white/5 pt-2 font-sans">
-                                <span>Diserahkan: {formatDeadline(t.submitted_at)}</span>
-                                {t.due_date && new Date(t.submitted_at) > new Date(t.due_date) ? (
-                                  <span className="text-rose-400 font-medium">Terlambat</span>
-                                ) : (
-                                  <span className="text-emerald-400 font-medium">✓ Tepat Waktu</span>
-                                )}
-                              </div>
-                            ) : t.due_date ? (
-                              <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400 border-t border-white/5 pt-2 font-sans">
-                                <span>Tenggat Waktu:</span>
-                                <span className={getDeadlineStatus(t.due_date) === 'overdue' ? 'text-rose-400 font-medium' : 'text-zinc-300 font-medium'}>
-                                  {formatDeadline(t.due_date)}
-                                </span>
-                              </div>
-                            ) : null}
-
-                            {/* Status Indicator & Specific Action Controls */}
-                            {isBlocked ? (
-                              <div className="space-y-2 pt-1 border-t border-white/5">
-                                <div className="flex items-center justify-between">
-                                  <span className="px-2 py-0.5 rounded-md bg-neutral-800 border border-white/15 text-[10px] text-zinc-300 font-semibold flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3 text-zinc-400" />
-                                    <span>🚨 Blocker</span>
-                                  </span>
-                                  <button
-                                    onClick={() => t.id && handleOpenResolveBlockerModal(t.id)}
-                                    className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-[11px] rounded-full transition-all duration-300 cursor-pointer flex items-center gap-1"
-                                  >
-                                    <RotateCcw className="w-3 h-3" />
-                                    <span>Selesaikan</span>
-                                  </button>
-                                </div>
-                                <p className="text-[11px] text-zinc-300 bg-white/5 p-2 rounded-xl border border-white/5">
-                                  {t.blocker_reason || 'Terjadi kendala teknis'}
-                                </p>
-                              </div>
-                            ) : isReview ? (
-                              <div className="space-y-2 pt-1 border-t border-white/5">
-                                <div className="flex items-center justify-between">
-                                  <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/15 text-[10px] text-white font-semibold flex items-center gap-1">
-                                    <Clock className="w-3 h-3 text-zinc-300" />
-                                    <span>⏳ Butuh Review</span>
-                                  </span>
-                                </div>
-
-                                {/* SMART EXTERNAL LINK BUTTON / BLOCKQUOTE PREVIEW HASIL KIRIMAN MEMBER */}
-                                {deliverableContent && (
-                                  <div className="p-2.5 bg-neutral-950 border border-white/10 rounded-xl space-y-1.5 font-sans">
-                                    <span className="text-[10px] text-zinc-400 font-medium block uppercase tracking-wider">Hasil Kiriman Member:</span>
-                                    {deliverableContent.startsWith('http://') || deliverableContent.startsWith('https://') ? (
-                                      <a
-                                        href={deliverableContent}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition-colors border border-white/10"
-                                      >
-                                        <span>Buka Link Hasil Kerja</span>
-                                        <ExternalLink className="w-3 h-3 text-white shrink-0" />
-                                      </a>
-                                    ) : (
-                                      <blockquote className="p-2.5 bg-neutral-900 border-l-2 border-white/30 text-xs text-zinc-300 rounded-r-xl italic leading-relaxed whitespace-pre-line font-sans">
-                                        {deliverableContent}
-                                      </blockquote>
-                                    )}
-                                  </div>
-                                )}
-
-                                <div className="flex items-center gap-2 pt-1">
-                                  <button
-                                    onClick={() => t.id && handleAcceptReview(t.id)}
-                                    className="flex-1 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-all duration-300 cursor-pointer text-center text-[11px]"
-                                  >
-                                    Terima (ACC)
-                                  </button>
-                                  <button
-                                    onClick={() => t.id && handleOpenRevisionModal(t.id)}
-                                    className="flex-1 py-1.5 border border-white/20 hover:bg-white/10 text-white font-medium rounded-full transition-all duration-300 cursor-pointer text-center text-[11px]"
-                                  >
-                                    Minta Revisi
-                                  </button>
-                                </div>
-                              </div>
-                            ) : isDone ? (
-                              <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
-                                <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/15 text-[10px] text-white font-semibold flex items-center gap-1">
-                                  <CheckCircle className="w-3 h-3 text-white" />
-                                  <span>✅ Selesai</span>
-                                </span>
-                                <span className="text-zinc-500 text-[10px]">Telah di-ACC PO</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
-                                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] text-zinc-400 font-medium flex items-center gap-1">
-                                  <Activity className="w-3 h-3 text-zinc-400" />
-                                  <span>⚡ Sedang Mengerjakan</span>
-                                </span>
-                                <span className="text-zinc-400 font-medium text-[10px]">
-                                  {completedDod}/{totalDod} DoD Selesai
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                  SyncFlow Master Task Feed
-                </div>
-              </div>
-
-              {/* AREA BAWAH KIRI (Header Teks Sapaan Personal Dinamis PO) */}
-              <div className="space-y-2 pt-2 font-sans transition-all duration-300 ease-in-out">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
-                  Halo, {userName}
-                </h1>
-                <p className="text-base text-zinc-400 font-sans">
-                  Papan kontrol & radar tim untuk {currentWorkspace?.name || 'Workspace Utama'}.
-                </p>
-              </div>
-
-            </div>
-
-            {/* ========================================================================= */}
-            {/* KOLOM 2 (TENGAH - PUTIH SOLID - 4 KOLOM): BAGI TUGAS BARU */}
-            {/* ========================================================================= */}
-            <div className="lg:col-span-4 flex flex-col justify-between transition-all duration-300 ease-in-out">
-              
-              <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
-                <div className="space-y-1">
-                  <span className="text-xs font-medium text-zinc-500">
-                    Penugasan Workspace: {currentWorkspace?.name}
-                  </span>
-                  <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                    Bagi Tugas Baru
-                  </h3>
-                </div>
-
-                <form onSubmit={handleCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
-                  {/* Dropdown Select Member */}
-                  <div className="space-y-1">
-                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
-                    <select
-                      value={selectedAssigneeId}
-                      onChange={(e) => setSelectedAssigneeId(e.target.value)}
-                      disabled={isLoadingAssignees || assigneeList.length === 0}
-                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-900 outline-hidden transition-all focus:border-zinc-400 focus:bg-white disabled:opacity-50 font-sans cursor-pointer"
-                    >
-                      {isLoadingAssignees ? (
-                        <option value="">Memuat daftar tim...</option>
-                      ) : assigneeList.length === 0 ? (
-                        <option value="">Belum ada anggota tim terdaftar...</option>
-                      ) : (
-                        assigneeList.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {member.full_name} — {member.pod} ({member.role.toUpperCase()})
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-
-                  {/* Task Title Input with Ref for Auto-Focus */}
-                  <div className="space-y-1">
-                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Judul Tugas</label>
-                    <input
-                      ref={taskTitleInputRef}
-                      type="text"
-                      required
-                      placeholder="Nama tugas..."
-                      value={newAssignTaskTitle}
-                      onChange={e => setNewAssignTaskTitle(e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 font-sans"
-                    />
-                  </div>
-
-                  {/* FORM INPUT DESKRIPSI TUGAS (PO VIEW - TENGAH) */}
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
-                      Deskripsi / Brief Singkat
-                    </label>
-                    <textarea
-                      placeholder="Jelaskan detail brief atau konteks pengerjaan..."
-                      value={newAssignDescription}
-                      onChange={e => setNewAssignDescription(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-900 outline-hidden focus:border-zinc-400 min-h-[70px] resize-none font-sans"
-                    />
-                  </div>
-
-                  {/* INPUT DEADLINE DI FORM PO DENGAN PRESET TENGGAT WAKTU CEPAT */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
-                        Tenggat Waktu (Deadline)
-                      </label>
-                      <div className="flex items-center gap-1 font-sans">
-                        <button
-                          type="button"
-                          onClick={() => handleApplyDeadlinePreset(0, 'create')}
-                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
-                        >
-                          Hari Ini (17:00)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleApplyDeadlinePreset(1, 'create')}
-                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
-                        >
-                          Besok (17:00)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleApplyDeadlinePreset(3, 'create')}
-                          className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
-                        >
-                          3 Hari
-                        </button>
-                      </div>
-                    </div>
-                    <input
-                      type="datetime-local"
-                      value={newAssignDueDate}
-                      onChange={e => setNewAssignDueDate(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 transition-colors duration-300 font-sans [color-scheme:light]"
-                    />
-                  </div>
-
-                  {/* DYNAMIC DOD CHECKLIST LIST (MAX 10 POINTS) */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-                        Checklist DoD ({dodPoints.length}/10 Poin)
-                      </label>
-                      {dodPoints.length < 10 && (
-                        <button
-                          type="button"
-                          onClick={handleAddDodPoint}
-                          className="text-[10px] font-bold text-zinc-900 hover:text-zinc-600 flex items-center gap-0.5 cursor-pointer transition-colors duration-300"
-                        >
-                          <Plus className="w-3 h-3" />
-                          <span>+ Tambah Poin</span>
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                      {dodPoints.map((point, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            placeholder={`DoD ${idx + 1}...`}
-                            value={point}
-                            onChange={e => handleDodPointChange(idx, e.target.value)}
-                            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans focus:outline-hidden focus:border-zinc-800"
-                          />
-                          {dodPoints.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveDodPoint(idx)}
-                              className="w-6 h-6 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center cursor-pointer transition-colors duration-300 text-xs font-bold shrink-0"
-                            >
-                              ×
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
-                    className={`w-full py-3 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
-                      isTaskSubmitSuccess
-                        ? 'bg-emerald-600 text-white cursor-default'
-                        : selectedAssigneeId && newAssignTaskTitle.trim()
-                          ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
-                          : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
-                    }`}
-                  >
-                    {isTaskSubmitSuccess ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-white animate-bounce" />
-                        <span>✓ Tugas Terkirim</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Kirim Tugas ke Member</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              </div>
-
-            </div>
-
-            {/* ========================================================================= */}
-            {/* KOLOM 3 (KANAN - 3 KOLOM): DYNAMIC PROJECT LINKS (FULL CRUD) + MEMBER MANAGER */}
-            {/* ========================================================================= */}
-            <div className="lg:col-span-3 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
-              
-              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
-                
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium text-zinc-400">
-                      Pusat Operasional
-                    </span>
-                    <h3 className="text-base font-bold text-white tracking-tight">
-                      Aset & Referensi Tim
-                    </h3>
-                  </div>
-
-                  {/* Summary Metrics */}
-                  <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/10 text-center">
-                    <div className="space-y-0.5">
-                      <div className="text-lg font-bold text-white">{activeTasksCount}</div>
-                      <div className="text-[9px] text-zinc-400 uppercase font-medium tracking-wider">Aktif</div>
-                    </div>
-                    <div className="space-y-0.5 border-x border-white/10">
-                      <div className="text-lg font-bold text-white">{blockedTasksCount}</div>
-                      <div className="text-[9px] text-zinc-400 uppercase font-medium tracking-wider">Kendala</div>
-                    </div>
-                    <div className="space-y-0.5">
-                      <div className="text-lg font-bold text-white">{doneTasksCount}</div>
-                      <div className="text-[9px] text-zinc-400 uppercase font-medium tracking-wider">Done</div>
-                    </div>
-                  </div>
-
-                  {/* Dynamic Master Quick Links & Edit Button */}
-                  <div className="space-y-2.5 pt-2 font-sans">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-medium text-zinc-400 tracking-wider">
-                        Tautan Workspace ({projectLinks.length})
-                      </span>
-                      {isPoOrPlRole && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={handleOpenManageMembersModal}
-                            className="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer flex items-center gap-1"
-                          >
-                            <UserPlus className="w-3 h-3" />
-                            <span>+ Anggota</span>
-                          </button>
-                          <button
-                            onClick={handleOpenManageLinksModal}
-                            className="text-[10px] text-zinc-300 hover:text-white underline cursor-pointer font-medium"
-                          >
-                            Tautan
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {projectLinks.length === 0 ? (
-                      <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan di workspace ini.</p>
-                    ) : (
-                      projectLinks.map(link => (
-                        <a
-                          key={link.id || link.title}
-                          href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-300 ease-in-out group/link"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                              {renderLinkIcon(link.title, link.icon_type)}
-                            </div>
-                            <span className="font-semibold text-white text-xs truncate max-w-[140px] sm:max-w-[180px]">
-                              {link.title}
-                            </span>
-                          </div>
-                          <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
-                        </a>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
-                  SyncFlow PO Control Center
-                </div>
-
-              </div>
-
-            </div>
-
-          </main>
+          <PODashboard
+            currentWorkspace={currentWorkspace}
+            allTasks={allTasks}
+            filteredMasterTasks={filteredMasterTasks}
+            poTaskFeedFilter={poTaskFeedFilter}
+            setPoTaskFeedFilter={setPoTaskFeedFilter}
+            userName={userName}
+            isPoOrPlRole={isPoOrPlRole}
+            onOpenEditTaskModal={handleOpenEditTaskModal}
+            onOpenResolveBlockerModal={handleOpenResolveBlockerModal}
+            onAcceptReview={handleAcceptReview}
+            onOpenRevisionModal={handleOpenRevisionModal}
+            selectedAssigneeId={selectedAssigneeId}
+            setSelectedAssigneeId={setSelectedAssigneeId}
+            isLoadingAssignees={isLoadingAssignees}
+            assigneeList={assigneeList}
+            taskTitleInputRef={taskTitleInputRef}
+            newAssignTaskTitle={newAssignTaskTitle}
+            setNewAssignTaskTitle={setNewAssignTaskTitle}
+            newAssignDescription={newAssignDescription}
+            setNewAssignDescription={setNewAssignDescription}
+            newAssignDueDate={newAssignDueDate}
+            setNewAssignDueDate={setNewAssignDueDate}
+            dodPoints={dodPoints}
+            onApplyDeadlinePreset={handleApplyDeadlinePreset}
+            onAddDodPoint={handleAddDodPoint}
+            onRemoveDodPoint={handleRemoveDodPoint}
+            onDodPointChange={handleDodPointChange}
+            onCreateNewTask={handleCreateNewTask}
+            isTaskSubmitSuccess={isTaskSubmitSuccess}
+            activeTasksCount={activeTasksCount}
+            blockedTasksCount={blockedTasksCount}
+            doneTasksCount={doneTasksCount}
+            projectLinks={projectLinks}
+            onOpenManageMembersModal={handleOpenManageMembersModal}
+            onOpenManageLinksModal={handleOpenManageLinksModal}
+            renderLinkIcon={renderLinkIcon}
+            formatDeadline={formatDeadline}
+            getDeadlineStatus={getDeadlineStatus}
+          />
         )}
 
         {/* FOOTER */}
@@ -3062,697 +1724,94 @@ export const App: React.FC = () => {
 
       </div>
 
-      {/* MODAL VERIFIKASI KODE AKSES WORKSPACE (PIN MODAL) */}
-      {isAccessModalOpen && selectedTargetWs && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 font-sans text-xs">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2.5 text-white font-bold text-sm">
-                <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center">
-                  <Lock className="w-4 h-4 text-zinc-300" />
-                </div>
-                <span className="truncate max-w-[240px]">{selectedTargetWs.name}</span>
-              </div>
-              <button
-                onClick={() => !isVerifyingCode && setIsAccessModalOpen(false)}
-                disabled={isVerifyingCode}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer disabled:opacity-40"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* ALL MODAL DIALOGS */}
+      <AccessCodeModal
+        isOpen={isAccessModalOpen}
+        selectedWorkspace={selectedTargetWs}
+        inputInviteCode={inputInviteCode}
+        setInputInviteCode={setInputInviteCode}
+        selectedTargetPod={selectedTargetPod}
+        setSelectedTargetPod={setSelectedTargetPod}
+        isVerifyingCode={isVerifyingCode}
+        onClose={() => setIsAccessModalOpen(false)}
+        onVerifyAndJoin={handleVerifyAndJoinWorkspace}
+      />
 
-            <form onSubmit={handleVerifyAndJoinWorkspace} className="space-y-4 font-sans">
-              {/* Input 1 (Kode Akses 6-digit monospaced center) */}
-              <div className="space-y-1.5 text-center">
-                <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">
-                  Masukkan Kode Akses (PIN) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  maxLength={6}
-                  disabled={isVerifyingCode}
-                  placeholder="6 DIGIT"
-                  value={inputInviteCode}
-                  onChange={e => setInputInviteCode(e.target.value.toUpperCase())}
-                  className="w-full tracking-[0.3em] font-mono text-center text-lg font-bold bg-neutral-950 border border-white/10 text-white rounded-xl p-3 uppercase focus:outline-hidden focus:border-white/40 font-sans transition-all disabled:opacity-50"
-                />
-                <p className="text-[10px] text-zinc-500 font-sans">
-                  Minta 6 karakter kode akses workspace kepada Project Owner Anda.
-                </p>
-              </div>
+      <CreateWorkspaceModal
+        isOpen={isCreateWorkspaceModalOpen}
+        newWorkspaceName={newWorkspaceName}
+        setNewWorkspaceName={setNewWorkspaceName}
+        isCreatingWorkspace={isCreatingWorkspace}
+        onClose={() => setIsCreateWorkspaceModalOpen(false)}
+        onCreateWorkspaceSubmit={handleCreateWorkspaceSubmit}
+      />
 
-              {/* Input 2 (Pilih Pod / Divisi) */}
-              <div className="space-y-1">
-                <label className="block text-[10px] text-zinc-400 font-medium">Pilih Pod / Divisi Anda *</label>
-                <select
-                  value={selectedTargetPod}
-                  onChange={e => setSelectedTargetPod(e.target.value)}
-                  disabled={isVerifyingCode}
-                  className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer disabled:opacity-50"
-                >
-                  <option value="Product Builder">Product Builder</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="UI/UX Designer">UI/UX Designer</option>
-                  <option value="General">General</option>
-                </select>
-              </div>
+      <ManageMembersModal
+        isOpen={isManageMembersModalOpen}
+        currentWorkspace={currentWorkspace}
+        workspaceMembersList={workspaceMembersList}
+        isLoadingMembers={isLoadingMembers}
+        currentUserId={session?.user?.id}
+        activeWorkspaceRole={activeWorkspaceRole}
+        onClose={() => setIsManageMembersModalOpen(false)}
+        onRemoveMember={handleRemoveMember}
+        showToast={showToast}
+      />
 
-              {/* Action buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
-                <button
-                  type="button"
-                  disabled={isVerifyingCode}
-                  onClick={() => setIsAccessModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-xl cursor-pointer hover:bg-neutral-700 transition-colors text-xs disabled:opacity-50"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={!inputInviteCode.trim() || isVerifyingCode}
-                  className={`px-5 py-2.5 bg-white text-zinc-950 font-bold rounded-xl shadow-md text-xs transition-all flex items-center justify-center gap-1.5 ${
-                    inputInviteCode.trim() && !isVerifyingCode
-                      ? 'hover:bg-zinc-200 cursor-pointer'
-                      : 'opacity-50 cursor-not-allowed'
-                  }`}
-                >
-                  {isVerifyingCode ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin shrink-0" />
-                      <span>Memverifikasi...</span>
-                    </>
-                  ) : (
-                    <span>🔑 Verifikasi & Masuk Workspace</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ManageLinksModal
+        isOpen={isManageLinksModalOpen}
+        currentWorkspace={currentWorkspace}
+        editableLinks={editableLinks}
+        setEditableLinks={setEditableLinks}
+        onClose={() => setIsManageLinksModalOpen(false)}
+        onSaveAllLinks={handleSaveAllLinks}
+        onAddLinkRow={handleAddLinkRow}
+        onRemoveLinkRow={handleRemoveLinkRow}
+      />
 
-      {/* 2. MODAL DIREKTORI ANGGOTA WORKSPACE (STRICT MONOCHROME GLASSMORPHISM) */}
-      {isManageMembersModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs max-h-[90vh] flex flex-col justify-between">
-            {/* Header Modal */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2.5 text-white font-bold text-sm">
-                <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-zinc-300" />
-                </div>
-                <span>Anggota Workspace ({workspaceMembersList.length})</span>
-              </div>
-              <button
-                onClick={() => setIsManageMembersModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <EditTaskModal
+        isOpen={isEditTaskModalOpen}
+        editingTask={editingTask}
+        editTitle={editTitle}
+        setEditTitle={setEditTitle}
+        editDescription={editDescription}
+        setEditDescription={setEditDescription}
+        editDueDate={editDueDate}
+        setEditDueDate={setEditDueDate}
+        editDodPoints={editDodPoints}
+        setEditDodPoints={setEditDodPoints}
+        onClose={() => {
+          setIsEditTaskModalOpen(false);
+          setEditingTask(null);
+        }}
+        onSaveTaskEdit={handleSaveTaskEdit}
+        onDeleteTask={handleDeleteTask}
+        onApplyDeadlinePreset={handleApplyDeadlinePreset}
+      />
 
-            <div className="space-y-4 flex-1 overflow-y-auto pr-1 font-sans">
-              {/* Banner Kode Akses Tim (Top Section) */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/[0.03] border border-white/10 mb-4 font-sans">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-white/40 tracking-wider block">Kode Akses Bergabung</span>
-                  <span className="text-base font-bold font-mono tracking-widest text-white">{currentWorkspace?.invite_code || '---'}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (currentWorkspace?.invite_code) {
-                      navigator.clipboard.writeText(currentWorkspace.invite_code);
-                      showToast("✓ Kode akses berhasil disalin ke clipboard!");
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-white text-zinc-950 text-xs font-semibold hover:bg-zinc-200 transition-all cursor-pointer font-sans"
-                >
-                  Salin Kode
-                </button>
-              </div>
+      <ResolveBlockerModal
+        isOpen={isResolveBlockerModalOpen}
+        inputResolutionNote={inputResolutionNote}
+        setInputResolutionNote={setInputResolutionNote}
+        onClose={() => setIsResolveBlockerModalOpen(false)}
+        onSubmitResolveBlocker={handleSubmitResolveBlocker}
+      />
 
-              {/* Daftar Anggota Tim (Main List Section) */}
-              {isLoadingMembers ? (
-                <div className="flex items-center justify-center py-10 text-xs text-zinc-400 gap-2 font-sans">
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
-                  <span>Memuat anggota workspace...</span>
-                </div>
-              ) : workspaceMembersList.length === 0 ? (
-                <div className="p-6 text-center text-xs text-zinc-500 bg-neutral-950 border border-white/10 rounded-2xl">
-                  Belum ada anggota yang bergabung di workspace ini.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1 font-sans">
-                  {workspaceMembersList.map((member) => (
-                    <div key={member.id} className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors font-sans text-xs">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-xs font-bold text-white uppercase">
-                          {(member.full_name || 'A').charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-white flex items-center gap-2">
-                            <span>{member.full_name}</span>
-                            {member.user_id === session?.user?.id && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-medium">Kamu</span>
-                            )}
-                          </div>
-                          <span className="text-[11px] text-white/40 block font-sans">{member.email}</span>
-                        </div>
-                      </div>
+      <RevisionModal
+        isOpen={isRevisionModalOpen}
+        inputRevisionNote={inputRevisionNote}
+        setInputRevisionNote={setInputRevisionNote}
+        onClose={() => setIsRevisionModalOpen(false)}
+        onSubmitRevisionNote={handleSubmitRevisionNote}
+      />
 
-                      <div className="flex items-center gap-2">
-                        {/* Badge POD / Divisi */}
-                        <span className="px-2 py-0.5 rounded-md border border-white/10 bg-white/5 text-[10px] text-white/70 font-medium font-sans">
-                          {member.pod}
-                        </span>
-
-                        {/* Badge Role */}
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase font-sans ${
-                          member.role === 'po' ? 'bg-white text-zinc-950' :
-                          member.role === 'pl' ? 'bg-zinc-800 text-white border border-white/20' :
-                          'bg-white/5 text-white/50 border border-white/5'
-                        }`}>
-                          {member.role === 'po' ? 'Project Owner' : member.role === 'pl' ? 'Project Leader' : 'Member'}
-                        </span>
-
-                        {/* Tombol Kick (Hanya PO yang bisa kick, dan tidak bisa kick diri sendiri) */}
-                        {activeWorkspaceRole === 'po' && member.user_id !== session?.user?.id && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMember(member.id)}
-                            className="p-1.5 text-white/30 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all ml-1 cursor-pointer"
-                            title="Keluarkan dari Workspace"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end pt-3 border-t border-white/10 font-sans">
-              <button
-                type="button"
-                onClick={() => setIsManageMembersModalOpen(false)}
-                className="px-5 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors text-xs"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL BUAT WORKSPACE BARU */}
-      {isCreateWorkspaceModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out font-sans">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 font-sans text-xs">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2.5 text-white font-bold text-sm">
-                <div className="w-7 h-7 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center">
-                  <Folder className="w-4 h-4 text-zinc-300" />
-                </div>
-                <span>Buat Ruang Kerja Baru</span>
-              </div>
-              <button
-                onClick={() => !isCreatingWorkspace && setIsCreateWorkspaceModalOpen(false)}
-                disabled={isCreatingWorkspace}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer transition-colors disabled:opacity-40"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateWorkspaceSubmit} className="space-y-4 font-sans">
-              <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-medium text-xs">Nama Workspace / Proyek *</label>
-                <input
-                  type="text"
-                  required
-                  disabled={isCreatingWorkspace}
-                  placeholder="contoh: Redesign Landing Page, Sprint Klien A"
-                  value={newWorkspaceName}
-                  onChange={e => setNewWorkspaceName(e.target.value)}
-                  className="w-full bg-white/[0.04] border border-white/10 focus:border-white/40 focus:bg-white/[0.07] text-white rounded-xl px-4 py-2.5 text-xs outline-hidden font-sans transition-all disabled:opacity-50"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  disabled={isCreatingWorkspace}
-                  onClick={() => setIsCreateWorkspaceModalOpen(false)}
-                  className="bg-white/5 hover:bg-white/10 text-white/60 text-xs px-4 py-2 rounded-xl cursor-pointer transition-colors font-sans disabled:opacity-50"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newWorkspaceName.trim() || isCreatingWorkspace}
-                  className={`bg-white text-zinc-950 hover:bg-zinc-200 font-semibold text-xs px-5 py-2 rounded-xl shadow-md transition-all font-sans flex items-center justify-center gap-2 ${
-                    newWorkspaceName.trim() && !isCreatingWorkspace
-                      ? 'cursor-pointer'
-                      : 'opacity-50 cursor-not-allowed'
-                  }`}
-                >
-                  {isCreatingWorkspace ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin shrink-0" />
-                      <span>Membuat Workspace...</span>
-                    </>
-                  ) : (
-                    <span>Buat Workspace</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL EDIT DETAIL TUGAS LENGKAP (PO VIEW) */}
-      {isEditTaskModalOpen && editingTask && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs max-h-[90vh] flex flex-col justify-between transition-all duration-300 ease-in-out">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <Edit3 className="w-4 h-4 text-zinc-300" />
-                <span>Edit Detail Tugas</span>
-              </div>
-              <button
-                onClick={() => {
-                  setIsEditTaskModalOpen(false);
-                  setEditingTask(null);
-                }}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveTaskEdit} className="space-y-3.5 flex-1 overflow-y-auto pr-1">
-              {/* Edit Judul Tugas */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Judul Tugas</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Judul tugas..."
-                  value={editTitle}
-                  onChange={e => setEditTitle(e.target.value)}
-                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
-
-              {/* Edit Deskripsi / Brief */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Deskripsi / Brief Singkat</label>
-                <textarea
-                  rows={3}
-                  placeholder="Detail brief..."
-                  value={editDescription}
-                  onChange={e => setEditDescription(e.target.value)}
-                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans resize-none"
-                />
-              </div>
-
-              {/* Edit Tenggat Waktu (Deadline) + Presets */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Tenggat Waktu (Deadline)</label>
-                  <div className="flex items-center gap-1 font-sans">
-                    <button
-                      type="button"
-                      onClick={() => handleApplyDeadlinePreset(0, 'edit')}
-                      className="text-[10px] bg-white/5 hover:bg-white/10 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors duration-300 cursor-pointer"
-                    >
-                      Hari Ini (17:00)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleApplyDeadlinePreset(1, 'edit')}
-                      className="text-[10px] bg-white/5 hover:bg-white/10 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors duration-300 cursor-pointer"
-                    >
-                      Besok (17:00)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleApplyDeadlinePreset(3, 'edit')}
-                      className="text-[10px] bg-white/5 hover:bg-white/10 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors duration-300 cursor-pointer"
-                    >
-                      3 Hari
-                    </button>
-                  </div>
-                </div>
-                <input
-                  type="datetime-local"
-                  value={editDueDate}
-                  onChange={e => setEditDueDate(e.target.value)}
-                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans [color-scheme:dark]"
-                />
-              </div>
-
-              {/* Edit Checklist DoD */}
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between">
-                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Checklist DoD ({editDodPoints.length}/10 Poin)</label>
-                  {editDodPoints.length < 10 && (
-                    <button
-                      type="button"
-                      onClick={handleAddEditDodPoint}
-                      className="text-[10px] font-bold text-white hover:text-zinc-300 flex items-center gap-0.5 cursor-pointer transition-colors duration-300"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>+ Tambah Poin</span>
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                  {editDodPoints.map((point, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        placeholder={`DoD ${idx + 1}...`}
-                        value={point}
-                        onChange={e => handleEditDodPointChange(idx, e.target.value)}
-                        className="flex-1 p-2 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-white font-sans focus:outline-hidden focus:border-white/30"
-                      />
-                      {editDodPoints.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveEditDodPoint(idx)}
-                          className="w-6 h-6 rounded-lg bg-white/5 hover:bg-rose-950/80 border border-white/10 text-zinc-400 hover:text-rose-300 flex items-center justify-center cursor-pointer transition-colors duration-300 text-xs font-bold shrink-0"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Footer Actions: Delete & Save */}
-              <div className="flex items-center justify-between pt-3 border-t border-white/10 gap-2">
-                <button
-                  type="button"
-                  onClick={handleDeleteTask}
-                  className="px-3.5 py-2 bg-rose-950/50 hover:bg-rose-900/80 border border-rose-800/60 text-rose-200 font-medium rounded-full cursor-pointer transition-colors duration-300 text-xs flex items-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Hapus Tugas</span>
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditTaskModalOpen(false);
-                      setEditingTask(null);
-                    }}
-                    className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300 text-xs"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full shadow-md transition-colors duration-300 cursor-pointer text-xs"
-                  >
-                    Simpan Perubahan
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL KELOLA TAUTAN TIM (FULL CRUD FOR PO VIEW) */}
-      {isManageLinksModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs max-h-[90vh] flex flex-col justify-between transition-all duration-300 ease-in-out">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <Folder className="w-4 h-4 text-zinc-300" />
-                <span>Kelola Tautan Tim ({currentWorkspace?.name})</span>
-              </div>
-              <button
-                onClick={() => setIsManageLinksModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveAllLinks} className="space-y-4 flex-1 overflow-y-auto pr-1">
-              <div className="space-y-3">
-                {editableLinks.map((link, idx) => (
-                  <div key={link.id || idx} className="p-3 bg-neutral-950 border border-white/10 rounded-2xl space-y-2 relative group">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Tautan #{idx + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveLinkRow(idx, link.id)}
-                        className="p-1 bg-white/5 hover:bg-rose-950/80 border border-white/10 hover:border-rose-800 text-zinc-400 hover:text-rose-300 rounded-lg transition-colors duration-300 cursor-pointer"
-                        title="Hapus Tautan"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                      <div className="sm:col-span-5 space-y-0.5">
-                        <label className="text-[10px] text-zinc-400 font-medium">Nama Tautan</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="misal: Drive Proyek"
-                          value={link.title}
-                          onChange={e => {
-                            const updated = [...editableLinks];
-                            updated[idx].title = e.target.value;
-                            setEditableLinks(updated);
-                          }}
-                          className="w-full p-2 bg-neutral-900 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-7 space-y-0.5">
-                        <label className="text-[10px] text-zinc-400 font-medium">URL</label>
-                        <input
-                          type="url"
-                          required
-                          placeholder="https://..."
-                          value={link.url}
-                          onChange={e => {
-                            const updated = [...editableLinks];
-                            updated[idx].url = e.target.value;
-                            setEditableLinks(updated);
-                          }}
-                          className="w-full p-2 bg-neutral-900 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAddLinkRow}
-                className="w-full py-2.5 border border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 rounded-2xl text-xs text-white font-medium flex items-center justify-center gap-1.5 transition-all duration-300 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Tambah Tautan Baru</span>
-              </button>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setIsManageLinksModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300 text-xs"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full shadow-md transition-colors duration-300 cursor-pointer text-xs"
-                >
-                  Simpan Perubahan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL INPUT ARANAN SOLUSI KENDALA (PO VIEW) */}
-      {isResolveBlockerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs transition-all duration-300 ease-in-out">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <RotateCcw className="w-4 h-4 text-zinc-300" />
-                <span>Solusi / Arahan Kendala</span>
-              </div>
-              <button
-                onClick={() => setIsResolveBlockerModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitResolveBlocker} className="space-y-4 font-sans">
-              <div className="space-y-1">
-                <label className="block text-zinc-400 font-medium">Berikan Solusi / Arahan untuk Kendala Ini</label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Tuliskan arahan/solusi teknis..."
-                  value={inputResolutionNote}
-                  onChange={e => setInputResolutionNote(e.target.value)}
-                  className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsResolveBlockerModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={!inputResolutionNote.trim()}
-                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all duration-300 ${
-                    inputResolutionNote.trim()
-                      ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
-                      : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
-                  }`}
-                >
-                  <span>Kirim Arahan</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL INPUT CATATAN REVISI (PO VIEW - APA YANG PERLU DIPERBAIKI?) */}
-      {isRevisionModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs transition-all duration-300 ease-in-out">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <AlertTriangle className="w-4 h-4 text-zinc-300" />
-                <span>Catatan Revisi Tugas</span>
-              </div>
-              <button
-                onClick={() => setIsRevisionModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitRevisionNote} className="space-y-4 font-sans">
-              <div className="space-y-1">
-                <label className="block text-zinc-400 font-medium">Apa yang perlu diperbaiki?</label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Tuliskan poin revisi & arahan..."
-                  value={inputRevisionNote}
-                  onChange={e => setInputRevisionNote(e.target.value)}
-                  className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsRevisionModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={!inputRevisionNote.trim()}
-                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all duration-300 ${
-                    inputRevisionNote.trim()
-                      ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
-                      : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
-                  }`}
-                >
-                  <span>Kirim Arahan</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL LAPORKAN KENDALA (MEMBER VIEW) */}
-      {isBlockerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs transition-all duration-300 ease-in-out">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <AlertTriangle className="w-4 h-4 text-zinc-300" />
-                <span>Laporkan Kendala</span>
-              </div>
-              <button
-                onClick={() => setIsBlockerModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleReportBlockerSubmit} className="space-y-4 font-sans">
-              <textarea
-                rows={3}
-                required
-                placeholder="Tuliskan kendala Anda..."
-                value={blockerReason}
-                onChange={e => setBlockerReason(e.target.value)}
-                className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-              />
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsBlockerModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={!blockerReason.trim()}
-                  className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all duration-300 ${
-                    blockerReason.trim()
-                      ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
-                      : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
-                  }`}
-                >
-                  <span>Kirim Kendala</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ReportBlockerModal
+        isOpen={isBlockerModalOpen}
+        blockerReason={blockerReason}
+        setBlockerReason={setBlockerReason}
+        onClose={() => setIsBlockerModalOpen(false)}
+        onReportBlockerSubmit={handleReportBlockerSubmit}
+      />
     </div>
   );
 };

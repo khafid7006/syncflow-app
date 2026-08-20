@@ -147,3 +147,71 @@ export interface Notification {
   is_read: boolean;
   created_at: string;
 }
+
+export interface UserProfile {
+  id: string;
+  full_name: string;
+  email?: string;
+  role: 'member' | 'owner';
+  pod: 'Product Builder' | 'BA' | 'QA' | 'Marketing' | string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  description?: string;
+  owner_id?: string;
+  role?: 'po' | 'pl' | 'member';
+  invite_code?: string;
+  created_at?: string;
+}
+
+export interface WorkspaceMemberDetail {
+  id?: string;
+  workspace_id: string;
+  user_id: string;
+  role: 'po' | 'pl' | 'member';
+  pod: string;
+  created_at?: string;
+  profiles?: {
+    id: string;
+    full_name: string;
+    email?: string;
+    pod?: string;
+    role?: string;
+  };
+}
+
+export interface MemberTask {
+  id?: string;
+  workspace_id?: string;
+  assignee_id?: string;
+  title: string;
+  description?: string;
+  status: string;
+  deliverable_link?: string;
+  deliverable_url?: string;
+  blocker_reason?: string;
+  is_blocked?: boolean;
+  revision_note?: string;
+  resolution_note?: string;
+  due_date?: string;
+  submitted_at?: string;
+  checklist?: { id: number; text: string; checked: boolean; is_checked?: boolean }[];
+  created_at?: string;
+  profiles?: {
+    id?: string;
+    full_name?: string;
+    pod?: string;
+    role?: string;
+  };
+}
+
+export interface ProjectLink {
+  id?: string;
+  workspace_id?: string;
+  title: string;
+  url: string;
+  icon_type?: string;
+  created_at?: string;
+}
