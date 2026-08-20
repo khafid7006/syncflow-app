@@ -5,7 +5,7 @@ import {
   Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
   ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus,
   GitBranch, Activity, Clock, CheckCircle, Sparkles, Trash2, Link as LinkIcon,
-  Calendar
+  Calendar, Edit3
 } from 'lucide-react';
 
 export interface UserProfile {
@@ -19,6 +19,7 @@ export interface MemberTask {
   id?: string;
   assignee_id?: string;
   title: string;
+  description?: string;
   status: string;
   deliverable_link?: string;
   deliverable_url?: string;
@@ -166,15 +167,24 @@ export const App: React.FC = () => {
   const [editableLinks, setEditableLinks] = useState<ProjectLink[]>([]);
   const [isManageLinksModalOpen, setIsManageLinksModalOpen] = useState<boolean>(false);
 
-  // PO Quick Assignment Form states (Dynamic DoD list, max 10 points & Due Date)
+  // PO Quick Assignment Form states (Dynamic DoD list, Description, max 10 points & Due Date)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
   const [newAssignTaskTitle, setNewAssignTaskTitle] = useState<string>('');
+  const [newAssignDescription, setNewAssignDescription] = useState<string>('');
   const [newAssignDueDate, setNewAssignDueDate] = useState<string>('');
   const [dodPoints, setDodPoints] = useState<string[]>([
     'Buat tampilan tombol dan form pembayaran',
     'Sambungkan tombol ke halaman sukses',
     'Lampirkan link hasil kerjaan',
   ]);
+
+  // PO Edit Task Modal States
+  const [editingTask, setEditingTask] = useState<MemberTask | null>(null);
+  const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState<boolean>(false);
+  const [editTitle, setEditTitle] = useState<string>('');
+  const [editDescription, setEditDescription] = useState<string>('');
+  const [editDueDate, setEditDueDate] = useState<string>('');
+  const [editDodPoints, setEditDodPoints] = useState<string[]>([]);
 
   // PO Feedback Modals states
   const [targetTaskId, setTargetTaskId] = useState<string | null>(null);
@@ -204,8 +214,8 @@ export const App: React.FC = () => {
   // Strict Role Check helper
   const isOwnerRole = profile?.role === 'owner';
 
-  // Quick Deadline Preset Handler for PO Assignment Form
-  const handleApplyDeadlinePreset = (daysOffset: number) => {
+  // Quick Deadline Preset Handler for PO Assignment Form & Edit Form
+  const handleApplyDeadlinePreset = (daysOffset: number, targetForm: 'create' | 'edit' = 'create') => {
     const target = new Date();
     target.setDate(target.getDate() + daysOffset);
     target.setHours(17, 0, 0, 0);
@@ -217,7 +227,11 @@ export const App: React.FC = () => {
     const minutes = String(target.getMinutes()).padStart(2, '0');
 
     const formatted = `${year}-${month}-${day}T${hours}:${minutes}`;
-    setNewAssignDueDate(formatted);
+    if (targetForm === 'edit') {
+      setEditDueDate(formatted);
+    } else {
+      setNewAssignDueDate(formatted);
+    }
   };
 
   // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks & Project Links
@@ -941,6 +955,116 @@ export const App: React.FC = () => {
     }
   };
 
+  // PO EDIT TASK MODAL HANDLERS
+  const handleOpenEditTaskModal = (task: MemberTask) => {
+    setEditingTask(task);
+    setEditTitle(task.title || '');
+    setEditDescription(task.description || '');
+    
+    if (task.due_date) {
+      const d = new Date(task.due_date);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        setEditDueDate(`${year}-${month}-${day}T${hours}:${minutes}`);
+      } else setEditDueDate('');
+    } else setEditDueDate('');
+
+    if (task.checklist && Array.isArray(task.checklist) && task.checklist.length > 0) {
+      setEditDodPoints(task.checklist.map(c => c.text || (c as any).label || ''));
+    } else {
+      setEditDodPoints(['']);
+    }
+
+    setIsEditTaskModalOpen(true);
+  };
+
+  const handleAddEditDodPoint = () => {
+    if (editDodPoints.length < 10) {
+      setEditDodPoints([...editDodPoints, '']);
+    }
+  };
+
+  const handleRemoveEditDodPoint = (index: number) => {
+    if (editDodPoints.length > 1) {
+      setEditDodPoints(editDodPoints.filter((_, idx) => idx !== index));
+    }
+  };
+
+  const handleEditDodPointChange = (index: number, value: string) => {
+    const updated = [...editDodPoints];
+    updated[index] = value;
+    setEditDodPoints(updated);
+  };
+
+  const handleSaveTaskEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask?.id || !editTitle.trim()) return;
+
+    const checklistItems = editDodPoints
+      .filter(p => p.trim().length > 0)
+      .map((text, idx) => ({
+        id: idx + 1,
+        text: text.trim(),
+        checked: false,
+        is_checked: false,
+      }));
+
+    const dueDateIso = editDueDate ? new Date(editDueDate).toISOString() : null;
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          title: editTitle.trim(),
+          description: editDescription.trim() || null,
+          due_date: dueDateIso,
+          checklist: checklistItems,
+        })
+        .eq('id', editingTask.id);
+
+      if (error) {
+        console.error("Save task edit error:", error.message);
+        showToast(`Gagal memperbarui tugas: ${error.message}`);
+      } else {
+        showToast('✓ Detail tugas berhasil diperbarui');
+        setIsEditTaskModalOpen(false);
+        setEditingTask(null);
+        fetchPOData();
+      }
+    } catch (err: any) {
+      console.error("Save task edit error:", err);
+      showToast(`Gagal memperbarui tugas: ${err.message || err}`);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!editingTask?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', editingTask.id);
+
+      if (error) {
+        console.error("Delete task error:", error.message);
+        showToast(`Gagal menghapus tugas: ${error.message}`);
+      } else {
+        showToast('🗑️ Tugas berhasil dihapus');
+        setIsEditTaskModalOpen(false);
+        setEditingTask(null);
+        fetchPOData();
+      }
+    } catch (err: any) {
+      console.error("Delete task error:", err);
+      showToast(`Gagal menghapus tugas: ${err.message || err}`);
+    }
+  };
+
   // DYNAMIC DOD LIST HELPERS FOR PO ASSIGNMENT FORM
   const handleAddDodPoint = () => {
     if (dodPoints.length < 10) {
@@ -984,6 +1108,7 @@ export const App: React.FC = () => {
         .insert({
           assignee_id: selectedAssigneeId,
           title: newAssignTaskTitle.trim(),
+          description: newAssignDescription.trim() || null,
           due_date: dueDateIso,
           checklist: checklistItems,
           status: 'in_progress',
@@ -995,6 +1120,7 @@ export const App: React.FC = () => {
       } else {
         showToast(`✓ Tugas berhasil dikirim ke ${assigneeName}`);
         setNewAssignTaskTitle('');
+        setNewAssignDescription('');
         setNewAssignDueDate('');
         setDodPoints([
           'Buat tampilan tombol dan form pembayaran',
@@ -1333,7 +1459,7 @@ export const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF */
+                  /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF & BRIEF BOX */
                   <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
@@ -1375,6 +1501,14 @@ export const App: React.FC = () => {
                           </div>
                         );
                       })()}
+
+                      {/* TAMPILKAN DESKRIPSI BRIEF DI DASHBOARD MEMBER */}
+                      {activeTask?.description && (
+                        <div className="my-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/80 leading-relaxed whitespace-pre-line font-sans">
+                          <span className="text-white/40 block font-medium mb-1 uppercase tracking-wider text-[10px]">Brief Tugas:</span>
+                          {activeTask.description}
+                        </div>
+                      )}
                     </div>
 
                     {/* PO Feedback Action Cards in Member Dashboard */}
@@ -1691,7 +1825,7 @@ export const App: React.FC = () => {
 
                         return (
                           <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-all duration-300 ease-in-out">
-                            {/* Member Header */}
+                            {/* Member Header & Edit Button */}
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-white text-xs">{t.profiles?.full_name || 'Member Tim'}</span>
                               <div className="flex items-center gap-1.5">
@@ -1699,12 +1833,30 @@ export const App: React.FC = () => {
                                 <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
                                   {t.profiles?.pod || 'Umum'}
                                 </span>
+                                {isOwnerRole && (
+                                  <button
+                                    onClick={() => handleOpenEditTaskModal(t)}
+                                    className="px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/15 border border-white/10 text-[10px] text-zinc-300 hover:text-white font-medium cursor-pointer transition-colors duration-300 flex items-center gap-1"
+                                    title="Edit Tugas"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                    <span>Edit</span>
+                                  </button>
+                                )}
                               </div>
                             </div>
 
-                            {/* Task Title */}
-                            <div className="font-medium text-zinc-200 text-xs">
-                              {t.title}
+                            {/* Task Title & Description Brief */}
+                            <div className="space-y-1">
+                              <div className="font-medium text-zinc-200 text-xs">
+                                {t.title}
+                              </div>
+                              {t.description && (
+                                <div className="text-[11px] text-zinc-300 bg-white/5 p-2 rounded-xl border border-white/5 font-sans leading-relaxed whitespace-pre-line">
+                                  <span className="text-[10px] text-zinc-500 uppercase font-medium block">Brief:</span>
+                                  {t.description}
+                                </div>
+                              )}
                             </div>
 
                             {/* PREVIEW CHECKLIST DOD DETAIL ON PO CARDS */}
@@ -1916,6 +2068,19 @@ export const App: React.FC = () => {
                     />
                   </div>
 
+                  {/* FORM INPUT DESKRIPSI TUGAS (PO VIEW - TENGAH) */}
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+                      Deskripsi / Brief Singkat
+                    </label>
+                    <textarea
+                      placeholder="Jelaskan detail brief atau konteks pengerjaan..."
+                      value={newAssignDescription}
+                      onChange={e => setNewAssignDescription(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-900 outline-hidden focus:border-zinc-400 min-h-[70px] resize-none font-sans"
+                    />
+                  </div>
+
                   {/* INPUT DEADLINE DI FORM PO DENGAN PRESET TENGGAT WAKTU CEPAT */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
@@ -1925,21 +2090,21 @@ export const App: React.FC = () => {
                       <div className="flex items-center gap-1 font-sans">
                         <button
                           type="button"
-                          onClick={() => handleApplyDeadlinePreset(0)}
+                          onClick={() => handleApplyDeadlinePreset(0, 'create')}
                           className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
                         >
                           Hari Ini (17:00)
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleApplyDeadlinePreset(1)}
+                          onClick={() => handleApplyDeadlinePreset(1, 'create')}
                           className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
                         >
                           Besok (17:00)
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleApplyDeadlinePreset(3)}
+                          onClick={() => handleApplyDeadlinePreset(3, 'create')}
                           className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
                         >
                           3 Hari
@@ -2140,7 +2305,7 @@ export const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF */
+                  /* KARTU TUGAS AKTIF BIASA DENGAN BADGE DEADLINE RELATIF & BRIEF BOX */
                   <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
@@ -2182,6 +2347,14 @@ export const App: React.FC = () => {
                           </div>
                         );
                       })()}
+
+                      {/* TAMPILKAN DESKRIPSI BRIEF DI DASHBOARD MEMBER */}
+                      {activeTask?.description && (
+                        <div className="my-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/80 leading-relaxed whitespace-pre-line font-sans">
+                          <span className="text-white/40 block font-medium mb-1 uppercase tracking-wider text-[10px]">Brief Tugas:</span>
+                          {activeTask.description}
+                        </div>
+                      )}
                     </div>
 
                     {/* PO Feedback Action Cards in Member Dashboard */}
@@ -2426,6 +2599,164 @@ export const App: React.FC = () => {
         </footer>
 
       </div>
+
+      {/* MODAL EDIT DETAIL TUGAS LENGKAP (PO VIEW) */}
+      {isEditTaskModalOpen && editingTask && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
+          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs max-h-[90vh] flex flex-col justify-between transition-all duration-300 ease-in-out">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <Edit3 className="w-4 h-4 text-zinc-300" />
+                <span>Edit Detail Tugas</span>
+              </div>
+              <button
+                onClick={() => {
+                  setIsEditTaskModalOpen(false);
+                  setEditingTask(null);
+                }}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTaskEdit} className="space-y-3.5 flex-1 overflow-y-auto pr-1">
+              {/* Edit Judul Tugas */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Judul Tugas</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Judul tugas..."
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              {/* Edit Deskripsi / Brief */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Deskripsi / Brief Singkat</label>
+                <textarea
+                  rows={3}
+                  placeholder="Detail brief..."
+                  value={editDescription}
+                  onChange={e => setEditDescription(e.target.value)}
+                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans resize-none"
+                />
+              </div>
+
+              {/* Edit Tenggat Waktu (Deadline) + Presets */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Tenggat Waktu (Deadline)</label>
+                  <div className="flex items-center gap-1 font-sans">
+                    <button
+                      type="button"
+                      onClick={() => handleApplyDeadlinePreset(0, 'edit')}
+                      className="text-[10px] bg-white/5 hover:bg-white/10 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors duration-300 cursor-pointer"
+                    >
+                      Hari Ini (17:00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyDeadlinePreset(1, 'edit')}
+                      className="text-[10px] bg-white/5 hover:bg-white/10 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors duration-300 cursor-pointer"
+                    >
+                      Besok (17:00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyDeadlinePreset(3, 'edit')}
+                      className="text-[10px] bg-white/5 hover:bg-white/10 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors duration-300 cursor-pointer"
+                    >
+                      3 Hari
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="datetime-local"
+                  value={editDueDate}
+                  onChange={e => setEditDueDate(e.target.value)}
+                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans [color-scheme:dark]"
+                />
+              </div>
+
+              {/* Edit Checklist DoD */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Checklist DoD ({editDodPoints.length}/10 Poin)</label>
+                  {editDodPoints.length < 10 && (
+                    <button
+                      type="button"
+                      onClick={handleAddEditDodPoint}
+                      className="text-[10px] font-bold text-white hover:text-zinc-300 flex items-center gap-0.5 cursor-pointer transition-colors duration-300"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>+ Tambah Poin</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                  {editDodPoints.map((point, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        required
+                        placeholder={`DoD ${idx + 1}...`}
+                        value={point}
+                        onChange={e => handleEditDodPointChange(idx, e.target.value)}
+                        className="flex-1 p-2 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-white font-sans focus:outline-hidden focus:border-white/30"
+                      />
+                      {editDodPoints.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEditDodPoint(idx)}
+                          className="w-6 h-6 rounded-lg bg-white/5 hover:bg-rose-950/80 border border-white/10 text-zinc-400 hover:text-rose-300 flex items-center justify-center cursor-pointer transition-colors duration-300 text-xs font-bold shrink-0"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer Actions: Delete & Save */}
+              <div className="flex items-center justify-between pt-3 border-t border-white/10 gap-2">
+                <button
+                  type="button"
+                  onClick={handleDeleteTask}
+                  className="px-3.5 py-2 bg-rose-950/50 hover:bg-rose-900/80 border border-rose-800/60 text-rose-200 font-medium rounded-full cursor-pointer transition-colors duration-300 text-xs flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Tugas</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditTaskModalOpen(false);
+                      setEditingTask(null);
+                    }}
+                    className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors duration-300 text-xs"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full shadow-md transition-colors duration-300 cursor-pointer text-xs"
+                  >
+                    Simpan Perubahan
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL KELOLA TAUTAN TIM (FULL CRUD FOR PO VIEW) */}
       {isManageLinksModalOpen && (
