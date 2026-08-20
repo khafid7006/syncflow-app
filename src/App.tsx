@@ -573,6 +573,45 @@ export const App: React.FC = () => {
     showToast(`Beralih ke workspace: ${ws.name}`);
   };
 
+  // 2. LOGIKA DELETE WORKSPACE (STRICT CREATOR / PO AUTHORIZATION)
+  const handleDeleteWorkspace = async (workspaceId: string, wsName: string) => {
+    if (!window.confirm(`Yakin ingin menghapus workspace "${wsName}" beserta seluruh tugas dan data di dalamnya?`)) {
+      return;
+    }
+
+    try {
+      // 1. Hapus baris workspace dari Supabase
+      const { error } = await supabase
+        .from('workspaces')
+        .delete()
+        .eq('id', workspaceId);
+
+      if (error) throw error;
+
+      showToast(`✓ Workspace "${wsName}" berhasil dihapus.`);
+
+      // 2. Update state lokal
+      const remainingWorkspaces = userWorkspaces.filter(w => w.id !== workspaceId);
+      setUserWorkspaces(remainingWorkspaces);
+
+      // 3. Jika workspace yang dihapus sedang aktif
+      if (currentWorkspace?.id === workspaceId) {
+        if (remainingWorkspaces.length > 0) {
+          const nextWs = remainingWorkspaces[0];
+          setCurrentWorkspace(nextWs);
+          setActiveWorkspaceRole(nextWs.role || 'member');
+          localStorage.setItem('syncflow_active_ws', nextWs.id);
+        } else {
+          setCurrentWorkspace(null);
+          localStorage.removeItem('syncflow_active_ws');
+        }
+      }
+    } catch (err: any) {
+      console.error("Gagal menghapus workspace:", err);
+      showToast(`Gagal menghapus workspace: ${err.message || 'Terjadi kesalahan'}`);
+    }
+  };
+
   // 3. SIMPAN KE LOCALSTORAGE SAAT BUAT WORKSPACE
   const handleCreateWorkspaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1816,18 +1855,48 @@ export const App: React.FC = () => {
 
                 {/* Menu Dropdown */}
                 {isWorkspaceMenuOpen && (
-                  <div className="absolute left-0 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-950/90 backdrop-blur-xl p-1.5 shadow-2xl z-50 font-sans">
+                  <div className="absolute left-0 mt-2 w-60 rounded-xl border border-white/10 bg-zinc-950/90 backdrop-blur-xl p-1.5 shadow-2xl z-50 font-sans">
                     <div className="px-2 py-1 text-[10px] font-semibold text-white/40 uppercase tracking-wider">Workspace Tim</div>
-                    {userWorkspaces.map(ws => (
-                      <button
-                        key={ws.id}
-                        onClick={() => handleSelectWorkspace(ws)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${currentWorkspace?.id === ws.id ? 'bg-white/10 text-white font-medium' : 'text-white/70 hover:bg-white/5'}`}
-                      >
-                        <span>{ws.name}</span>
-                        <span className="text-[10px] text-white/40 uppercase">{ws.role}</span>
-                      </button>
-                    ))}
+                    
+                    {/* DROPDOWN MAX-HEIGHT & SCROLLABLE CONTAINER */}
+                    <div className="max-h-60 overflow-y-auto space-y-0.5 custom-scrollbar pr-0.5">
+                      {userWorkspaces.map(ws => {
+                        const isSelected = currentWorkspace?.id === ws.id;
+                        const canDelete = ws.role === 'po' || profile?.role === 'owner';
+
+                        return (
+                          <div
+                            key={ws.id}
+                            className={`group flex items-center justify-between w-full rounded-lg px-2.5 py-1.5 transition-colors ${
+                              isSelected ? 'bg-white/10 text-white font-medium' : 'text-white/70 hover:bg-white/5'
+                            }`}
+                          >
+                            <button
+                              onClick={() => handleSelectWorkspace(ws)}
+                              className="flex-1 text-left flex items-center justify-between mr-2 truncate text-xs cursor-pointer"
+                            >
+                              <span className="truncate">{ws.name}</span>
+                              <span className="text-[10px] text-white/40 uppercase ml-2 shrink-0">{ws.role}</span>
+                            </button>
+
+                            {/* Tombol Hapus (Hanya untuk Creator/PO/Owner) */}
+                            {canDelete && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteWorkspace(ws.id, ws.name);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-white/30 hover:text-rose-400 hover:bg-white/10 transition-all rounded cursor-pointer shrink-0"
+                                title="Hapus Workspace"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
                     <div className="border-t border-white/5 my-1" />
                     <button
                       onClick={() => { setIsCreateWorkspaceModalOpen(true); setIsWorkspaceMenuOpen(false); }}
