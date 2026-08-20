@@ -238,7 +238,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* 2 Clean Monokrom Links */}
-              <div className="space-y-3 my-auto py-4">
+              <div className="space-y-3 pt-4 flex-1">
                 {/* Link 1: Google Drive */}
                 <a
                   href="https://drive.google.com"
