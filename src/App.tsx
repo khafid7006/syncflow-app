@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
-  Layers, Search, Check, Send, AlertTriangle, ExternalLink, 
-  Folder, Figma, X, ArrowRight
+  Layers, Check, Send, AlertTriangle, ExternalLink, 
+  Folder, Figma, X
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -14,11 +14,11 @@ export const App: React.FC = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isBlockerReported, setIsBlockerReported] = useState(false);
 
-  // Interactive DoD checklist state
+  // Simplified checklist for SMK students
   const [dodItems, setDodItems] = useState([
-    { id: 1, text: 'Slicing UI Checkout selesai', checked: true },
-    { id: 2, text: 'Validasi payload BI-FAST', checked: false },
-    { id: 3, text: 'Lampirkan link PR & Figma', checked: false },
+    { id: 1, text: 'Buat tampilan tombol dan form pembayaran', checked: true },
+    { id: 2, text: 'Sambungkan tombol ke halaman sukses', checked: false },
+    { id: 3, text: 'Lampirkan link hasil kerjaan', checked: false },
   ]);
 
   const toggleDod = (id: number) => {
@@ -53,10 +53,10 @@ export const App: React.FC = () => {
       <div className="fixed bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-zinc-500/5 rounded-full blur-[160px] pointer-events-none" />
 
       {/* MAIN CONTAINER (CANVAS ULTRACLEAN BENTO GLASS) */}
-      <div className="relative z-10 w-full max-w-[1360px] mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-8 flex-1 min-h-screen justify-between">
+      <div className="relative z-10 w-full max-w-[1360px] mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-8 flex-1 min-h-screen justify-between font-sans">
         
         {/* ========================================================================= */}
-        {/* 1. TOP BAR NAVBAR */}
+        {/* 1. TOP BAR NAVBAR (WITHOUT SEARCH BAR) */}
         {/* ========================================================================= */}
         <header className="w-full flex items-center justify-between gap-4 font-sans text-xs">
           
@@ -71,7 +71,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* Pill Menu Navigation */}
-          <nav className="hidden md:flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg font-sans text-xs">
+          <nav className="hidden md:flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs">
             {['Tugas Aktif', 'Dokumen Tim', 'Jadwal Sprint'].map((nav, idx) => (
               <button
                 key={idx}
@@ -87,19 +87,8 @@ export const App: React.FC = () => {
             ))}
           </nav>
 
-          {/* Right Controls: Search & User Profile */}
+          {/* Right Controls: User Profile Badge Only (No Search Bar) */}
           <div className="flex items-center gap-3">
-            {/* Search Bar Capsule */}
-            <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full text-xs text-zinc-400">
-              <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-              <input
-                type="text"
-                placeholder="Cari..."
-                className="bg-transparent border-none outline-hidden text-xs text-white placeholder-zinc-400 w-24 md:w-32"
-              />
-            </div>
-
-            {/* User Profile Badge */}
             <div className="px-4 py-2 bg-white/10 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium">
               <div className="w-2 h-2 rounded-full bg-emerald-400" />
               <span className="text-white">Dimas — Product Builder</span>
@@ -112,7 +101,7 @@ export const App: React.FC = () => {
           <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-2xl flex items-center justify-between text-xs font-sans backdrop-blur-md shadow-lg animate-fade-in">
             <div className="flex items-center gap-2">
               <Check className="w-4 h-4 text-emerald-400" />
-              <span>Link tugas berhasil dikirim.</span>
+              <span>Hasil tugas berhasil dikirim!</span>
             </div>
           </div>
         )}
@@ -129,7 +118,7 @@ export const App: React.FC = () => {
         {/* ========================================================================= */}
         {/* 2. GRID BENTO LAYOUT (KIRI 7 KOLOM & KANAN 5 KOLOM) */}
         {/* ========================================================================= */}
-        <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto">
+        <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
           
           {/* ========================================================================= */}
           {/* GRID KIRI (7 Kolom / 60% Width) */}
@@ -145,14 +134,14 @@ export const App: React.FC = () => {
                   <div className="text-xs font-medium text-zinc-400">
                     Tugas Aktif
                   </div>
-                  {/* Judul Tugas Singkat 1 Baris */}
-                  <h2 className="text-base font-bold text-white tracking-tight truncate">
-                    Slicing UI Checkout & Integrasi BI-FAST
+                  {/* Judul Tugas Singkat & Jelas */}
+                  <h2 className="text-base font-bold text-white tracking-tight leading-snug">
+                    Buat Halaman Pembayaran Aplikasi
                   </h2>
                 </div>
 
                 {/* Checklist Bulat Simpel dengan Teks Pendek */}
-                <div className="space-y-2 pt-4 border-t border-white/10 font-sans text-xs">
+                <div className="space-y-2 pt-4 border-t border-white/10 text-xs">
                   {dodItems.map(item => (
                     <div
                       key={item.id}
@@ -181,7 +170,7 @@ export const App: React.FC = () => {
                     Penyerahan Tugas
                   </span>
                   <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                    Kirim Deliverable
+                    Kirim Hasil Tugas
                   </h3>
                 </div>
 
@@ -219,13 +208,13 @@ export const App: React.FC = () => {
 
             </div>
 
-            {/* AREA BAWAH KIRI (Header Teks & Target Ringkas) */}
+            {/* AREA BAWAH KIRI (Header Teks & Target Ringkas Santai) */}
             <div className="space-y-2 pt-2">
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                 Halo, Dimas
               </h1>
               <p className="text-base text-zinc-400 font-sans">
-                Selesaikan slicing checkout hari ini.
+                Target hari ini: Selesaikan halaman pembayaran ya!
               </p>
             </div>
 
@@ -234,7 +223,7 @@ export const App: React.FC = () => {
           {/* ========================================================================= */}
           {/* GRID KANAN (5 Kolom / 40% Width - 2 Baris Clean Link Monokrom) */}
           {/* ========================================================================= */}
-          <div className="lg:col-span-5 flex flex-col justify-between gap-6">
+          <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
             
             {/* KARTU KANAN (Cukup 2 Baris Clean Link dengan Icon Monokrom Sederhana) */}
             <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all">
@@ -283,7 +272,7 @@ export const App: React.FC = () => {
                 </a>
               </div>
 
-              <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
+              <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5">
                 SyncFlow Dashboard
               </div>
 
@@ -294,7 +283,7 @@ export const App: React.FC = () => {
         </main>
 
         {/* FOOTER */}
-        <footer className="w-full text-center py-2 text-xs text-zinc-500 font-sans">
+        <footer className="w-full text-center py-2 text-xs text-zinc-500">
           SyncFlow • Modern Minimalist Dashboard
         </footer>
 
@@ -303,7 +292,7 @@ export const App: React.FC = () => {
       {/* MODAL LAPORKAN KENDALA MINIMALIS */}
       {isBlockerModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-zinc-900 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+          <div className="w-full max-w-md bg-zinc-900 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <AlertTriangle className="w-4 h-4 text-rose-500" />
