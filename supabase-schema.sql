@@ -163,8 +163,14 @@ CREATE TABLE tasks (
   blocker_category blocker_category_enum,
   review_feedback TEXT,
   checklist JSONB,
+  due_date TIMESTAMPTZ,
+  submitted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Alter table queries for existing instances
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMPTZ;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ;
 
 -- Index for task queries
 CREATE INDEX idx_tasks_team_id ON tasks(team_id);

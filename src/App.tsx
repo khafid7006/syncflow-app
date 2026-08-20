@@ -4,7 +4,8 @@ import {
   Layers, Check, Send, AlertTriangle, ExternalLink, 
   Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
   ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus,
-  GitBranch, Activity, Clock, CheckCircle, Sparkles, Trash2, Link as LinkIcon
+  GitBranch, Activity, Clock, CheckCircle, Sparkles, Trash2, Link as LinkIcon,
+  Calendar
 } from 'lucide-react';
 
 export interface UserProfile {
@@ -25,6 +26,8 @@ export interface MemberTask {
   is_blocked?: boolean;
   revision_note?: string;
   resolution_note?: string;
+  due_date?: string;
+  submitted_at?: string;
   checklist?: { id: number; text: string; checked: boolean; is_checked?: boolean }[];
   created_at?: string;
   profiles?: {
@@ -42,6 +45,36 @@ export interface ProjectLink {
   icon_type?: string;
   created_at?: string;
 }
+
+// FORMAT DEADLINE & TIMESTAMPS HELPERS
+const formatDeadline = (isoString?: string) => {
+  if (!isoString) return null;
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return null;
+
+  return new Intl.DateTimeFormat('id-ID', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(d);
+};
+
+const getDeadlineStatus = (isoString?: string) => {
+  if (!isoString) return null;
+  const deadline = new Date(isoString);
+  const now = new Date();
+  const diffMs = deadline.getTime() - now.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+
+  if (diffMs < 0) {
+    return 'overdue';
+  } else if (diffHours <= 2) {
+    return 'urgent';
+  }
+  return 'normal';
+};
 
 export const App: React.FC = () => {
   // Auth & Profile state
@@ -85,9 +118,10 @@ export const App: React.FC = () => {
   const [editableLinks, setEditableLinks] = useState<ProjectLink[]>([]);
   const [isManageLinksModalOpen, setIsManageLinksModalOpen] = useState<boolean>(false);
 
-  // PO Quick Assignment Form states (Dynamic DoD list, max 10 points)
+  // PO Quick Assignment Form states (Dynamic DoD list, max 10 points & Due Date)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
   const [newAssignTaskTitle, setNewAssignTaskTitle] = useState<string>('');
+  const [newAssignDueDate, setNewAssignDueDate] = useState<string>('');
   const [dodPoints, setDodPoints] = useState<string[]>([
     'Buat tampilan tombol dan form pembayaran',
     'Sambungkan tombol ke halaman sukses',
@@ -601,7 +635,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // MEMBER: SUBMIT DELIVERABLE LINK (STRICT DOD VALIDATION + CLEANUP RESOLUTION & BLOCKER NOTES)
+  // MEMBER: SUBMIT DELIVERABLE LINK (STRICT DOD VALIDATION + INJECT SUBMITTED_AT TIMESTAMP)
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -614,6 +648,7 @@ export const App: React.FC = () => {
     if (!deliverableUrl.trim() || !session?.user?.id) return;
 
     const linkInput = deliverableUrl.trim();
+    const nowIso = new Date().toISOString();
     console.log("Current User ID:", session.user.id);
 
     try {
@@ -623,6 +658,7 @@ export const App: React.FC = () => {
           .update({ 
             deliverable_link: linkInput,
             deliverable_url: linkInput,
+            submitted_at: nowIso,
             status: 'review',
             checklist: dodItems,
             revision_note: null,
@@ -652,6 +688,7 @@ export const App: React.FC = () => {
             title: taskTitle || 'Buat Halaman Pembayaran Aplikasi',
             deliverable_link: linkInput,
             deliverable_url: linkInput,
+            submitted_at: nowIso,
             status: 'review',
             checklist: dodItems,
             revision_note: null,
@@ -858,7 +895,7 @@ export const App: React.FC = () => {
     setDodPoints(updated);
   };
 
-  // SUBMIT PENUGASAN CEPAT (PO VIEW)
+  // SUBMIT PENUGASAN CEPAT WITH DEADLINE (PO VIEW)
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAssigneeId || !newAssignTaskTitle.trim()) return;
@@ -872,12 +909,15 @@ export const App: React.FC = () => {
         is_checked: false,
       }));
 
+    const dueDateIso = newAssignDueDate ? new Date(newAssignDueDate).toISOString() : null;
+
     try {
       const { error } = await supabase
         .from('tasks')
         .insert({
           assignee_id: selectedAssigneeId,
           title: newAssignTaskTitle.trim(),
+          due_date: dueDateIso,
           checklist: checklistItems,
           status: 'in_progress',
         });
@@ -888,6 +928,7 @@ export const App: React.FC = () => {
       } else {
         showToast('Tugas baru berhasil dikirim ke Member!');
         setNewAssignTaskTitle('');
+        setNewAssignDueDate('');
         setDodPoints([
           'Buat tampilan tombol dan form pembayaran',
           'Sambungkan tombol ke halaman sukses',
@@ -1225,7 +1266,7 @@ export const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  /* KARTU TUGAS AKTIF BIASA */
+                  /* KARTU TUGAS AKTIF BIASA DENGAN DEADLINE PILL */
                   <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-200 space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
@@ -1247,6 +1288,28 @@ export const App: React.FC = () => {
                       <h2 className="text-base font-bold text-white tracking-tight leading-snug">
                         {taskTitle}
                       </h2>
+
+                      {/* DEADLINE PILL DI DASHBOARD MEMBER */}
+                      {activeTask?.due_date && (
+                        <div className="pt-0.5">
+                          {getDeadlineStatus(activeTask.due_date) === 'overdue' ? (
+                            <span className="bg-rose-500/10 border border-rose-500/20 text-rose-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
+                              <span>🔴 Terlewat Deadline</span>
+                              <span className="text-rose-400/70">({formatDeadline(activeTask.due_date)})</span>
+                            </span>
+                          ) : getDeadlineStatus(activeTask.due_date) === 'urgent' ? (
+                            <span className="bg-amber-500/10 border border-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
+                              <span>⚠️ Segera Berakhir</span>
+                              <span className="text-amber-400/70">({formatDeadline(activeTask.due_date)})</span>
+                            </span>
+                          ) : (
+                            <span className="bg-white/5 border border-white/10 text-zinc-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
+                              <span>Tenggat:</span>
+                              <span>{formatDeadline(activeTask.due_date)}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* PO Feedback Action Cards in Member Dashboard */}
@@ -1595,6 +1658,25 @@ export const App: React.FC = () => {
                               </div>
                             )}
 
+                            {/* TIMESTAMP PENGUMPULAN & PERBANDINGAN DI PO REVIEW */}
+                            {t.submitted_at ? (
+                              <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400 border-t border-white/5 pt-2 font-sans">
+                                <span>Diserahkan: {formatDeadline(t.submitted_at)}</span>
+                                {t.due_date && new Date(t.submitted_at) > new Date(t.due_date) ? (
+                                  <span className="text-rose-400 font-medium">Terlambat</span>
+                                ) : (
+                                  <span className="text-emerald-400 font-medium">✓ Tepat Waktu</span>
+                                )}
+                              </div>
+                            ) : t.due_date ? (
+                              <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400 border-t border-white/5 pt-2 font-sans">
+                                <span>Tenggat Waktu:</span>
+                                <span className={getDeadlineStatus(t.due_date) === 'overdue' ? 'text-rose-400 font-medium' : 'text-zinc-300 font-medium'}>
+                                  {formatDeadline(t.due_date)}
+                                </span>
+                              </div>
+                            ) : null}
+
                             {/* Status Indicator & Specific Action Controls */}
                             {isBlocked ? (
                               <div className="space-y-2 pt-1 border-t border-white/5">
@@ -1751,6 +1833,19 @@ export const App: React.FC = () => {
                     />
                   </div>
 
+                  {/* INPUT DEADLINE DI FORM PO (KOLOM TENGAH PUTIH) */}
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+                      Tenggat Waktu (Deadline)
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={newAssignDueDate}
+                      onChange={e => setNewAssignDueDate(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 transition-colors font-sans [color-scheme:light]"
+                    />
+                  </div>
+
                   {/* DYNAMIC DOD CHECKLIST LIST (MAX 10 POINTS) */}
                   <div className="space-y-1.5 pt-1">
                     <div className="flex items-center justify-between">
@@ -1769,7 +1864,7 @@ export const App: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                    <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
                       {dodPoints.map((point, idx) => (
                         <div key={idx} className="flex items-center gap-1.5">
                           <input
@@ -1937,7 +2032,7 @@ export const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  /* KARTU TUGAS AKTIF BIASA */
+                  /* KARTU TUGAS AKTIF BIASA DENGAN DEADLINE PILL */
                   <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-200 space-y-3 font-sans">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
@@ -1959,6 +2054,28 @@ export const App: React.FC = () => {
                       <h2 className="text-base font-bold text-white tracking-tight leading-snug">
                         {taskTitle}
                       </h2>
+
+                      {/* DEADLINE PILL DI DASHBOARD MEMBER */}
+                      {activeTask?.due_date && (
+                        <div className="pt-0.5">
+                          {getDeadlineStatus(activeTask.due_date) === 'overdue' ? (
+                            <span className="bg-rose-500/10 border border-rose-500/20 text-rose-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
+                              <span>🔴 Terlewat Deadline</span>
+                              <span className="text-rose-400/70">({formatDeadline(activeTask.due_date)})</span>
+                            </span>
+                          ) : getDeadlineStatus(activeTask.due_date) === 'urgent' ? (
+                            <span className="bg-amber-500/10 border border-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
+                              <span>⚠️ Segera Berakhir</span>
+                              <span className="text-amber-400/70">({formatDeadline(activeTask.due_date)})</span>
+                            </span>
+                          ) : (
+                            <span className="bg-white/5 border border-white/10 text-zinc-300 px-2.5 py-1 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5 font-sans">
+                              <span>Tenggat:</span>
+                              <span>{formatDeadline(activeTask.due_date)}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* PO Feedback Action Cards in Member Dashboard */}
