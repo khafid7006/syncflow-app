@@ -687,17 +687,17 @@ export const App: React.FC = () => {
     setIsManageMembersLoading(true);
 
     try {
-      // 1. Fetch seluruh profiles
+      // 1. Ambil data semua profil terdaftar
       const { data: allProfiles, error: profErr } = await supabase
         .from('profiles')
-        .select('*');
+        .select('id, full_name, email, pod, role');
 
       if (profErr) {
         console.error("Error fetch profiles:", profErr);
         throw profErr;
       }
 
-      // 2. Fetch anggota workspace saat ini
+      // 2. Ambil data anggota workspace saat ini
       const { data: wsMembers, error: memErr } = await supabase
         .from('workspace_members')
         .select(`
@@ -705,6 +705,7 @@ export const App: React.FC = () => {
           user_id,
           role,
           pod,
+          created_at,
           profiles:user_id (id, full_name, email)
         `)
         .eq('workspace_id', targetWsId);
@@ -717,32 +718,34 @@ export const App: React.FC = () => {
       console.log("-> profiles terdeteksi:", allProfiles);
       console.log("-> anggota workspace:", wsMembers);
 
-      const parsedMembers: WorkspaceMemberDetail[] = (wsMembers || []).map((row: any) => ({
-        id: row.id,
+      // Format daftar anggota aktif saat ini
+      const formattedCurrentMembers: WorkspaceMemberDetail[] = (wsMembers || []).map((m: any) => ({
+        id: m.id,
         workspace_id: targetWsId,
-        user_id: row.user_id,
-        role: row.role as 'po' | 'pl' | 'member',
-        pod: row.pod || row.profiles?.pod || 'General',
-        created_at: row.created_at,
-        profiles: row.profiles
+        user_id: m.user_id,
+        role: m.role as 'po' | 'pl' | 'member',
+        pod: m.pod || m.profiles?.pod || 'General',
+        created_at: m.created_at,
+        profiles: m.profiles
       }));
 
-      setCurrentWorkspaceMembers(parsedMembers);
+      setCurrentWorkspaceMembers(formattedCurrentMembers);
       setAllFetchedProfiles(allProfiles || []);
 
-      // 3. Filter user yang belum join
-      const joinedUserIds = new Set((wsMembers || []).map((m: any) => m.user_id));
-      const available = (allProfiles || []).filter((p: any) => !joinedUserIds.has(p.id));
+      // 3. Filter user yang BELUM terdaftar di workspace ini
+      const enrolledUserIds = new Set((wsMembers || []).map((m: any) => m.user_id));
+      const unenrolledProfiles = (allProfiles || []).filter((p: any) => !enrolledUserIds.has(p.id));
 
-      setAvailableProfilesToInvite(available as UserProfile[]);
-      if (available.length > 0) {
-        setSelectedUserToInvite(available[0].id);
-        setSelectedPodToInvite(available[0].pod || 'Product Builder');
+      setAvailableProfilesToInvite(unenrolledProfiles as UserProfile[]);
+      if (unenrolledProfiles.length > 0) {
+        setSelectedUserToInvite(unenrolledProfiles[0].id);
+        setSelectedPodToInvite(unenrolledProfiles[0].pod || 'Product Builder');
+        setSelectedRoleToInvite('member');
       } else {
         setSelectedUserToInvite('');
       }
     } catch (err: any) {
-      console.error("Gagal load modal members:", err.message || err);
+      console.error("Gagal sinkronisasi anggota:", err.message || err);
     } finally {
       setIsManageMembersLoading(false);
     }
@@ -2914,7 +2917,7 @@ export const App: React.FC = () => {
                                 {isSelf && <span className="text-[9px] bg-white/10 px-1.5 py-0.2 rounded text-zinc-400">(Anda)</span>}
                               </div>
                               <div className="text-[10px] text-zinc-400 truncate">
-                                {m.profiles?.email || 'Tanpa Email'} • Pod: <span className="text-zinc-300">{m.pod}</span>
+                                {m.profiles?.email || '-'} • Pod: <span className="text-zinc-300">{m.pod}</span>
                               </div>
                             </div>
 
@@ -2977,7 +2980,7 @@ export const App: React.FC = () => {
                             <option value="" disabled>Pilih akun terdaftar...</option>
                             {availableProfilesToInvite.map(u => (
                               <option key={u.id} value={u.id} className="bg-zinc-950 text-white">
-                                {u.full_name || 'User'} ({u.email || 'Tanpa Email'})
+                                {u.full_name || 'Anggota Tim'} — {u.email || '-'}
                               </option>
                             ))}
                           </select>
