@@ -810,94 +810,192 @@ export const App: React.FC = () => {
         {/* ========================================================================= */}
         {viewMode === 'po' ? (
           /* ========================================================================= */
-          /* PO DASHBOARD VIEW (STRICT MONOCHROME GLASSMORPHISM - CLEAN & MINIMAL) */
+          /* PO DASHBOARD VIEW (SYMMETRICAL 3-COLUMN BENTO GRID MATCHING MEMBER) */
           /* ========================================================================= */
-          <main className="space-y-8 flex-1 my-auto font-sans">
+          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans">
             
-            {/* HEADLINE PAPAN PO */}
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs text-zinc-400">
-                <ShieldAlert className="w-4 h-4 text-white" />
-                <span className="font-semibold text-white">Papan Kontrol Project Owner</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white tracking-tight">
-                Monitoring Progres & Radar Kendala Tim
-              </h1>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* ========================================================================= */}
+            {/* GRID KIRI (7 Kolom): 2 Kartu (KOLOM 1 Radar Kendala & KOLOM 2 Bagi Tugas Baru) */}
+            {/* ========================================================================= */}
+            <div className="lg:col-span-7 flex flex-col justify-between gap-6">
               
-              {/* KARTU 1: RADAR KENDALA (6 KOLOM) */}
-              <div className="lg:col-span-6 rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl space-y-4 min-h-[360px] flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-white font-bold text-sm">
-                      <AlertTriangle className="w-4 h-4 text-zinc-300" />
-                      <span>Radar Kendala</span>
+              {/* TOP ROW KIRI: 2 Kartu Sejajar */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                
+                {/* 1. KOLOM KIRI (Glassmorphism Gelap): Radar Kendala */}
+                <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[360px] hover:border-white/20 transition-all">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
+                      <div className="flex items-center gap-2 text-white font-bold text-sm">
+                        <AlertTriangle className="w-4 h-4 text-zinc-300" />
+                        <span>Radar Kendala</span>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
+                        {blockedTasks.length} Kendala
+                      </span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-sans font-medium text-zinc-300">
-                      {blockedTasks.length} Kendala
+
+                    {blockedTasks.length === 0 ? (
+                      <div className="p-6 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1 my-auto font-sans">
+                        <CheckCircle2 className="w-5 h-5 text-zinc-500 mx-auto" />
+                        <p className="font-medium text-white">Tidak ada kendala aktif.</p>
+                        <p className="text-[11px] text-zinc-500">Semua anggota tim lancar.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
+                        {blockedTasks.map(t => (
+                          <div key={t.id} className="p-3.5 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-2 text-xs font-sans">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-white">{t.profiles?.full_name || 'Member'}</span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
+                                {t.profiles?.pod || 'Pod'}
+                              </span>
+                            </div>
+                            <p className="text-zinc-300 leading-relaxed font-sans bg-white/5 p-2 rounded-xl border border-white/5 text-[11px]">
+                              {t.blocker_reason || 'Terjadi kendala teknis'}
+                            </p>
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[10px] text-zinc-400 truncate max-w-[140px]">Tugas: {t.title}</span>
+                              <button
+                                onClick={() => t.id && handleResolveBlocker(t.id)}
+                                className="px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 font-medium text-[11px] rounded-full transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Selesaikan Kendala</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. KOLOM TENGAH (Putih Solid Kontras): Bagi Tugas Baru */}
+                <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[360px] hover:scale-[1.01] transition-transform font-sans">
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium text-zinc-500">
+                      Penugasan Tim
                     </span>
+                    <h3 className="text-base font-bold text-zinc-950 tracking-tight">
+                      Bagi Tugas Baru
+                    </h3>
                   </div>
 
-                  {blockedTasks.length === 0 ? (
-                    <div className="p-8 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1">
-                      <CheckCircle2 className="w-6 h-6 text-zinc-500 mx-auto" />
-                      <p className="font-medium text-white">Tidak ada kendala aktif saat ini.</p>
-                      <p className="text-[11px] text-zinc-500">Semua anggota tim berjalan lancar.</p>
+                  <form onSubmit={handleCreateNewTask} className="space-y-3 my-auto py-2 font-sans">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Member</label>
+                      <select
+                        value={selectedAssigneeId}
+                        onChange={e => setSelectedAssigneeId(e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans cursor-pointer"
+                      >
+                        {memberProfiles.length === 0 ? (
+                          <option value="">Tidak ada member terdaftar</option>
+                        ) : (
+                          memberProfiles.map(m => (
+                            <option key={m.id} value={m.id}>
+                              {m.full_name} ({m.pod})
+                            </option>
+                          ))
+                        )}
+                      </select>
                     </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
-                      {blockedTasks.map(t => (
-                        <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-2 text-xs font-sans">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white">{t.profiles?.full_name || 'Member'}</span>
-                            <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[10px] text-zinc-400">
-                              {t.profiles?.pod || 'Pod'}
-                            </span>
-                          </div>
-                          {/* Clean Plain Text Blocker Message (No Quotes) */}
-                          <p className="text-zinc-300 leading-relaxed font-sans bg-white/5 p-2.5 rounded-xl border border-white/5">
-                            {t.blocker_reason || 'Terjadi kendala teknis'}
-                          </p>
-                          <div className="flex items-center justify-between pt-1">
-                            <span className="text-[10px] text-zinc-400 truncate max-w-[200px]">Tugas: {t.title}</span>
-                            <button
-                              onClick={() => t.id && handleResolveBlocker(t.id)}
-                              className="px-3.5 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 font-medium text-xs rounded-full transition-colors cursor-pointer flex items-center gap-1"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              <span>Tandai Teratasi</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Judul Tugas</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Nama tugas..."
+                        value={newAssignTaskTitle}
+                        onChange={e => setNewAssignTaskTitle(e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors font-sans"
+                      />
                     </div>
-                  )}
+
+                    {/* 3 Input Ringkas DoD */}
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Checklist DoD (3 Poin)</label>
+                      <input
+                        type="text"
+                        placeholder="DoD 1..."
+                        value={dodInput1}
+                        onChange={e => setDodInput1(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans"
+                      />
+                      <input
+                        type="text"
+                        placeholder="DoD 2..."
+                        value={dodInput2}
+                        onChange={e => setDodInput2(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans"
+                      />
+                      <input
+                        type="text"
+                        placeholder="DoD 3..."
+                        value={dodInput3}
+                        onChange={e => setDodInput3(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
+                      className={`w-full py-2.5 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
+                        selectedAssigneeId && newAssignTaskTitle.trim()
+                          ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
+                          : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Kirim Tugas ke Member</span>
+                    </button>
+                  </form>
                 </div>
+
               </div>
 
-              {/* KARTU 2: REVIEW TUGAS (6 KOLOM) */}
-              <div className="lg:col-span-6 rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl space-y-4 min-h-[360px] flex flex-col justify-between">
+              {/* AREA BAWAH KIRI (Header Teks Sapaan Personal Dinamis PO) */}
+              <div className="space-y-2 pt-2 font-sans">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
+                  Halo, {userName}
+                </h1>
+                <p className="text-base text-zinc-400 font-sans">
+                  Papan kontrol & radar kendala tim hari ini.
+                </p>
+              </div>
+
+            </div>
+
+            {/* ========================================================================= */}
+            {/* GRID KANAN (5 Kolom): KOLOM 3 Review Deliverable */}
+            {/* ========================================================================= */}
+            <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
+              
+              {/* 3. KOLOM KANAN (Glassmorphism Gelap): Review Deliverable */}
+              <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[360px] hover:border-white/20 transition-all font-sans">
+                
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-white font-bold text-sm">
                       <ClipboardCheck className="w-4 h-4 text-zinc-300" />
-                      <span>Review Tugas</span>
+                      <span>Review Deliverable</span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-sans font-medium text-zinc-300">
+                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-zinc-300 font-medium font-sans">
                       {reviewTasks.length} Menunggu
                     </span>
                   </div>
 
                   {reviewTasks.length === 0 ? (
-                    <div className="p-8 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1">
+                    <div className="p-8 text-center bg-white/5 border border-white/5 rounded-2xl text-xs text-zinc-400 space-y-1 my-auto font-sans">
                       <CheckCircle2 className="w-6 h-6 text-zinc-500 mx-auto" />
                       <p className="font-medium text-white">Tidak ada tugas dalam antrean review.</p>
                       <p className="text-[11px] text-zinc-500">Deliverable yang dikirim anak SMK akan muncul disini.</p>
                     </div>
                   ) : (
-                    <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                       {reviewTasks.map(t => (
                         <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans">
                           <div className="flex items-center justify-between">
@@ -910,7 +1008,7 @@ export const App: React.FC = () => {
                                 href={t.deliverable_link || t.deliverable_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-[11px] text-white flex items-center gap-1 transition-colors font-medium"
+                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-[11px] text-white flex items-center gap-1 transition-colors font-medium shrink-0"
                               >
                                 <span>Buka Link</span>
                                 <ExternalLink className="w-3 h-3 text-zinc-400" />
@@ -923,7 +1021,7 @@ export const App: React.FC = () => {
                               onClick={() => t.id && handleAcceptReview(t.id)}
                               className="flex-1 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full transition-colors cursor-pointer text-center text-xs"
                             >
-                              Terima (Done)
+                              Terima (ACC)
                             </button>
                             <button
                               onClick={() => t.id && handleRequestRevision(t.id)}
@@ -937,95 +1035,15 @@ export const App: React.FC = () => {
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* KARTU 3: BAGI TUGAS BARU (12 KOLOM) */}
-              <div className="lg:col-span-12 rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl space-y-4">
-                <div className="flex items-center gap-2 text-white font-bold text-sm">
-                  <PlusCircle className="w-4 h-4 text-zinc-300" />
-                  <span>Bagi Tugas Baru</span>
+                <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
+                  SyncFlow PO Control Board
                 </div>
 
-                <form onSubmit={handleCreateNewTask} className="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs font-sans">
-                  {/* Clean Member Dropdown */}
-                  <div className="md:col-span-4 space-y-1">
-                    <label className="block text-zinc-400 font-medium">Pilih Member</label>
-                    <select
-                      value={selectedAssigneeId}
-                      onChange={e => setSelectedAssigneeId(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-neutral-950 border border-white/10 rounded-2xl text-white text-xs focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
-                    >
-                      {memberProfiles.length === 0 ? (
-                        <option value="">Tidak ada member terdaftar</option>
-                      ) : (
-                        memberProfiles.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.full_name} ({m.pod})
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-
-                  {/* Clean Minimal Task Title Input */}
-                  <div className="md:col-span-8 space-y-1">
-                    <label className="block text-zinc-400 font-medium">Judul Tugas</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Nama tugas..."
-                      value={newAssignTaskTitle}
-                      onChange={e => setNewAssignTaskTitle(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-neutral-950 border border-white/10 rounded-2xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans text-xs"
-                    />
-                  </div>
-
-                  {/* 3 Input Checklist DoD */}
-                  <div className="md:col-span-12 space-y-2 pt-2 border-t border-white/10">
-                    <label className="block text-zinc-400 font-medium">Checklist Pekerjaan (DoD)</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <input
-                        type="text"
-                        placeholder="DoD 1..."
-                        value={dodInput1}
-                        onChange={e => setDodInput1(e.target.value)}
-                        className="p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white text-xs placeholder-zinc-500 font-sans"
-                      />
-                      <input
-                        type="text"
-                        placeholder="DoD 2..."
-                        value={dodInput2}
-                        onChange={e => setDodInput2(e.target.value)}
-                        className="p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white text-xs placeholder-zinc-500 font-sans"
-                      />
-                      <input
-                        type="text"
-                        placeholder="DoD 3..."
-                        value={dodInput3}
-                        onChange={e => setDodInput3(e.target.value)}
-                        className="p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white text-xs placeholder-zinc-500 font-sans"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-12 pt-2 flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
-                      className={`px-6 py-2.5 font-bold text-xs rounded-full shadow-lg flex items-center gap-2 transition-all ${
-                        selectedAssigneeId && newAssignTaskTitle.trim()
-                          ? 'bg-white hover:bg-zinc-200 text-zinc-950 cursor-pointer'
-                          : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
-                      }`}
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Kirim Tugas ke Member</span>
-                    </button>
-                  </div>
-                </form>
               </div>
 
             </div>
+
           </main>
         ) : (
           /* ========================================================================= */
@@ -1095,7 +1113,7 @@ export const App: React.FC = () => {
                   </div>
 
                   {/* Form Input Clean */}
-                  <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2">
+                  <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans">
                     {submittedUrl ? (
                       <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
                         <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
@@ -1240,14 +1258,14 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleReportBlockerSubmit} className="space-y-4">
+            <form onSubmit={handleReportBlockerSubmit} className="space-y-4 font-sans">
               <textarea
                 rows={3}
                 required
                 placeholder="Tuliskan kendala Anda..."
                 value={blockerReason}
                 onChange={e => setBlockerReason(e.target.value)}
-                className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
+                className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
               />
 
               <div className="flex items-center justify-end gap-2 pt-2">
