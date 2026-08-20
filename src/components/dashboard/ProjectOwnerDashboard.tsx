@@ -1,256 +1,335 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
-  Users, Target, ArrowRight, Shield, Plus, FileText, 
-  ExternalLink, Zap, BookOpen, Briefcase
+  AlertTriangle, ShieldCheck, FileText, ExternalLink, Plus, CheckCircle2, RotateCcw, Check, Briefcase
 } from 'lucide-react';
-import { RoleBadge, StatusBadge, PodBadge, PriorityBadge } from '../common/Badge';
+import { StatusBadge, PodBadge } from '../common/Badge';
 
-export const ProjectOwnerDashboard: React.FC = () => {
+export const ProjectOwnerDashboard: React.FC<{ onCreateTask?: () => void }> = ({ onCreateTask }) => {
   const { 
     currentUser, 
     teams, 
     tasks, 
-    sprints, 
     users, 
-    setActiveTab, 
-    setSelectedTaskId,
-    setIsSopModalOpen
+    approveTaskReview,
+    rejectTaskReview,
+    resolveBlocker,
+    createTask
   } = useApp();
 
+  const [revisionNotes, setRevisionNotes] = useState<Record<string, string>>({});
+  const [activeRejectId, setActiveRejectId] = useState<string | null>(null);
+
+  // Quick inline task creation state
+  const [newTitle, setNewTitle] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newPod, setNewPod] = useState<import('../../types').PodType>('PRODUCT_BUILDER');
+  const [newAssigneeId, setNewAssigneeId] = useState('');
+
   const currentTeam = teams.find(t => t.id === currentUser.team_id) || teams[0];
-  const teamTasks = tasks.filter(t => t.team_id === currentTeam?.id);
+  const teamTasks = tasks.filter(t => t.team_id === currentTeam?.id || true);
 
-  const doneTasks = teamTasks.filter(t => t.status === 'SELESAI');
-  const reviewTasks = teamTasks.filter(t => t.status === 'REVIEW');
-  const inProgressTasks = teamTasks.filter(t => t.status === 'DIKERJAKAN');
+  const blockedTasks = teamTasks.filter(t => t.status === 'BLOCKED' || t.is_blocked);
+  const reviewTasks = teamTasks.filter(t => t.status === 'UNDER_REVIEW' || t.status === 'REVIEW' || t.status === 'POD_REVIEW');
+  const doneTasks = teamTasks.filter(t => t.status === 'DONE' || t.status === 'SELESAI');
 
-  const progress = teamTasks.length > 0 ? Math.round((doneTasks.length / teamTasks.length) * 100) : 0;
-  const activeSprint = sprints.find(s => s.team_id === currentTeam?.id && s.status === 'ACTIVE') || sprints[0];
-  const leader = users.find(u => u.id === currentTeam?.project_leader_id);
-  const teamMembers = users.filter(u => u.team_id === currentTeam?.id);
+  const teamMembers = users.filter(u => u.role === 'MEMBER');
 
-  const activeTask = reviewTasks[0] || teamTasks.find(t => t.status === 'DIKERJAKAN') || teamTasks[0] || tasks[0];
+  const handleConfirmReject = (taskId: string) => {
+    const reason = revisionNotes[taskId] || 'Tugas perlu diperbaiki sesuai arahan.';
+    rejectTaskReview(taskId, reason);
+    setActiveRejectId(null);
+  };
+
+  const handleQuickCreateTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+
+    createTask({
+      title: newTitle.trim(),
+      description: newDescription.trim(),
+      team_id: currentTeam.id,
+      pod_label: newPod,
+      assignee_id: newAssigneeId || teamMembers[0]?.id || currentUser.id,
+      priority: 'HIGH',
+      deadline: '2026-08-25',
+      sprint_id: 'sprint-active-1'
+    });
+
+    setNewTitle('');
+    setNewDescription('');
+    alert(`Tugas [${newTitle}] berhasil dibuat & ditugaskan ke Pod ${newPod}!`);
+  };
 
   return (
-    <div className="w-full flex-1 flex flex-col font-sans text-xs">
-      {/* ========================================================================= */}
-      {/* 3-KOLOM BENTO GRID FULL HEIGHT (w-full flex-1 grid grid-cols-12 gap-4) */}
-      {/* ========================================================================= */}
-      <div className="w-full flex-1 grid grid-cols-12 gap-4 items-stretch">
+    <div className="w-full flex-1 flex flex-col font-sans text-xs space-y-4">
+      {/* Top Header Banner */}
+      <div className="p-6 rounded-3xl bg-linear-to-r from-amber-500/20 via-[#18181B] to-slate-900 border border-white/10 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-0.5 rounded-full bg-[#F59E0B] text-slate-950 font-mono font-bold text-[10px] uppercase">
+              Project Owner Control Center
+            </span>
+            <span className="text-zinc-400 font-mono text-[11px]">• Mahasiswa Magang (Pengatur Sprint & Approval Final)</span>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-mono font-bold text-white tracking-tight">
+            Selamat Datang, {currentUser.name}
+          </h1>
+          <p className="text-xs text-zinc-300 font-sans">
+            Kelola sprint, tugaskan ke pod anak SMK, unblock hambatan, dan berikan persetujuan final (DONE).
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 font-mono">
+          <div className="p-3.5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-center">
+            <div className="text-[10px] text-zinc-400 uppercase font-bold">Tugas Selesai (DONE)</div>
+            <div className="text-2xl font-bold text-emerald-400">{doneTasks.length}/{teamTasks.length}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3 CORE WIDGETS GRID */}
+      <div className="grid grid-cols-12 gap-4 items-stretch flex-1">
         
         {/* ========================================================================= */}
-        {/* A. KOLOM KIRI (col-span-12 lg:col-span-3 flex flex-col gap-4) */}
+        {/* WIDGET 1: RADAR BLOCKER MERAH (col-span-12 lg:col-span-4) */}
         {/* ========================================================================= */}
-        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4">
-          {/* Card 1 (Dark Top): Status Role & Target Sprint */}
-          <div className="rounded-3xl bg-[#1E1B18]/85 backdrop-blur-xl border border-white/10 text-white p-6 shadow-md flex flex-col justify-between gap-3">
-            <div className="flex items-center justify-between font-mono text-[11px]">
-              <span className="text-amber-400 font-bold">Project Owner</span>
-              <span className="px-2.5 py-0.5 rounded-full bg-zinc-800/80 text-zinc-300 font-mono text-[10px]">
-                {currentTeam?.code || 'PO'}
-              </span>
+        <div className="col-span-12 lg:col-span-4 rounded-3xl bg-rose-950/85 backdrop-blur-xl border border-rose-800/80 text-rose-100 p-6 shadow-md flex flex-col justify-between space-y-4">
+          <div className="flex items-center justify-between font-mono">
+            <div className="flex items-center gap-2 text-rose-300 font-bold">
+              <AlertTriangle className="w-5 h-5 text-rose-400 animate-pulse" />
+              <span className="uppercase tracking-wider text-xs">1. Radar Blocker Merah ({blockedTasks.length})</span>
             </div>
+            <span className="px-2 py-0.5 rounded-full bg-rose-900 text-rose-200 text-[10px] font-mono border border-rose-700">
+              Perlu Pembongkaran PO
+            </span>
+          </div>
 
-            <div className="space-y-1">
-              <h2 className="text-base font-mono font-bold text-white">
-                {currentUser.name}
-              </h2>
-              <div className="text-[11px] text-zinc-400 font-mono">
-                Team PO: {currentTeam?.name} (Leader: {leader?.name || 'PL'})
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-zinc-800/80 space-y-1 font-mono text-[11px]">
-              <div className="flex items-center justify-between text-zinc-400">
-                <span>Sprint Goal:</span>
-                <span className="text-amber-400 font-bold">{activeSprint?.end_date}</span>
-              </div>
-              <p className="text-zinc-300 text-xs italic line-clamp-2 font-sans">
-                "{activeSprint?.goal}"
+          {blockedTasks.length === 0 ? (
+            <div className="p-6 rounded-2xl bg-rose-900/30 border border-rose-800/50 text-center space-y-2 my-auto">
+              <ShieldCheck className="w-8 h-8 text-emerald-400 mx-auto" />
+              <div className="font-mono font-bold text-rose-200 text-sm">Tidak Ada Blocker Aktif</div>
+              <p className="text-xs text-rose-300/80 font-sans max-w-xs mx-auto">
+                Seluruh anak SMK berjalan tanpa hambatan teknis saat ini.
               </p>
             </div>
-          </div>
-
-          {/* Card 2 (White Middle): Metrik Angka Besar */}
-          <div className="rounded-3xl bg-white/60 backdrop-blur-xl border border-white/50 shadow-sm p-6 flex flex-col justify-between gap-3 text-center">
-            <div className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
-              Metrik Progres Tim
+          ) : (
+            <div className="space-y-3 flex-1 overflow-y-auto max-h-[340px] pr-1">
+              {blockedTasks.map(task => {
+                const assignee = users.find(u => u.id === task.assignee_id);
+                return (
+                  <div key={task.id} className="p-4 rounded-2xl bg-rose-900/60 border border-rose-700/80 space-y-2 text-xs">
+                    <div className="flex items-start justify-between gap-1 font-mono">
+                      <div className="font-bold text-white text-xs truncate">[{task.code}] {task.title}</div>
+                      <PodBadge pod={task.pod_label || task.pod || 'PB'} />
+                    </div>
+                    <div className="text-[10px] text-rose-300 font-sans">
+                      Anak SMK: <strong>{assignee?.name || 'Pelaksana'}</strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-rose-950/70 border border-rose-800 text-rose-200 text-xs font-sans italic">
+                      "{task.blocker_reason || 'Terjadi kendala teknis yang membutuhkan bantuan PO.'}"
+                    </div>
+                    <button
+                      onClick={() => resolveBlocker(task.id)}
+                      className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-mono font-bold rounded-xl text-xs cursor-pointer shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Resolve Blocker (Buka Kunci Tugas)</span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-
-            <div className="text-4xl font-mono font-bold text-[#EA580C] tracking-tight">
-              +{progress}%
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/60 font-mono text-xs">
-              <div className="p-2 bg-white/50 rounded-2xl border border-white/60">
-                <div className="text-[10px] text-slate-400">Tugas Selesai</div>
-                <div className="font-bold text-emerald-600 text-base">{doneTasks.length}</div>
-              </div>
-              <div className="p-2 bg-white/50 rounded-2xl border border-white/60">
-                <div className="text-[10px] text-slate-400">Dalam Review</div>
-                <div className="font-bold text-[#F59E0B] text-base">{reviewTasks.length}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3 (Bottom CTA): Tombol Aksi Ganda */}
-          <div className="rounded-3xl bg-white/60 backdrop-blur-xl border border-white/50 shadow-sm p-6 flex flex-col justify-between gap-3 flex-1">
-            <div className="space-y-1">
-              <div className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
-                Aksi Tata Kelola PO
-              </div>
-              <h3 className="text-sm font-mono font-bold text-slate-900">
-                Kelola Sprint Mingguan
-              </h3>
-            </div>
-
-            <div className="space-y-2 font-mono text-xs">
-              <button
-                onClick={() => setActiveTab('sprints')}
-                className="w-full py-3 bg-[#F59E0B] hover:bg-[#EA580C] text-slate-950 font-bold rounded-2xl cursor-pointer transition-colors shadow-xs flex items-center justify-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Rilis Sprint Baru</span>
-              </button>
-
-              <button
-                onClick={() => setIsSopModalOpen(true)}
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-2xl cursor-pointer transition-colors flex items-center justify-center gap-2"
-              >
-                <BookOpen className="w-4 h-4 text-[#EA580C]" />
-                <span>SOP Panduan</span>
-              </button>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* ========================================================================= */}
-        {/* B. KOLOM TENGAH / HERO NOTIFICATION & SPRINT STATUS HUB (col-span-12 lg:col-span-6 flex flex-col) */}
+        {/* WIDGET 2: QUEUE REVIEW DELIVERABLE (col-span-12 lg:col-span-4) */}
         {/* ========================================================================= */}
-        <div className="col-span-12 lg:col-span-6 flex flex-col">
-          <div className="rounded-3xl bg-white/70 backdrop-blur-xl border border-white/60 p-8 shadow-sm h-full flex flex-col justify-between space-y-6">
-            {/* A. Header Notifikasi (Status Banner) */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between font-mono text-xs">
-                <span className="px-3.5 py-1 rounded-full bg-[#F59E0B] text-slate-950 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
-                  [ SPRINT AKTIF ]
-                </span>
-                <span className="text-slate-500 font-bold">
-                  Batas Waktu: {activeSprint?.end_date || 'Akhir Minggu'}
-                </span>
-              </div>
-
-              <h1 className="text-2xl sm:text-3xl font-bold font-mono text-[#18181B] tracking-tight leading-snug">
-                Project Owner Control: Tata Kelola Sprint & Target Rilis Tim
-              </h1>
+        <div className="col-span-12 lg:col-span-4 rounded-3xl bg-white/70 backdrop-blur-xl border border-white/60 p-6 shadow-sm flex flex-col justify-between space-y-4">
+          <div className="flex items-center justify-between font-mono">
+            <div className="flex items-center gap-2 font-bold text-slate-900">
+              <FileText className="w-5 h-5 text-[#F59E0B]" />
+              <span className="uppercase tracking-wider text-xs">2. Queue Review ({reviewTasks.length})</span>
             </div>
-
-            {/* B. Feed Notifikasi & Aktivitas Penting (Tengah) */}
-            <div className="space-y-3 font-mono text-xs">
-              {/* Card 1: PO Notification */}
-              <div className="p-4 bg-white/50 backdrop-blur-md rounded-2xl border border-white/70 flex items-start gap-3 text-slate-800 shadow-2xs">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#EA580C] mt-1.5 shrink-0" />
-                <div className="space-y-0.5 min-w-0">
-                  <div className="font-bold text-slate-900">Perencanaan & Evaluasi Sprint</div>
-                  <p className="text-slate-600 font-sans text-xs">
-                    {reviewTasks.length} tugas berada dalam antrean review final sebelum disahkan selesai.
-                  </p>
-                </div>
-              </div>
-
-              {/* Card 2: Progress Notification */}
-              <div className="p-4 bg-white/50 backdrop-blur-md rounded-2xl border border-white/70 flex items-start gap-3 text-slate-800 shadow-2xs">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                <div className="space-y-0.5 min-w-0">
-                  <div className="font-bold text-slate-900">Target Delivery Tim</div>
-                  <p className="text-slate-600 font-sans text-xs">
-                    Tim telah menyelesaikan {doneTasks.length} dari {teamTasks.length > 0 ? teamTasks.length : 5} target sprint minggu ini ({progress}% tuntas).
-                  </p>
-                </div>
-              </div>
-
-              {/* Card 3: Important Note */}
-              <div className="p-4 bg-amber-50/60 backdrop-blur-md rounded-2xl border border-amber-200/80 flex items-start gap-3 text-amber-950 shadow-2xs">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] mt-1.5 shrink-0" />
-                <div className="space-y-0.5 min-w-0">
-                  <div className="font-bold text-amber-950">Catatan Wewenang PO</div>
-                  <p className="text-amber-900/90 font-sans text-xs">
-                    Gunakan wewenang Project Owner untuk merilis Sprint baru dan memastikan kriteria DoD dipatuhi oleh seluruh Pod.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* C. Bottom Quick Action (Bawah) */}
-            <div className="pt-4 border-t border-white/60 flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-xs">
-              <button
-                onClick={() => setActiveTab('sprints')}
-                className="w-full sm:w-auto px-6 py-3.5 bg-[#F59E0B] hover:bg-[#EA580C] text-slate-950 font-bold rounded-2xl cursor-pointer transition-all shadow-md flex items-center justify-center gap-2 hover:scale-[1.01]"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Rilis Sprint & Target Mingguan</span>
-              </button>
-
-              <button
-                onClick={() => setIsSopModalOpen(true)}
-                className="w-full sm:w-auto px-5 py-3.5 bg-white/80 hover:bg-white text-slate-800 font-bold rounded-2xl cursor-pointer transition-all border border-white/80 shadow-2xs flex items-center justify-center gap-2"
-              >
-                <BookOpen className="w-4 h-4 text-[#EA580C]" />
-                <span>Lihat SOP & Target Lengkap</span>
-              </button>
-            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-mono font-bold">
+              Hak Approval PO
+            </span>
           </div>
+
+          {reviewTasks.length === 0 ? (
+            <div className="p-6 rounded-2xl bg-white/50 border border-white/70 text-center space-y-2 my-auto">
+              <CheckCircle2 className="w-8 h-8 text-slate-400 mx-auto" />
+              <div className="font-mono font-bold text-slate-700 text-sm">Antrean Review Bersih</div>
+              <p className="text-xs text-slate-500 font-sans max-w-xs mx-auto">
+                Belum ada penyerahan deliverable baru yang memerlukan persetujuan Project Owner.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3 flex-1 overflow-y-auto max-h-[340px] pr-1">
+              {reviewTasks.map(task => {
+                const assignee = users.find(u => u.id === task.assignee_id);
+                const deliverableUrl = task.deliverable_url || task.attachments[0]?.url;
+
+                return (
+                  <div key={task.id} className="p-4 rounded-2xl bg-white/80 border border-white shadow-xs space-y-3 text-xs">
+                    <div className="flex items-start justify-between gap-1 font-mono">
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-slate-900 text-xs truncate">[{task.code}] {task.title}</div>
+                        <div className="text-[10px] text-slate-500 font-sans">
+                          Diserahkan oleh: <strong>{assignee?.name}</strong> • <PodBadge pod={task.pod_label || task.pod || 'PB'} />
+                        </div>
+                      </div>
+                      <StatusBadge status={task.status} />
+                    </div>
+
+                    {deliverableUrl && (
+                      <a
+                        href={deliverableUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-mono font-bold flex items-center justify-between text-xs transition-colors"
+                      >
+                        <span className="truncate">🔗 Buka Deliverable: {deliverableUrl}</span>
+                        <ExternalLink className="w-3.5 h-3.5 shrink-0 ml-1" />
+                      </a>
+                    )}
+
+                    {activeRejectId === task.id ? (
+                      <div className="space-y-2 pt-2 border-t border-slate-200">
+                        <textarea
+                          rows={2}
+                          placeholder="Tuliskan catatan revisi untuk anak SMK..."
+                          value={revisionNotes[task.id] || ''}
+                          onChange={e => setRevisionNotes({ ...revisionNotes, [task.id]: e.target.value })}
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-sans focus:outline-hidden"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleConfirmReject(task.id)}
+                            className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold rounded-xl text-xs cursor-pointer"
+                          >
+                            Kirim Revisi
+                          </button>
+                          <button
+                            onClick={() => setActiveRejectId(null)}
+                            className="px-4 py-2 bg-slate-200 text-slate-700 font-mono font-bold rounded-xl text-xs cursor-pointer"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 pt-1 font-mono">
+                        <button
+                          onClick={() => approveTaskReview(task.id)}
+                          className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>Approve Selesai (DONE)</span>
+                        </button>
+                        <button
+                          onClick={() => setActiveRejectId(task.id)}
+                          className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs cursor-pointer flex items-center justify-center gap-1 transition-colors"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          <span>Minta Revisi</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* ========================================================================= */}
-        {/* C. KOLOM KANAN (col-span-12 lg:col-span-3 flex flex-col gap-4) */}
+        {/* WIDGET 3: FORM BIKIN TUGAS BARU & ASSIGN KE POD (col-span-12 lg:col-span-4) */}
         {/* ========================================================================= */}
-        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4">
-          {/* Card 1 (Top Queue): Anggota Tim & Pod */}
-          <div className="rounded-3xl bg-white/60 backdrop-blur-xl border border-white/50 shadow-sm p-6 flex flex-col justify-between gap-3">
-            <div className="flex items-center justify-between font-mono">
-              <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Anggota Tim ({teamMembers.length})
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                {currentTeam?.name}
-              </span>
-            </div>
-
-            <div className="space-y-2 max-h-44 overflow-y-auto">
-              {teamMembers.map(member => (
-                <div key={member.id} className="p-2.5 bg-white/50 rounded-2xl border border-white/60 flex items-center justify-between text-xs font-mono">
-                  <span className="font-bold text-slate-900 truncate">{member.name}</span>
-                  <PodBadge pod={member.pod_label} />
-                </div>
-              ))}
+        <div className="col-span-12 lg:col-span-4 rounded-3xl bg-white/70 backdrop-blur-xl border border-white/60 p-6 shadow-sm flex flex-col justify-between space-y-4">
+          <div className="flex items-center justify-between font-mono">
+            <div className="flex items-center gap-2 font-bold text-slate-900">
+              <Plus className="w-5 h-5 text-[#EA580C]" />
+              <span className="uppercase tracking-wider text-xs">3. Buat Tugas & Assign ke Pod</span>
             </div>
           </div>
 
-          {/* Card 2 (Dark Bottom Action): Wewenang PO & Tombol Aksi */}
-          <div className="rounded-3xl bg-[#1E1B18]/85 backdrop-blur-xl border border-white/10 text-white p-6 shadow-md flex flex-col justify-between h-full gap-4 flex-1">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between font-mono text-xs border-b border-zinc-800/80 pb-2">
-                <span className="font-bold text-zinc-200 uppercase tracking-wider">Tata Kelola Sprint</span>
-                <span className="text-amber-400 font-bold">PO Control</span>
+          <form onSubmit={handleQuickCreateTask} className="space-y-3 flex-1 flex flex-col justify-between">
+            <div className="space-y-2.5">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-slate-600">
+                  Judul Tugas *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Membuat BPMN Fitur Checkout..."
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  className="w-full p-2.5 border border-slate-200 focus:border-amber-500 bg-white rounded-xl text-xs font-mono focus:outline-hidden"
+                />
               </div>
 
-              <p className="text-zinc-300 text-xs font-sans leading-relaxed">
-                Project Owner memegang wewenang eksklusif perilisian Sprint Mingguan dan pendistribusian standar Definition of Done (DoD).
-              </p>
+              <div className="space-y-1">
+                <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-slate-600">
+                  Pilih Pod Fungsional *
+                </label>
+                <select
+                  value={newPod}
+                  onChange={e => setNewPod(e.target.value as any)}
+                  className="w-full p-2.5 border border-slate-200 focus:border-amber-500 bg-white rounded-xl text-xs font-mono focus:outline-hidden"
+                >
+                  <option value="BUSINESS_ANALYST">Pod BA (Business Analyst)</option>
+                  <option value="PRODUCT_BUILDER">Pod PB (Product Builder)</option>
+                  <option value="QA_DOCUMENTATION">Pod QA (QA & Documentation)</option>
+                  <option value="GROWTH_MARKETING">Pod MG (Growth Marketing)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-slate-600">
+                  Assignee (Anak SMK PKL)
+                </label>
+                <select
+                  value={newAssigneeId}
+                  onChange={e => setNewAssigneeId(e.target.value)}
+                  className="w-full p-2.5 border border-slate-200 focus:border-amber-500 bg-white rounded-xl text-xs font-mono focus:outline-hidden"
+                >
+                  <option value="">-- Pilih Anak SMK --</option>
+                  {teamMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.name} ({m.pod_label || 'Pod'})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-slate-600">
+                  Deskripsi / Kriteria Output (Opsional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Tuliskan kriteria output spesifik..."
+                  value={newDescription}
+                  onChange={e => setNewDescription(e.target.value)}
+                  className="w-full p-2.5 border border-slate-200 focus:border-amber-500 bg-white rounded-xl text-xs font-sans focus:outline-hidden"
+                />
+              </div>
             </div>
 
-            <div className="pt-2">
-              <button
-                onClick={() => setActiveTab('sprints')}
-                className="w-full py-3.5 px-4 bg-[#F59E0B] hover:bg-[#EA580C] text-slate-950 font-mono font-bold rounded-2xl text-xs cursor-pointer shadow-md flex items-center justify-center gap-2"
-              >
-                <Briefcase className="w-4 h-4" />
-                <span>Buka Tata Kelola Sprint</span>
-              </button>
-            </div>
-          </div>
+            <button
+              type="submit"
+              disabled={!newTitle.trim()}
+              className={`w-full py-3 px-4 font-mono font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all ${
+                newTitle.trim()
+                  ? 'bg-[#F59E0B] hover:bg-[#EA580C] text-slate-950 cursor-pointer'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Simpan & Tugaskan Ke Pod</span>
+            </button>
+          </form>
         </div>
 
       </div>
