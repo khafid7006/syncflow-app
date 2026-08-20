@@ -670,18 +670,25 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. FETCH DAFTAR ANGGOTA WORKSPACE & USER TERSEDIA (EXACT 2-STEP FETCHING)
+  // 1. REFACTOR FUNGSI FETCH USERS & MEMBERS IN MANAGE MEMBERS MODAL
   const fetchWorkspaceMembersAndAvailableProfiles = async (wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
 
     try {
-      // 1. Ambil semua anggota yang SUDAH ADA di workspace saat ini
-      const { data: currentMembers, error: wmErr } = await supabase
+      // 1. Ambil seluruh profil akun yang sudah terdaftar di SyncFlow
+      const { data: allProfiles, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, pod, role')
+        .order('full_name', { ascending: true });
+
+      if (profErr) throw profErr;
+
+      // 2. Ambil list anggota yang sudah masuk workspace ini
+      const { data: wsMembers, error: memErr } = await supabase
         .from('workspace_members')
         .select(`
           id,
-          workspace_id,
           user_id,
           role,
           pod,
@@ -690,9 +697,9 @@ export const App: React.FC = () => {
         `)
         .eq('workspace_id', targetWsId);
 
-      if (wmErr) console.error("Fetch workspace_members detail error:", wmErr.message);
+      if (memErr) throw memErr;
 
-      const parsedMembers: WorkspaceMemberDetail[] = (currentMembers || []).map((row: any) => ({
+      const parsedMembers: WorkspaceMemberDetail[] = (wsMembers || []).map((row: any) => ({
         id: row.id,
         workspace_id: targetWsId,
         user_id: row.user_id,
@@ -704,27 +711,19 @@ export const App: React.FC = () => {
 
       setCurrentWorkspaceMembers(parsedMembers);
 
-      // 2. Ambil SEMUA akun dari tabel profiles
-      const { data: allProfiles, error: pErr } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, pod, role')
-        .order('full_name', { ascending: true });
+      // 3. Filter: User yang belum masuk ke workspace ini
+      const enrolledUserIds = new Set((wsMembers || []).map(m => m.user_id));
+      const unenrolledProfiles = (allProfiles || []).filter(p => !enrolledUserIds.has(p.id));
 
-      if (pErr) console.error("Fetch all profiles error:", pErr.message);
-
-      // 3. Filter user yang BELUM terdaftar di workspace ini
-      const existingUserIds = new Set(parsedMembers.map(m => m.user_id));
-      const availableUsers = (allProfiles as UserProfile[] || []).filter(p => !existingUserIds.has(p.id));
-
-      setAvailableProfilesToInvite(availableUsers);
-      if (availableUsers.length > 0) {
-        setSelectedUserToInvite(availableUsers[0].id);
-        setSelectedPodToInvite(availableUsers[0].pod || 'Product Builder');
+      setAvailableProfilesToInvite(unenrolledProfiles as UserProfile[]);
+      if (unenrolledProfiles.length > 0) {
+        setSelectedUserToInvite(unenrolledProfiles[0].id);
+        setSelectedPodToInvite(unenrolledProfiles[0].pod || 'Product Builder');
       } else {
         setSelectedUserToInvite('');
       }
     } catch (err: any) {
-      console.error("Fetch workspace members error:", err);
+      console.error("Gagal memuat daftar anggota:", err.message || err);
     }
   };
 
@@ -735,13 +734,10 @@ export const App: React.FC = () => {
     }
   };
 
-  // 4. EKSEKUSI INSERT & REALTIME SYNC (TAMBAH ANGGOTA KELOLA WORKSPACE)
+  // 3. LOGIKA INSERT ANGGOTA BARU DI MODAL KELOLA ANGGOTA
   const handleAddMemberToWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserToInvite || !currentWorkspace?.id) return;
-
-    const invitedProfile = availableProfilesToInvite.find(p => p.id === selectedUserToInvite);
-    const userNameToInvite = invitedProfile?.full_name || 'Pengguna';
 
     setIsAddingMember(true);
     try {
@@ -750,18 +746,18 @@ export const App: React.FC = () => {
         .insert([{
           workspace_id: currentWorkspace.id,
           user_id: selectedUserToInvite,
-          role: selectedRoleToInvite,
+          role: selectedRoleToInvite, // 'member' atau 'pl'
           pod: selectedPodToInvite
         }]);
 
       if (error) throw error;
 
-      showToast(`✓ ${userNameToInvite} berhasil ditambahkan ke workspace!`);
+      showToast(`✓ Anggota tim berhasil ditambahkan ke workspace!`);
+      // Refresh list modal & dropdown penugasan form utama
       await fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
       await fetchPOData(currentWorkspace.id);
     } catch (err: any) {
-      console.error("Gagal menambahkan anggota:", err.message || err);
-      showToast(`Gagal menambahkan anggota: ${err.message || 'Terjadi kesalahan'}`);
+      alert(`Gagal menambahkan anggota: ${err.message || err}`);
     } finally {
       setIsAddingMember(false);
     }
@@ -2948,7 +2944,7 @@ export const App: React.FC = () => {
                       >
                         {availableProfilesToInvite.map(p => (
                           <option key={p.id} value={p.id}>
-                            {p.full_name} ({p.email || 'Tanpa Email'})
+                            {p.full_name || 'Tanpa Nama'} — {p.email || 'Tanpa Email'}
                           </option>
                         ))}
                       </select>
@@ -2963,7 +2959,7 @@ export const App: React.FC = () => {
                           onChange={e => setSelectedRoleToInvite(e.target.value as any)}
                           className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
                         >
-                          <option value="member">Member Tim</option>
+                          <option value="member">Member Tim (Pelaksana)</option>
                           <option value="pl">Project Leader (PL)</option>
                         </select>
                       </div>
@@ -2976,10 +2972,8 @@ export const App: React.FC = () => {
                           onChange={e => setSelectedPodToInvite(e.target.value)}
                           className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans cursor-pointer"
                         >
-                          <option value="Product Builder">Product Builder</option>
-                          <option value="BA">BA</option>
-                          <option value="QA">QA</option>
                           <option value="Marketing">Marketing</option>
+                          <option value="Product Builder">Product Builder</option>
                           <option value="UI/UX Designer">UI/UX Designer</option>
                           <option value="General">General</option>
                         </select>
