@@ -4,7 +4,7 @@ import {
   Layers, Check, Send, AlertTriangle, ExternalLink, 
   Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
   ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus,
-  GitBranch, Activity, Clock, CheckCircle, Sparkles
+  GitBranch, Activity, Clock, CheckCircle, Sparkles, Trash2, Link as LinkIcon
 } from 'lucide-react';
 
 export interface UserProfile {
@@ -33,6 +33,14 @@ export interface MemberTask {
     pod?: string;
     role?: string;
   };
+}
+
+export interface ProjectLink {
+  id?: string;
+  title: string;
+  url: string;
+  icon_type?: string;
+  created_at?: string;
 }
 
 export const App: React.FC = () => {
@@ -70,15 +78,10 @@ export const App: React.FC = () => {
   const [memberProfiles, setMemberProfiles] = useState<UserProfile[]>([]);
   const [poTaskFeedFilter, setPoTaskFeedFilter] = useState<'active' | 'done'>('active');
 
-  // Project Asset Links State (with localStorage persistence)
-  const [driveUrl, setDriveUrl] = useState<string>(() => localStorage.getItem('syncflow_drive_url') || 'https://drive.google.com');
-  const [figmaUrl, setFigmaUrl] = useState<string>(() => localStorage.getItem('syncflow_figma_url') || 'https://figma.com');
-  const [repoUrl, setRepoUrl] = useState<string>(() => localStorage.getItem('syncflow_repo_url') || 'https://github.com/khafid7006/syncflow-app');
-  
-  const [isEditAssetLinksModalOpen, setIsEditAssetLinksModalOpen] = useState<boolean>(false);
-  const [inputDriveUrl, setInputDriveUrl] = useState<string>('');
-  const [inputFigmaUrl, setInputFigmaUrl] = useState<string>('');
-  const [inputRepoUrl, setInputRepoUrl] = useState<string>('');
+  // Dynamic Project Links State (Full CRUD backed by Supabase public.project_links)
+  const [projectLinks, setProjectLinks] = useState<ProjectLink[]>([]);
+  const [editableLinks, setEditableLinks] = useState<ProjectLink[]>([]);
+  const [isManageLinksModalOpen, setIsManageLinksModalOpen] = useState<boolean>(false);
 
   // PO Quick Assignment Form states (Dynamic DoD list, max 10 points)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
@@ -114,7 +117,7 @@ export const App: React.FC = () => {
   const totalDodCount = dodItems.length;
   const isAllDoDCompleted = totalDodCount > 0 ? completedDodCount === totalDodCount : true;
 
-  // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks
+  // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks & Project Links
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -122,6 +125,7 @@ export const App: React.FC = () => {
         fetchOrCreateProfile(session.user);
         fetchActiveTask(session.user.id);
         fetchPOData();
+        fetchProjectLinks();
       } else {
         setAuthLoading(false);
       }
@@ -133,6 +137,7 @@ export const App: React.FC = () => {
         fetchOrCreateProfile(session.user);
         fetchActiveTask(session.user.id);
         fetchPOData();
+        fetchProjectLinks();
       } else {
         setProfile(null);
         setActiveTask(null);
@@ -145,17 +150,20 @@ export const App: React.FC = () => {
 
   // Fetch PO Data when viewMode is 'po' or profile is loaded
   useEffect(() => {
-    if (session?.user && (profile?.role === 'owner' || viewMode === 'po')) {
-      fetchPOData();
+    if (session?.user) {
+      fetchProjectLinks();
+      if (profile?.role === 'owner' || viewMode === 'po') {
+        fetchPOData();
+      }
     }
   }, [profile, viewMode, session]);
 
-  // 3. SUPABASE REALTIME SUBSCRIPTION
+  // 3. SUPABASE REALTIME SUBSCRIPTION FOR TASKS & PROJECT_LINKS
   useEffect(() => {
     if (!session?.user) return;
 
     const channel = supabase
-      .channel('tasks-channel')
+      .channel('syncflow-realtime-channel')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tasks' },
@@ -165,6 +173,14 @@ export const App: React.FC = () => {
           if (session?.user?.id) {
             fetchActiveTask(session.user.id);
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'project_links' },
+        (payload) => {
+          console.log('Realtime project_links change received:', payload);
+          fetchProjectLinks();
         }
       )
       .subscribe();
@@ -184,6 +200,49 @@ export const App: React.FC = () => {
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  // FETCHING PROJECT LINKS FROM SUPABASE (PUBLIC.PROJECT_LINKS)
+  const fetchProjectLinks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('project_links')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn("Gagal fetch project_links:", error.message);
+        // Fallback default links if table returns error or is not ready
+        setProjectLinks([
+          { id: '1', title: 'Drive Proyek', url: 'https://drive.google.com', icon_type: 'drive' },
+          { id: '2', title: 'Figma UI/UX', url: 'https://figma.com', icon_type: 'figma' },
+          { id: '3', title: 'Repository Code', url: 'https://github.com/khafid7006/syncflow-app', icon_type: 'github' },
+        ]);
+      } else if (data && data.length > 0) {
+        setProjectLinks(data as ProjectLink[]);
+      } else {
+        // Seed default initial links into public.project_links table
+        const defaults: ProjectLink[] = [
+          { title: 'Drive Proyek', url: 'https://drive.google.com', icon_type: 'drive' },
+          { title: 'Figma UI/UX', url: 'https://figma.com', icon_type: 'figma' },
+          { title: 'Repository Code', url: 'https://github.com/khafid7006/syncflow-app', icon_type: 'github' },
+        ];
+        const { data: insertedData } = await supabase.from('project_links').insert(defaults).select();
+        if (insertedData) setProjectLinks(insertedData as ProjectLink[]);
+        else setProjectLinks(defaults);
+      }
+    } catch (err: any) {
+      console.error("Fetch project_links error:", err);
+    }
+  };
+
+  // Helper render icon dinamis berdasarkan judul link
+  const renderLinkIcon = (title: string, iconType?: string) => {
+    const lower = (title || '').toLowerCase();
+    if (lower.includes('drive') || iconType === 'drive') return <Folder className="w-3.5 h-3.5" />;
+    if (lower.includes('figma') || iconType === 'figma') return <Figma className="w-3.5 h-3.5" />;
+    if (lower.includes('repo') || lower.includes('github') || lower.includes('git') || iconType === 'github') return <GitBranch className="w-3.5 h-3.5" />;
+    return <LinkIcon className="w-3.5 h-3.5" />;
+  };
 
   // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER (FILTER HANYA AMBIL TUGAS BERJALAN & EMPTY STATE)
   const fetchActiveTask = async (userId: string) => {
@@ -437,24 +496,62 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // EDIT PROJECT ASSET LINKS HANDLERS
-  const handleOpenEditAssetLinksModal = () => {
-    setInputDriveUrl(driveUrl);
-    setInputFigmaUrl(figmaUrl);
-    setInputRepoUrl(repoUrl);
-    setIsEditAssetLinksModalOpen(true);
+  // MODAL KELOLA TAUTAN TIM (FULL CRUD FOR PO VIEW)
+  const handleOpenManageLinksModal = () => {
+    setEditableLinks(JSON.parse(JSON.stringify(projectLinks)));
+    setIsManageLinksModalOpen(true);
   };
 
-  const handleSaveAssetLinks = (e: React.FormEvent) => {
+  const handleAddLinkRow = () => {
+    setEditableLinks([
+      ...editableLinks,
+      { id: `temp-${Date.now()}`, title: '', url: 'https://' }
+    ]);
+  };
+
+  const handleRemoveLinkRow = async (index: number, linkId?: string) => {
+    if (linkId && !linkId.startsWith('temp-')) {
+      try {
+        await supabase.from('project_links').delete().eq('id', linkId);
+      } catch (err) {
+        console.error("Delete link error:", err);
+      }
+    }
+    setEditableLinks(editableLinks.filter((_, idx) => idx !== index));
+  };
+
+  const handleSaveAllLinks = async (e: React.FormEvent) => {
     e.preventDefault();
-    setDriveUrl(inputDriveUrl.trim());
-    setFigmaUrl(inputFigmaUrl.trim());
-    setRepoUrl(inputRepoUrl.trim());
-    localStorage.setItem('syncflow_drive_url', inputDriveUrl.trim());
-    localStorage.setItem('syncflow_figma_url', inputFigmaUrl.trim());
-    localStorage.setItem('syncflow_repo_url', inputRepoUrl.trim());
-    setIsEditAssetLinksModalOpen(false);
-    showToast('Tautan aset proyek berhasil diperbarui!');
+
+    const validLinks = editableLinks.filter(l => l.title.trim().length > 0 && l.url.trim().length > 0);
+
+    try {
+      for (const link of validLinks) {
+        if (link.id && !link.id.startsWith('temp-')) {
+          await supabase
+            .from('project_links')
+            .update({ 
+              title: link.title.trim(), 
+              url: link.url.trim() 
+            })
+            .eq('id', link.id);
+        } else {
+          await supabase
+            .from('project_links')
+            .insert([{ 
+              title: link.title.trim(), 
+              url: link.url.trim() 
+            }]);
+        }
+      }
+
+      showToast('Daftar tautan tim berhasil diperbarui!');
+      setIsManageLinksModalOpen(false);
+      fetchProjectLinks();
+    } catch (err: any) {
+      console.error("Save links error:", err);
+      showToast(`Gagal menyimpan tautan: ${err.message || err}`);
+    }
   };
 
   // CHECKLIST TOGGLE & SUPABASE REALTIME PERSISTENCE FOR MEMBER
@@ -1399,7 +1496,7 @@ export const App: React.FC = () => {
             </div>
 
             {/* ========================================================================= */}
-            {/* KOLOM 3 (KANAN - 3 KOLOM): ASET & PUSAT REFERENSI TIM */}
+            {/* KOLOM 3 (KANAN - 3 KOLOM): DYNAMIC PROJECT LINKS (FULL CRUD) */}
             {/* ========================================================================= */}
             <div className="lg:col-span-3 flex flex-col justify-between gap-6 font-sans">
               
@@ -1431,13 +1528,15 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Master Quick Links & Edit Button */}
+                  {/* Dynamic Master Quick Links & Edit Button */}
                   <div className="space-y-2.5 pt-2 font-sans">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-medium text-zinc-400 tracking-wider">Tautan Utama</span>
+                      <span className="text-[10px] uppercase font-medium text-zinc-400 tracking-wider">
+                        Tautan Utama ({projectLinks.length})
+                      </span>
                       {(profile?.role === 'owner' || viewMode === 'po') && (
                         <button
-                          onClick={handleOpenEditAssetLinksModal}
+                          onClick={handleOpenManageLinksModal}
                           className="text-[10px] text-zinc-300 hover:text-white underline cursor-pointer font-medium"
                         >
                           Edit Tautan
@@ -1445,53 +1544,29 @@ export const App: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Link 1: Google Drive */}
-                    <a
-                      href={driveUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                          <Folder className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="font-semibold text-white text-xs">Drive Proyek</span>
-                      </div>
-                      <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors" />
-                    </a>
-
-                    {/* Link 2: Figma */}
-                    <a
-                      href={figmaUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                          <Figma className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="font-semibold text-white text-xs">Figma UI/UX</span>
-                      </div>
-                      <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors" />
-                    </a>
-
-                    {/* Link 3: GitHub Repo */}
-                    <a
-                      href={repoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                          <GitBranch className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="font-semibold text-white text-xs">Repository Code</span>
-                      </div>
-                      <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors" />
-                    </a>
+                    {projectLinks.length === 0 ? (
+                      <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim.</p>
+                    ) : (
+                      projectLinks.map(link => (
+                        <a
+                          key={link.id || link.title}
+                          href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
+                              {renderLinkIcon(link.title, link.icon_type)}
+                            </div>
+                            <span className="font-semibold text-white text-xs truncate max-w-[140px] sm:max-w-[180px]">
+                              {link.title}
+                            </span>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors shrink-0" />
+                        </a>
+                      ))
+                    )}
                   </div>
                 </div>
 
@@ -1723,7 +1798,7 @@ export const App: React.FC = () => {
 
             </div>
 
-            {/* GRID KANAN (5 Kolom / 40% Width - 2 Baris Clean Link Monokrom) */}
+            {/* GRID KANAN (5 Kolom / 40% Width - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
             <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
               
               {/* KARTU KANAN (Aset Tim) */}
@@ -1734,43 +1809,35 @@ export const App: React.FC = () => {
                     Aset Tim
                   </span>
                   <h3 className="text-base font-bold text-white tracking-tight">
-                    Tautan Utama
+                    Tautan Utama ({projectLinks.length})
                   </h3>
                 </div>
 
-                {/* 2 Clean Monokrom Links */}
+                {/* Dynamic Links List (Read-Only for Member) */}
                 <div className="space-y-3 pt-4 flex-1">
-                  {/* Link 1: Google Drive */}
-                  <a
-                    href={driveUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                        <Folder className="w-4 h-4" />
-                      </div>
-                      <span className="font-semibold text-white">Google Drive Tim</span>
-                    </div>
-                    <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors" />
-                  </a>
-
-                  {/* Link 2: Figma */}
-                  <a
-                    href={figmaUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
-                        <Figma className="w-4 h-4" />
-                      </div>
-                      <span className="font-semibold text-white">Figma UI/UX Tim</span>
-                    </div>
-                    <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors" />
-                  </a>
+                  {projectLinks.length === 0 ? (
+                    <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim.</p>
+                  ) : (
+                    projectLinks.map(link => (
+                      <a
+                        key={link.id || link.title}
+                        href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-200 group/link"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
+                            {renderLinkIcon(link.title, link.icon_type)}
+                          </div>
+                          <span className="font-semibold text-white truncate max-w-[200px] sm:max-w-[260px]">
+                            {link.title}
+                          </span>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors shrink-0" />
+                      </a>
+                    ))
+                  )}
                 </div>
 
                 <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
@@ -1791,64 +1858,89 @@ export const App: React.FC = () => {
 
       </div>
 
-      {/* MODAL EDIT TAUTAN ASET PROYEK (PO VIEW) */}
-      {isEditAssetLinksModalOpen && (
+      {/* MODAL KELOLA TAUTAN TIM (FULL CRUD FOR PO VIEW) */}
+      {isManageLinksModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans">
-          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
+          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs max-h-[90vh] flex flex-col justify-between">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <Folder className="w-4 h-4 text-zinc-300" />
-                <span>Edit Tautan Aset Proyek</span>
+                <span>Kelola Tautan Tim</span>
               </div>
               <button
-                onClick={() => setIsEditAssetLinksModalOpen(false)}
+                onClick={() => setIsManageLinksModalOpen(false)}
                 className="p-1 text-zinc-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveAssetLinks} className="space-y-3 font-sans">
-              <div className="space-y-1">
-                <label className="block text-zinc-400 font-medium text-[11px]">URL Drive Proyek</label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://drive.google.com/..."
-                  value={inputDriveUrl}
-                  onChange={e => setInputDriveUrl(e.target.value)}
-                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                />
+            <form onSubmit={handleSaveAllLinks} className="space-y-4 flex-1 overflow-y-auto pr-1">
+              <div className="space-y-3">
+                {editableLinks.map((link, idx) => (
+                  <div key={link.id || idx} className="p-3 bg-neutral-950 border border-white/10 rounded-2xl space-y-2 relative group">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Tautan #{idx + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLinkRow(idx, link.id)}
+                        className="p-1 bg-white/5 hover:bg-rose-950/80 border border-white/10 hover:border-rose-800 text-zinc-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
+                        title="Hapus Tautan"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                      <div className="sm:col-span-5 space-y-0.5">
+                        <label className="text-[10px] text-zinc-400 font-medium">Nama Tautan</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="misal: Drive Proyek"
+                          value={link.title}
+                          onChange={e => {
+                            const updated = [...editableLinks];
+                            updated[idx].title = e.target.value;
+                            setEditableLinks(updated);
+                          }}
+                          className="w-full p-2 bg-neutral-900 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-7 space-y-0.5">
+                        <label className="text-[10px] text-zinc-400 font-medium">URL</label>
+                        <input
+                          type="url"
+                          required
+                          placeholder="https://..."
+                          value={link.url}
+                          onChange={e => {
+                            const updated = [...editableLinks];
+                            updated[idx].url = e.target.value;
+                            setEditableLinks(updated);
+                          }}
+                          className="w-full p-2 bg-neutral-900 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              <div className="space-y-1">
-                <label className="block text-zinc-400 font-medium text-[11px]">URL Figma UI/UX</label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://figma.com/file/..."
-                  value={inputFigmaUrl}
-                  onChange={e => setInputFigmaUrl(e.target.value)}
-                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-zinc-400 font-medium text-[11px]">URL Repository Code</label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://github.com/..."
-                  value={inputRepoUrl}
-                  onChange={e => setInputRepoUrl(e.target.value)}
-                  className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={handleAddLinkRow}
+                className="w-full py-2.5 border border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 rounded-2xl text-xs text-white font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Tautan Baru</span>
+              </button>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => setIsEditAssetLinksModalOpen(false)}
+                  onClick={() => setIsManageLinksModalOpen(false)}
                   className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors text-xs"
                 >
                   Batal
@@ -1857,7 +1949,7 @@ export const App: React.FC = () => {
                   type="submit"
                   className="px-5 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-full shadow-md transition-colors cursor-pointer text-xs"
                 >
-                  Simpan Tautan Aset
+                  Simpan Perubahan
                 </button>
               </div>
             </form>

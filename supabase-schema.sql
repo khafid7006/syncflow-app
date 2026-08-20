@@ -7,6 +7,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Clean up existing tables if re-running
+DROP TABLE IF EXISTS project_links CASCADE;
 DROP TABLE IF EXISTS community_messages CASCADE;
 DROP TABLE IF EXISTS task_dods CASCADE;
 DROP TABLE IF EXISTS tasks CASCADE;
@@ -20,7 +21,6 @@ DROP TYPE IF EXISTS pod_type_enum CASCADE;
 DROP TYPE IF EXISTS task_status_enum CASCADE;
 DROP TYPE IF EXISTS task_priority_enum CASCADE;
 DROP TYPE IF EXISTS channel_type_enum CASCADE;
-
 DROP TYPE IF EXISTS blocker_category_enum CASCADE;
 
 -- Create Custom Enum Types
@@ -84,9 +84,6 @@ CREATE TYPE channel_type_enum AS ENUM (
 );
 
 -- ============================================================================
--- 1. TEAMS TABLE
--- ============================================================================
--- ============================================================================
 -- PROFILES TABLE LINKED WITH SUPABASE AUTH (auth.users)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -98,7 +95,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 );
 
 -- ============================================================================
--- 2. USERS TABLE
+-- 1. TEAMS TABLE
 -- ============================================================================
 CREATE TABLE teams (
   id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -107,6 +104,9 @@ CREATE TABLE teams (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ============================================================================
+-- 2. USERS TABLE
+-- ============================================================================
 CREATE TABLE users (
   id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name VARCHAR(255) NOT NULL,
@@ -162,6 +162,7 @@ CREATE TABLE tasks (
   blocker_reason TEXT,
   blocker_category blocker_category_enum,
   review_feedback TEXT,
+  checklist JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -183,7 +184,6 @@ CREATE TABLE task_dods (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for task DODs
 CREATE INDEX idx_task_dods_task_id ON task_dods(task_id);
 
 -- ============================================================================
@@ -199,12 +199,22 @@ CREATE TABLE community_messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for community messages
 CREATE INDEX idx_community_messages_channel ON community_messages(channel_type);
 CREATE INDEX idx_community_messages_sender ON community_messages(sender_id);
 
 -- ============================================================================
--- ENABLE ROW LEVEL SECURITY (RLS) FOR PUBLIC ACCESS / ANONYMOUS DEVELOPMENT
+-- 7. PROJECT LINKS TABLE (FULL CRUD DYNAMIC ASSETS)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.project_links (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  url TEXT NOT NULL,
+  icon_type TEXT DEFAULT 'link',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- ============================================================================
+-- ENABLE ROW LEVEL SECURITY (RLS) FOR PUBLIC ACCESS
 -- ============================================================================
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -212,8 +222,8 @@ ALTER TABLE sprints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_dods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE community_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_links ENABLE ROW LEVEL SECURITY;
 
--- Allow public read/write access policies for prototype development
 CREATE POLICY "Allow public read access to teams" ON teams FOR SELECT USING (true);
 CREATE POLICY "Allow public insert to teams" ON teams FOR INSERT WITH CHECK (true);
 
@@ -228,54 +238,4 @@ CREATE POLICY "Allow public insert/update to tasks" ON tasks FOR ALL USING (true
 
 CREATE POLICY "Allow public access to task_dods" ON task_dods FOR ALL USING (true);
 CREATE POLICY "Allow public access to community_messages" ON community_messages FOR ALL USING (true);
-
-
--- ============================================================================
--- DUMMY SEED DATA FOR INITIAL TESTING ACCOUNTS
--- ============================================================================
-
--- Insert Teams
-INSERT INTO teams (id, name, description) VALUES
-('team-1', 'Tim 1 — Core Banking Engine', 'Pengembangan fondasi API Core Banking, Ledger Engine, dan Settlement Transaksi'),
-('team-2', 'Tim 2 — Customer Experience', 'Pengembangan Mobile App Nasabah dan Ecosystem UX'),
-('team-3', 'Tim 3 — Merchant & Ecosystem', 'Integrasi QRIS Hub dan Portal Transaksi Merchant');
-
--- Insert Initial Users (BO, PO, Leader, Member, Pod Owners)
-INSERT INTO users (id, name, email, avatar_url, role, team_id, pod_type) VALUES
-('user-bo-1', 'Hendrawan Pratama', 'bo1@projecthub.local', NULL, 'BUSINESS_OWNER', NULL, 'ALL'),
-('user-bo-2', 'Dewi Lestari', 'bo2@projecthub.local', NULL, 'BUSINESS_OWNER', NULL, 'ALL'),
-('user-po-1', 'Bambang Sudiro', 'po1@projecthub.local', NULL, 'PROJECT_OWNER', 'team-1', 'ALL'),
-('user-po-2', 'Maya Anggraini', 'po2@projecthub.local', NULL, 'PROJECT_OWNER', 'team-2', 'ALL'),
-('user-pl-1', 'Budi Santoso', 'pl1@projecthub.local', NULL, 'PROJECT_LEADER', 'team-1', 'ALL'),
-('user-pl-2', 'Sinta Rahayu', 'pl2@projecthub.local', NULL, 'PROJECT_LEADER', 'team-2', 'ALL'),
-('user-mem-101', 'Rina Wulandari', 'rina@team1.local', NULL, 'POD_OWNER', 'team-1', 'BA'),
-('user-mem-102', 'Dimas Prasetyo', 'dimas@team1.local', NULL, 'POD_OWNER', 'team-1', 'PB'),
-('user-mem-103', 'Farhan Maulana', 'farhan@team1.local', NULL, 'MEMBER', 'team-1', 'PB'),
-('user-mem-104', 'Hendra Susanto', 'hendra@team1.local', NULL, 'POD_OWNER', 'team-1', 'QA');
-
--- Insert Initial Active Sprints
-INSERT INTO sprints (id, team_id, name, sprint_goal, start_date, end_date, is_active) VALUES
-('sprint-101', 'team-1', 'Sprint #1 — Core Banking Foundation', 'Menyelesaikan fondasi Core Banking: Ledger API, Audit Transaksi, dan Stress Test Database', CURRENT_DATE - INTERVAL '2 days', CURRENT_DATE + INTERVAL '5 days', TRUE),
-('sprint-201', 'team-2', 'Sprint #1 — CX Onboarding V2', 'Redesign alur onboarding nasabah baru dengan alur realtime', CURRENT_DATE - INTERVAL '2 days', CURRENT_DATE + INTERVAL '5 days', TRUE);
-
--- Insert Initial Tasks
-INSERT INTO tasks (id, task_code, team_id, sprint_id, assignee_id, title, description, deliverable_link, status, priority) VALUES
-('task-101', 'T1-101', 'team-1', 'sprint-101', 'user-mem-101', 'Desain & Dokumentasi BRD Audit Transaksi', 'Membuat BRD lengkap audit log transaksi Core Banking', 'https://docs.google.com/document/d/sample-brd', 'IN_PROGRESS', 'HIGH'),
-('task-102', 'T1-102', 'team-1', 'sprint-101', 'user-mem-102', 'Implementasi Ledger API — Core Transaction Engine', 'RESTful API debit/kredit ledger dengan ACID compliance', 'https://github.com/company/core-banking/pull/18', 'POD_REVIEW', 'CRITICAL'),
-('task-103', 'T1-103', 'team-1', 'sprint-101', 'user-mem-104', 'Pengujian Stress Test Ledger Database', 'Benchmark 10.000 concurrent TPS pada staging', NULL, 'BACKLOG', 'CRITICAL');
-
--- Insert Task DODs
-INSERT INTO task_dods (id, task_id, criteria_text, is_checked, verified_by) VALUES
-('dod-101-1', 'task-101', 'Hasil kerja sudah selesai sesuai deskripsi tugas', TRUE, 'user-mem-101'),
-('dod-101-2', 'task-101', 'Tautan dokumen / PR / bukti hasil kerja sudah dilampirkan', FALSE, NULL),
-('dod-101-3', 'task-101', 'Telah dicek mandiri & siap direview', FALSE, NULL),
-('dod-102-1', 'task-102', 'Hasil kerja sudah selesai sesuai deskripsi tugas', TRUE, 'user-mem-102'),
-('dod-102-2', 'task-102', 'Tautan dokumen / PR / bukti hasil kerja sudah dilampirkan', TRUE, 'user-mem-102'),
-('dod-102-3', 'task-102', 'Telah dicek mandiri & siap direview', TRUE, 'user-mem-102');
-
--- Insert Sample Community Messages
-INSERT INTO community_messages (id, team_id, channel_type, sender_id, message_text, attachment_url) VALUES
-('msg-101', NULL, 'ALL_TEAMS', 'user-bo-1', 'Selamat datang di SyncFlow Community Hub. Mari tingkatkan transparansi delivery.', NULL),
-('msg-102', 'team-1', 'EXECUTIVE', 'user-bo-2', 'Evaluasi alokasi resource kuartal ini membutuhkan penyesuaian target pada Tim 1 Core Banking.', NULL),
-('msg-103', 'team-1', 'GOVERNANCE', 'user-po-1', 'Target Sprint Goal #1 telah dikunci. Mohon Leader memverifikasi kesiapan DoD.', NULL),
-('msg-104', 'team-1', 'POD_PB', 'user-mem-102', 'Implementasi ISO8583 settlement API controller sudah selesai di-commit ke branch main staging.', 'https://github.com/company/core-banking/pull/18');
+CREATE POLICY "Allow public access to project_links" ON public.project_links FOR ALL USING (true);
