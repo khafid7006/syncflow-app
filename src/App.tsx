@@ -12,6 +12,15 @@ export interface UserProfile {
   pod: 'Product Builder' | 'BA' | 'QA' | 'Marketing';
 }
 
+export interface MemberTask {
+  id?: string;
+  title: string;
+  status: string;
+  deliverable_link?: string;
+  blocker_reason?: string;
+  checklist?: { id: number; text: string; checked: boolean }[];
+}
+
 export const App: React.FC = () => {
   // Auth & Profile state
   const [session, setSession] = useState<any>(null);
@@ -33,6 +42,8 @@ export const App: React.FC = () => {
 
   // Dashboard Task & Workflow states
   const [activeNav, setActiveNav] = useState<number>(0);
+  const [activeTask, setActiveTask] = useState<MemberTask | null>(null);
+  const [taskTitle, setTaskTitle] = useState<string>('Buat Halaman Pembayaran Aplikasi');
   const [deliverableUrl, setDeliverableUrl] = useState<string>('');
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<'Dalam Pengerjaan' | 'Sedang Ditinjau PO' | 'Terkendala (Blocker)'>('Dalam Pengerjaan');
@@ -55,6 +66,7 @@ export const App: React.FC = () => {
       setSession(session);
       if (session?.user) {
         fetchOrCreateProfile(session.user);
+        fetchActiveTask(session.user.id);
       } else {
         setAuthLoading(false);
       }
@@ -64,8 +76,10 @@ export const App: React.FC = () => {
       setSession(session);
       if (session?.user) {
         fetchOrCreateProfile(session.user);
+        fetchActiveTask(session.user.id);
       } else {
         setProfile(null);
+        setActiveTask(null);
         setAuthLoading(false);
       }
     });
@@ -84,20 +98,56 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
+  // Fetch Active Task for Member from Supabase
+  const fetchActiveTask = async (userId: string) => {
+    try {
+      // Query: supabase.from('tasks').select('*').eq('assignee_id', user.id).neq('status', 'done').limit(1).single()
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('assignee_id', userId)
+        .neq('status', 'done')
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        setActiveTask(data);
+        if (data.title) setTaskTitle(data.title);
+
+        const existingLink = data.deliverable_link || data.deliverable_url;
+        if (existingLink) {
+          setSubmittedUrl(existingLink);
+          setTaskStatus('Sedang Ditinjau PO');
+        } else if (data.status === 'review' || data.status === 'UNDER_REVIEW') {
+          setTaskStatus('Sedang Ditinjau PO');
+        } else if (data.status === 'blocked' || data.status === 'BLOCKED' || data.is_blocked) {
+          setTaskStatus('Terkendala (Blocker)');
+        } else {
+          setTaskStatus('Dalam Pengerjaan');
+        }
+
+        if (data.blocker_reason) {
+          setBlockerReason(data.blocker_reason);
+        }
+      }
+    } catch (err) {
+      console.warn('Fetch active task error:', err);
+    }
+  };
+
   // Fetch or Create Profile in Supabase
   const fetchOrCreateProfile = async (user: any) => {
     try {
       setAuthLoading(true);
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       if (data) {
         setProfile(data as UserProfile);
       } else {
-        // Create default profile if not exists
         const newProfile: UserProfile = {
           id: user.id,
           full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Anggota Tim',
@@ -110,7 +160,6 @@ export const App: React.FC = () => {
       }
     } catch (err) {
       console.warn('Fetch profile error:', err);
-      // Fallback profile from user metadata or email
       setProfile({
         id: user.id,
         full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Dimas',
@@ -187,25 +236,60 @@ export const App: React.FC = () => {
     setDodItems(dodItems.map(item => item.id === id ? { ...item, checked: !item.checked } : item));
   };
 
-  // Workflow Action 1: Kirim Hasil Tugas
-  const handleSubmitDeliverable = (e: React.FormEvent) => {
+  // 2. SUBMIT HASIL TUGAS (TOMBOL KIRIM) TO SUPABASE
+  // Update: { deliverable_link: url, status: 'review' }
+  const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deliverableUrl.trim()) return;
 
-    setSubmittedUrl(deliverableUrl.trim());
+    const url = deliverableUrl.trim();
+
+    try {
+      if (activeTask?.id) {
+        await supabase
+          .from('tasks')
+          .update({ 
+            deliverable_link: url,
+            deliverable_url: url, 
+            status: 'review' 
+          })
+          .eq('id', activeTask.id);
+      }
+    } catch (err) {
+      console.warn('Supabase update deliverable error:', err);
+    }
+
+    setSubmittedUrl(url);
     setTaskStatus('Sedang Ditinjau PO');
     setDeliverableUrl('');
     showToast('Hasil tugas berhasil dikirim & sedang ditinjau PO.');
   };
 
-  // Workflow Action 2: Laporkan Kendala (Blocker)
-  const handleReportBlockerSubmit = (e: React.FormEvent) => {
+  // 3. LAPORKAN KENDALA (TOMBOL BLOCKER) TO SUPABASE
+  // Update: { blocker_reason: text, status: 'blocked' }
+  const handleReportBlockerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!blockerReason.trim()) return;
 
+    const text = blockerReason.trim();
+
+    try {
+      if (activeTask?.id) {
+        await supabase
+          .from('tasks')
+          .update({ 
+            blocker_reason: text,
+            is_blocked: true,
+            status: 'blocked' 
+          })
+          .eq('id', activeTask.id);
+      }
+    } catch (err) {
+      console.warn('Supabase update blocker error:', err);
+    }
+
     setTaskStatus('Terkendala (Blocker)');
     setIsBlockerModalOpen(false);
-    setBlockerReason('');
     showToast('🚨 Kendala berhasil dilaporkan ke Project Owner.');
   };
 
@@ -221,20 +305,16 @@ export const App: React.FC = () => {
     );
   }
 
-  // =========================================================================
-  // AUTH SCREEN (LOGIN / SIGN UP) - STRICT MONOCHROME GLASSMORPHISM
-  // =========================================================================
+  // AUTH SCREEN (LOGIN / SIGN UP)
   if (!session) {
     return (
       <div className="min-h-screen w-full bg-[#0a0a0c] text-white flex items-center justify-center p-4 font-sans relative overflow-hidden">
-        {/* BACKGROUND STONE & AMBIENT GLOW */}
         <div 
           className="fixed inset-0 bg-cover bg-center opacity-20 mix-blend-luminosity pointer-events-none scale-105"
           style={{ backgroundImage: `url('/assets/dark_stone_bg_1787219104310.png')` }}
         />
         <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-zinc-500/10 rounded-full blur-[140px] pointer-events-none" />
 
-        {/* AUTH CONTAINER CARD */}
         <div className="relative z-10 w-full max-w-md bg-neutral-900/80 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-2xl space-y-6">
           <div className="text-center space-y-2">
             <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold mx-auto shadow-md">
@@ -243,13 +323,13 @@ export const App: React.FC = () => {
             <h1 className="text-xl font-bold text-white tracking-tight">
               SyncFlow Auth
             </h1>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-zinc-400 font-sans">
               {isSignUp ? 'Daftar akun anggota tim baru' : 'Masuk ke Dashboard Anggota Tim'}
             </p>
           </div>
 
           {authError && (
-            <div className="p-3 bg-rose-950/40 border border-rose-800/60 text-rose-200 rounded-xl text-xs flex items-center gap-2">
+            <div className="p-3 bg-rose-950/40 border border-rose-800/60 text-rose-200 rounded-xl text-xs flex items-center gap-2 font-sans">
               <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
               <span>{authError}</span>
             </div>
@@ -471,7 +551,7 @@ export const App: React.FC = () => {
             {/* TOP ROW KIRI: 2 Kartu */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               
-              {/* KARTU KIRI ATAS (Tugas Aktif) */}
+              {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member from Supabase) */}
               <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
@@ -486,14 +566,14 @@ export const App: React.FC = () => {
                       {taskStatus}
                     </span>
                   </div>
-                  {/* Judul Tugas Singkat */}
+                  {/* Render Judul Tugas dari Supabase / State */}
                   <h2 className="text-base font-bold text-white tracking-tight leading-snug">
-                    Buat Halaman Pembayaran Aplikasi
+                    {taskTitle}
                   </h2>
                 </div>
 
-                {/* Checklist Bulat Simpel */}
-                <div className="space-y-2 pt-4 border-t border-white/10 text-xs">
+                {/* Render Array Checklist (DoD) */}
+                <div className="space-y-2 pt-4 border-t border-white/10 text-xs font-sans">
                   {dodItems.map(item => (
                     <div
                       key={item.id}
@@ -515,8 +595,8 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* KARTU TENGAH ATAS (PUTIH GLOSSY) */}
-              <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform">
+              {/* KARTU TENGAH ATAS (Submit Deliverable to Supabase) */}
+              <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-zinc-500">
                     Penyerahan Tugas
@@ -526,10 +606,10 @@ export const App: React.FC = () => {
                   </h3>
                 </div>
 
-                {/* Form Input Clean & Tombol Hitam Solid */}
+                {/* Form Input Clean & Update Supabase: { deliverable_link: url, status: 'review' } */}
                 <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2">
                   {submittedUrl ? (
-                    <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1">
+                    <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
                       <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
                       <a href={submittedUrl} target="_blank" rel="noreferrer" className="text-zinc-900 underline truncate block font-medium">
                         {submittedUrl}
@@ -561,8 +641,8 @@ export const App: React.FC = () => {
                   </button>
                 </form>
 
-                {/* Tombol Outline Minimalis */}
-                <div className="pt-2 border-t border-zinc-100">
+                {/* Tombol Laporkan Kendala */}
+                <div className="pt-2 border-t border-zinc-100 font-sans">
                   <button
                     onClick={() => setIsBlockerModalOpen(true)}
                     className="w-full py-2 border border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium text-xs rounded-full transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
@@ -575,8 +655,8 @@ export const App: React.FC = () => {
 
             </div>
 
-            {/* AREA BAWAH KIRI (Header Teks Otomatis Ikuti Nama Session) */}
-            <div className="space-y-2 pt-2">
+            {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis) */}
+            <div className="space-y-2 pt-2 font-sans">
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                 Halo, {userName}
               </h1>
@@ -593,7 +673,7 @@ export const App: React.FC = () => {
           <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
             
             {/* KARTU KANAN (Aset Tim) */}
-            <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all">
+            <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all font-sans">
               
               <div className="space-y-1">
                 <span className="text-xs font-medium text-zinc-400">
@@ -656,7 +736,7 @@ export const App: React.FC = () => {
 
       </div>
 
-      {/* MODAL LAPORKAN KENDALA (STRICT MONOCHROME GLASSMORPHISM) */}
+      {/* MODAL LAPORKAN KENDALA (Update Supabase: { blocker_reason: text, status: 'blocked' }) */}
       {isBlockerModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
