@@ -299,35 +299,33 @@ export const App: React.FC = () => {
         return;
       }
 
-      // 2. Daftarkan user ke workspace_members
+      // 2. Daftarkan user ke workspace_members menggunakan upsert
       const { error: joinErr } = await supabase
         .from('workspace_members')
-        .insert([{
+        .upsert({
           workspace_id: ws.id,
           user_id: session.user.id,
           role: 'member',
           pod: selectedTargetPod
-        }]);
+        }, { onConflict: 'workspace_id,user_id' });
 
-      if (joinErr && joinErr.code !== '23505') {
+      if (joinErr) {
         throw joinErr;
       }
 
-      // 3. Masuk langsung ke Dashboard Member workspace tersebut
-      const activeObj: Workspace = { ...ws, role: 'member', pod: selectedTargetPod };
-      
-      setUserWorkspaces(prev => {
-        const exists = prev.some(w => w.id === ws.id);
-        return exists ? prev : [activeObj, ...prev];
-      });
-      setCurrentWorkspace(activeObj);
-      setActiveWorkspaceRole('member');
-      setViewMode('member');
+      // 3. Simpan ke localStorage
       localStorage.setItem('syncflow_active_ws', ws.id);
-      
+
       setIsAccessModalOpen(false);
       setInputInviteCode('');
       showToast(`✓ Berhasil bergabung dengan workspace "${ws.name}"!`);
+
+      // Refresh data workspace user
+      const updatedWorkspaces = await fetchUserWorkspaces(session.user.id);
+      const joinedWs = updatedWorkspaces.find(w => w.id === ws.id) || { ...ws, role: 'member', pod: selectedTargetPod };
+      setCurrentWorkspace(joinedWs);
+      setActiveWorkspaceRole(joinedWs.role || 'member');
+      setViewMode('member');
 
       await fetchActiveTask(session.user.id, ws.id);
       await fetchProjectLinks(ws.id);
@@ -367,6 +365,48 @@ export const App: React.FC = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // 2. JANGAN HAPUS LOCALSTORAGE JIKA DATA SEMENTARA KOSONG (ANTI-WIPE INIT APP)
+  useEffect(() => {
+    let isMounted = true;
+
+    const initApp = async () => {
+      const userId = session?.user?.id;
+      if (!userId) {
+        if (isMounted) setIsAppInitializing(false);
+        return;
+      }
+
+      if (isMounted) setIsAppInitializing(true);
+      const workspaces = await fetchUserWorkspaces(userId);
+
+      if (!isMounted) return;
+
+      if (workspaces.length > 0) {
+        const savedWsId = localStorage.getItem('syncflow_active_ws');
+        const activeWs = workspaces.find(w => w.id === savedWsId) || workspaces[0];
+
+        setCurrentWorkspace(activeWs);
+        setActiveWorkspaceRole(activeWs.role || 'member');
+        localStorage.setItem('syncflow_active_ws', activeWs.id);
+      } else {
+        // JANGAN HAPUS localStorage jika terjadi delay jaringan, hanya set state null jika memang user baru
+        setCurrentWorkspace(null);
+      }
+
+      setIsAppInitializing(false);
+    };
+
+    if (session?.user && profile) {
+      initApp();
+    } else if (!authLoading && !session) {
+      setIsAppInitializing(false);
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.user?.id, profile?.id, authLoading]);
 
   // 2. STATE RESET SAAT SWITCH ATAU BUAT WORKSPACE & SCOPED FETCHING
   useEffect(() => {
@@ -977,7 +1017,6 @@ export const App: React.FC = () => {
 
       if (data) {
         setProfile(data);
-        await loadUserWorkspaces(user.id, data);
       } else {
         const newProfile: UserProfile = {
           id: user.id,
@@ -992,7 +1031,6 @@ export const App: React.FC = () => {
           console.error("Error insert profile:", insertErr.message);
         }
         setProfile(newProfile);
-        await loadUserWorkspaces(user.id, newProfile);
       }
     } catch (err: any) {
       console.error('Fetch profile error:', err);
@@ -1001,70 +1039,66 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1 & 3. MEMBACA WORKSPACE MEMBERSHIP & EMBEDDED WORKSPACE RELATIONSHIP
-  const loadUserWorkspaces = async (userId: string, userProfile: UserProfile) => {
+  // 1. PERBAIKI FUNGSI fetchUserWorkspaces & FALLBACK PERSISTENCE
+  const fetchUserWorkspaces = async (userId: string): Promise<Workspace[]> => {
     try {
+      // 1. Ambil membership user
       const { data: memberRows, error: memberErr } = await supabase
         .from('workspace_members')
-        .select(`
-          workspace_id,
-          role,
-          pod,
-          workspaces:workspace_id (
-            id,
-            name,
-            description,
-            owner_id,
-            invite_code,
-            created_at
-          )
-        `)
+        .select('workspace_id, role, pod')
         .eq('user_id', userId);
 
       if (memberErr) {
-        console.error("Error load workspace_members:", memberErr.message);
+        console.error("Gagal query workspace_members:", memberErr);
       }
 
-      let parsedWorkspaces: Workspace[] = [];
+      let joinedWsIds = (memberRows || []).map(m => m.workspace_id);
 
-      if (memberRows && memberRows.length > 0) {
-        parsedWorkspaces = memberRows
-          .filter((m: any) => m.workspaces)
-          .map((m: any) => ({
-            id: m.workspaces.id,
-            name: m.workspaces.name,
-            description: m.workspaces.description,
-            owner_id: m.workspaces.owner_id,
-            invite_code: m.workspaces.invite_code,
-            created_at: m.workspaces.created_at,
-            role: m.role || 'member',
-            pod: m.pod || 'General'
-          }));
+      // 2. Ambil juga workspace buatan user ini (Creator Fallback)
+      const { data: createdWs, error: createdErr } = await supabase
+        .from('workspaces')
+        .select('*')
+        .eq('created_by', userId);
+
+      if (createdWs && createdWs.length > 0) {
+        createdWs.forEach(cw => {
+          if (!joinedWsIds.includes(cw.id)) joinedWsIds.push(cw.id);
+        });
       }
 
-      setUserWorkspaces(parsedWorkspaces);
-
-      if (parsedWorkspaces.length > 0) {
-        // Cek LocalStorage untuk Workspace Aktif Terakhir
-        const savedWsId = localStorage.getItem('syncflow_active_ws');
-        const matchedWs = parsedWorkspaces.find(w => w.id === savedWsId);
-        const targetWs = matchedWs || parsedWorkspaces[0];
-
-        setCurrentWorkspace(targetWs);
-        setActiveWorkspaceRole(targetWs.role || (userProfile.role === 'owner' ? 'po' : 'member'));
-
-        await fetchActiveTask(userId, targetWs.id);
-        await fetchProjectLinks(targetWs.id);
-        await fetchPOData(targetWs.id);
-      } else {
-        setCurrentWorkspace(null);
-        localStorage.removeItem('syncflow_active_ws');
-        await fetchPublicWorkspaces();
+      if (joinedWsIds.length === 0) {
+        setUserWorkspaces([]);
+        return [];
       }
-    } catch (err: any) {
-      console.error("Load workspaces error:", err);
-    } finally {
-      setIsAppInitializing(false);
+
+      // 3. Ambil data detail seluruh workspace yang diikuti
+      const { data: wsData, error: wsErr } = await supabase
+        .from('workspaces')
+        .select('*')
+        .in('id', joinedWsIds);
+
+      if (wsErr || !wsData) {
+        console.error("Gagal fetch detail workspaces:", wsErr);
+        return [];
+      }
+
+      // 4. Format workspace list dengan role yang akurat
+      const fullList: Workspace[] = wsData.map(ws => {
+        const mem = (memberRows || []).find(m => m.workspace_id === ws.id);
+        const isCreator = ws.created_by === userId || ws.owner_id === userId;
+        return {
+          ...ws,
+          role: (isCreator ? 'po' : mem?.role || 'member') as 'po' | 'pl' | 'member',
+          pod: mem?.pod || (isCreator ? 'Project Owner' : 'General')
+        };
+      });
+
+      console.log("-> Workspaces berhasil dimuat:", fullList);
+      setUserWorkspaces(fullList);
+      return fullList;
+    } catch (err) {
+      console.error("Exception fetchUserWorkspaces:", err);
+      return [];
     }
   };
 
