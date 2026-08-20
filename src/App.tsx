@@ -322,9 +322,10 @@ export const App: React.FC = () => {
   const [memberProfiles, setMemberProfiles] = useState<UserProfile[]>([]);
   const [poTaskFeedFilter, setPoTaskFeedFilter] = useState<'active' | 'done'>('active');
 
-  // WORKSPACE MEMBERS MANAGEMENT STATES
+  // WORKSPACE MEMBERS DIRECTORY STATES
   const [isManageMembersModalOpen, setIsManageMembersModalOpen] = useState<boolean>(false);
-  const [isManageMembersLoading, setIsManageMembersLoading] = useState<boolean>(false);
+  const [workspaceMembersList, setWorkspaceMembersList] = useState<any[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState<boolean>(true);
   const [allFetchedProfiles, setAllFetchedProfiles] = useState<UserProfile[]>([]);
   const [currentWorkspaceMembers, setCurrentWorkspaceMembers] = useState<WorkspaceMemberDetail[]>([]);
   const [availableProfilesToInvite, setAvailableProfilesToInvite] = useState<UserProfile[]>([]);
@@ -711,7 +712,7 @@ export const App: React.FC = () => {
         (payload) => {
           console.log('Realtime workspace_members change received for workspace:', wsId, payload);
           fetchPOData(wsId);
-          fetchWorkspaceMembersAndAvailableProfiles(wsId);
+          fetchWorkspaceMembersList();
         }
       )
       .subscribe();
@@ -720,13 +721,6 @@ export const App: React.FC = () => {
       supabase.removeChannel(channel);
     };
   }, [session?.user?.id, currentWorkspace?.id, isPoOrPlRole]);
-
-  // AUTO FETCH REFRESH MEMBERS WHEN MANAGE MEMBERS MODAL OPENS
-  useEffect(() => {
-    if (isManageMembersModalOpen && currentWorkspace?.id) {
-      fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
-    }
-  }, [isManageMembersModalOpen, currentWorkspace?.id]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -851,137 +845,79 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. REFACTOR FUNGSI FETCH USERS & MEMBERS IN MANAGE MEMBERS MODAL
-  const fetchWorkspaceMembersAndAvailableProfiles = async (wsId?: string) => {
-    const targetWsId = wsId || currentWorkspace?.id;
-    if (!targetWsId) return;
-
-    setIsManageMembersLoading(true);
-
+  // 1. REFACTOR LOGIKA FETCHING ANGGOTA WORKSPACE & REMOVE MEMBER
+  const fetchWorkspaceMembersList = async () => {
+    if (!currentWorkspace?.id) return;
+    setIsLoadingMembers(true);
     try {
-      // 1. Ambil data semua profil terdaftar
-      const { data: allProfiles, error: profErr } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, pod, role');
-
-      if (profErr) {
-        console.error("Error fetch profiles:", profErr);
-        throw profErr;
-      }
-
-      // 2. Ambil data anggota workspace saat ini
-      const { data: wsMembers, error: memErr } = await supabase
+      // 1. Ambil membership workspace
+      const { data: memberRows, error: memErr } = await supabase
         .from('workspace_members')
-        .select(`
-          id,
-          user_id,
-          role,
-          pod,
-          created_at,
-          profiles:user_id (id, full_name, email)
-        `)
-        .eq('workspace_id', targetWsId);
+        .select('*')
+        .eq('workspace_id', currentWorkspace.id);
 
-      if (memErr) {
-        console.error("Error fetch workspace_members:", memErr);
-        throw memErr;
+      if (memErr) throw memErr;
+
+      // 2. Ambil profil user terkait
+      const userIds = (memberRows || []).map((m: any) => m.user_id);
+      let profilesMap: Record<string, any> = {};
+
+      if (userIds.length > 0) {
+        const { data: profData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds);
+
+        (profData || []).forEach((p: any) => {
+          profilesMap[p.id] = p;
+        });
       }
 
-      console.log("-> profiles terdeteksi:", allProfiles);
-      console.log("-> anggota workspace:", wsMembers);
-
-      // Format daftar anggota aktif saat ini
-      const formattedCurrentMembers: WorkspaceMemberDetail[] = (wsMembers || []).map((m: any) => ({
+      // 3. Gabungkan data
+      const enrichedMembers = (memberRows || []).map((m: any) => ({
         id: m.id,
-        workspace_id: targetWsId,
         user_id: m.user_id,
-        role: m.role as 'po' | 'pl' | 'member',
-        pod: m.pod || m.profiles?.pod || 'General',
-        created_at: m.created_at,
-        profiles: m.profiles
+        role: m.role || 'member',
+        pod: m.pod || 'General',
+        full_name: profilesMap[m.user_id]?.full_name || 'Anggota Tim',
+        email: profilesMap[m.user_id]?.email || '-'
       }));
 
-      setCurrentWorkspaceMembers(formattedCurrentMembers);
-      setAllFetchedProfiles(allProfiles || []);
-
-      // 3. Filter user yang BELUM terdaftar di workspace ini
-      const enrolledUserIds = new Set((wsMembers || []).map((m: any) => m.user_id));
-      const unenrolledProfiles = (allProfiles || []).filter((p: any) => !enrolledUserIds.has(p.id));
-
-      setAvailableProfilesToInvite(unenrolledProfiles as UserProfile[]);
-      if (unenrolledProfiles.length > 0) {
-        setSelectedUserToInvite(unenrolledProfiles[0].id);
-        setSelectedPodToInvite(unenrolledProfiles[0].pod || 'Product Builder');
-        setSelectedRoleToInvite('member');
-      } else {
-        setSelectedUserToInvite('');
-      }
+      setWorkspaceMembersList(enrichedMembers);
     } catch (err: any) {
-      console.error("Gagal sinkronisasi anggota:", err.message || err);
+      console.error("Gagal load daftar anggota workspace:", err.message || err);
     } finally {
-      setIsManageMembersLoading(false);
+      setIsLoadingMembers(false);
     }
   };
 
+  useEffect(() => {
+    if (isManageMembersModalOpen && currentWorkspace?.id) {
+      fetchWorkspaceMembersList();
+    }
+  }, [isManageMembersModalOpen, currentWorkspace?.id]);
+
   const handleOpenManageMembersModal = () => {
     if (currentWorkspace?.id) {
-      fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
+      fetchWorkspaceMembersList();
       setIsManageMembersModalOpen(true);
     }
   };
 
-  // 3. LOGIKA INSERT ANGGOTA BARU DI MODAL KELOLA ANGGOTA
-  const handleAddMemberToWorkspace = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUserToInvite || !currentWorkspace?.id) return;
-
-    setIsAddingMember(true);
-    try {
-      const { error } = await supabase
-        .from('workspace_members')
-        .insert([{
-          workspace_id: currentWorkspace.id,
-          user_id: selectedUserToInvite,
-          role: selectedRoleToInvite, // 'member' atau 'pl'
-          pod: selectedPodToInvite
-        }]);
-
-      if (error) throw error;
-
-      showToast(`✓ Anggota tim berhasil ditambahkan ke workspace!`);
-      // Refresh list modal & dropdown penugasan form utama
-      await fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
-      await fetchPOData(currentWorkspace.id);
-    } catch (err: any) {
-      alert(`Gagal menambahkan anggota: ${err.message || err}`);
-    } finally {
-      setIsAddingMember(false);
-    }
-  };
-
-  const handleRemoveMemberFromWorkspace = async (targetUserId: string, targetName: string) => {
-    if (!currentWorkspace?.id) return;
-
-    if (targetUserId === session?.user?.id) {
-      alert("Anda tidak dapat menghapus akun Anda sendiri dari workspace ini.");
-      return;
-    }
-
+  const handleRemoveMember = async (memberRowId: string) => {
+    if (!window.confirm("Keluarkan anggota ini dari workspace?")) return;
     try {
       const { error } = await supabase
         .from('workspace_members')
         .delete()
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('user_id', targetUserId);
+        .eq('id', memberRowId);
 
       if (error) throw error;
-
-      showToast(`Anggota tim ${targetName} telah dihapus dari workspace.`);
-      await fetchWorkspaceMembersAndAvailableProfiles(currentWorkspace.id);
-      await fetchPOData(currentWorkspace.id);
+      setWorkspaceMembersList(prev => prev.filter(m => m.id !== memberRowId));
+      showToast("✓ Anggota berhasil dikeluarkan dari workspace.");
+      if (currentWorkspace?.id) fetchPOData(currentWorkspace.id);
     } catch (err: any) {
-      console.error("Gagal menghapus anggota:", err.message || err);
-      showToast(`Gagal menghapus anggota: ${err.message || 'Terjadi kesalahan'}`);
+      alert(`Gagal mengeluarkan anggota: ${err.message || err}`);
     }
   };
 
@@ -3137,160 +3073,106 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* 2. MODAL KELOLA ANGGOTA TIM WORKSPACE (PO VIEW) */}
+      {/* 2. MODAL DIREKTORI ANGGOTA WORKSPACE (STRICT MONOCHROME GLASSMORPHISM) */}
       {isManageMembersModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 font-sans transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 font-sans text-xs max-h-[90vh] flex flex-col justify-between">
+          <div className="w-full max-w-lg bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 font-sans text-xs max-h-[90vh] flex flex-col justify-between">
+            {/* Header Modal */}
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5 text-white font-bold text-sm">
                 <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center">
                   <Users className="w-4 h-4 text-zinc-300" />
                 </div>
-                <span>Kelola Anggota Tim ({currentWorkspace?.name})</span>
+                <span>Anggota Workspace ({workspaceMembersList.length})</span>
               </div>
               <button
                 onClick={() => setIsManageMembersModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-4 flex-1 overflow-y-auto pr-1 font-sans">
-              {isManageMembersLoading ? (
+              {/* Banner Kode Akses Tim (Top Section) */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/[0.03] border border-white/10 mb-4 font-sans">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-white/40 tracking-wider block">Kode Akses Bergabung</span>
+                  <span className="text-base font-bold font-mono tracking-widest text-white">{currentWorkspace?.invite_code || '---'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentWorkspace?.invite_code) {
+                      navigator.clipboard.writeText(currentWorkspace.invite_code);
+                      showToast("✓ Kode akses berhasil disalin ke clipboard!");
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white text-zinc-950 text-xs font-semibold hover:bg-zinc-200 transition-all cursor-pointer font-sans"
+                >
+                  Salin Kode
+                </button>
+              </div>
+
+              {/* Daftar Anggota Tim (Main List Section) */}
+              {isLoadingMembers ? (
                 <div className="flex items-center justify-center py-10 text-xs text-zinc-400 gap-2 font-sans">
                   <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
-                  <span>Memuat data profil & anggota tim...</span>
+                  <span>Memuat anggota workspace...</span>
+                </div>
+              ) : workspaceMembersList.length === 0 ? (
+                <div className="p-6 text-center text-xs text-zinc-500 bg-neutral-950 border border-white/10 rounded-2xl">
+                  Belum ada anggota yang bergabung di workspace ini.
                 </div>
               ) : (
-                <>
-                  {/* DAFTAR ANGGOTA SAAT INI (KOLOM ATAS) */}
-                  <div className="space-y-2">
-                    <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
-                      Anggota Saat Ini ({currentWorkspaceMembers.length})
-                    </div>
-
-                    <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-                      {currentWorkspaceMembers.map(m => {
-                        const isSelf = m.user_id === session?.user?.id;
-                        return (
-                          <div key={m.id || m.user_id} className="p-3 bg-neutral-950 border border-white/10 rounded-2xl flex items-center justify-between gap-3 text-xs">
-                            <div className="space-y-0.5 truncate">
-                              <div className="font-semibold text-white truncate flex items-center gap-1.5">
-                                <span>{m.profiles?.full_name || 'Anggota Tim'}</span>
-                                {isSelf && <span className="text-[9px] bg-white/10 px-1.5 py-0.2 rounded text-zinc-400">(Anda)</span>}
-                              </div>
-                              <div className="text-[10px] text-zinc-400 truncate">
-                                {m.profiles?.email || '-'} • Pod: <span className="text-zinc-300">{m.pod}</span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
-                                m.role === 'po' 
-                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  : m.role === 'pl'
-                                    ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                                    : 'bg-white/10 text-white/70 border border-white/10'
-                              }`}>
-                                {m.role}
-                              </span>
-
-                              {!isSelf && isOwnerOrPo && (
-                                <button
-                                  onClick={() => handleRemoveMemberFromWorkspace(m.user_id, m.profiles?.full_name || 'Anggota')}
-                                  className="p-1 bg-white/5 hover:bg-rose-950/80 border border-white/10 text-zinc-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
-                                  title="Hapus dari Workspace"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
+                <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1 font-sans">
+                  {workspaceMembersList.map((member) => (
+                    <div key={member.id} className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors font-sans text-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-xs font-bold text-white uppercase">
+                          {(member.full_name || 'A').charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-white flex items-center gap-2">
+                            <span>{member.full_name}</span>
+                            {member.user_id === session?.user?.id && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-medium">Kamu</span>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* FORM TAMBAH / UNDANG ANGGOTA BARU */}
-                  <div className="border-t border-white/10 pt-4 space-y-3 font-sans">
-                    <div className="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Tambah Anggota ke Workspace</span>
-                    </div>
-
-                    {allFetchedProfiles.length === 0 ? (
-                      <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center font-sans">
-                        Belum ada data profil pengguna terdeteksi.
+                          <span className="text-[11px] text-white/40 block font-sans">{member.email}</span>
+                        </div>
                       </div>
-                    ) : availableProfilesToInvite.length === 0 ? (
-                      <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center font-sans">
-                        Semua akun terdaftar sudah bergabung di dalam workspace ini.
-                      </div>
-                    ) : (
-                      <form onSubmit={handleAddMemberToWorkspace} className="space-y-3 font-sans">
-                        {/* Select User Dropdown */}
-                        <div className="space-y-1">
-                          <label className="block text-[10px] text-zinc-400 font-medium">Pilih Akun Pengguna *</label>
-                          <select
-                            value={selectedUserToInvite}
-                            onChange={e => {
-                              setSelectedUserToInvite(e.target.value);
-                              const p = availableProfilesToInvite.find(x => x.id === e.target.value);
-                              if (p?.pod) setSelectedPodToInvite(p.pod);
-                            }}
-                            className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
+
+                      <div className="flex items-center gap-2">
+                        {/* Badge POD / Divisi */}
+                        <span className="px-2 py-0.5 rounded-md border border-white/10 bg-white/5 text-[10px] text-white/70 font-medium font-sans">
+                          {member.pod}
+                        </span>
+
+                        {/* Badge Role */}
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase font-sans ${
+                          member.role === 'po' ? 'bg-white text-zinc-950' :
+                          member.role === 'pl' ? 'bg-zinc-800 text-white border border-white/20' :
+                          'bg-white/5 text-white/50 border border-white/5'
+                        }`}>
+                          {member.role === 'po' ? 'Project Owner' : member.role === 'pl' ? 'Project Leader' : 'Member'}
+                        </span>
+
+                        {/* Tombol Kick (Hanya PO yang bisa kick, dan tidak bisa kick diri sendiri) */}
+                        {activeWorkspaceRole === 'po' && member.user_id !== session?.user?.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMember(member.id)}
+                            className="p-1.5 text-white/30 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all ml-1 cursor-pointer"
+                            title="Keluarkan dari Workspace"
                           >
-                            <option value="" disabled>Pilih akun terdaftar...</option>
-                            {availableProfilesToInvite.map(u => (
-                              <option key={u.id} value={u.id} className="bg-zinc-950 text-white">
-                                {u.full_name || 'Anggota Tim'} — {u.email || '-'}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          {/* Select Role */}
-                          <div className="space-y-1">
-                            <label className="block text-[10px] text-zinc-400 font-medium">Peran di Workspace *</label>
-                            <select
-                              value={selectedRoleToInvite}
-                              onChange={e => setSelectedRoleToInvite(e.target.value as any)}
-                              className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
-                            >
-                              <option value="member">Member Tim (Pelaksana)</option>
-                              <option value="pl">Project Leader (PL)</option>
-                            </select>
-                          </div>
-
-                          {/* Select Pod */}
-                          <div className="space-y-1">
-                            <label className="block text-[10px] text-zinc-400 font-medium">Pod / Divisi *</label>
-                            <select
-                              value={selectedPodToInvite}
-                              onChange={e => setSelectedPodToInvite(e.target.value)}
-                              className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
-                            >
-                              <option value="Product Builder">Product Builder</option>
-                              <option value="Marketing">Marketing</option>
-                              <option value="UI/UX Designer">UI/UX Designer</option>
-                              <option value="General">General</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={isAddingMember || !selectedUserToInvite}
-                          className="w-full py-2 px-4 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          {isAddingMember ? 'Menambahkan...' : '+ Tambahkan ke Workspace'}
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                </>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
