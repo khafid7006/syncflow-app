@@ -365,75 +365,105 @@ export const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. LOGIKA INIT WORKSPACES & LOCALSTORAGE PERSISTENCE (EXACT LIFECYCLE REWRITE)
+  // 1. REFACTOR FUNGSI FETCH USER WORKSPACES DI APP.TSX (DIRECT 2-STEP FETCHING & HARD FALLBACK FOR CREATOR/OWNER)
+  const fetchUserWorkspaces = async (userId: string) => {
+    try {
+      // Langkah 1: Ambil membership user
+      const { data: memberRows, error: memberErr } = await supabase
+        .from('workspace_members')
+        .select('workspace_id, role, pod')
+        .eq('user_id', userId);
+
+      if (memberErr) throw memberErr;
+
+      if (!memberRows || memberRows.length === 0) {
+        // Fallback untuk Owner: Jika tabel member kosong, cari workspace buatan user ini
+        const { data: createdWorkspaces } = await supabase
+          .from('workspaces')
+          .select('*')
+          .eq('created_by', userId);
+
+        if (createdWorkspaces && createdWorkspaces.length > 0) {
+          const mappedCreated: Workspace[] = createdWorkspaces.map(w => ({
+            ...w,
+            role: 'po',
+            pod: 'Project Owner'
+          }));
+          setUserWorkspaces(mappedCreated);
+          return mappedCreated;
+        }
+        setUserWorkspaces([]);
+        return [];
+      }
+
+      // Langkah 2: Ambil detail workspace berdasarkan ID yang didapat
+      const wsIds = memberRows.map(m => m.workspace_id);
+      const { data: wsData, error: wsErr } = await supabase
+        .from('workspaces')
+        .select('*')
+        .in('id', wsIds);
+
+      if (wsErr) throw wsErr;
+
+      // Gabungkan detail workspace dengan role user
+      const fullWorkspaces: Workspace[] = (wsData || []).map(ws => {
+        const memberInfo = memberRows.find(m => m.workspace_id === ws.id);
+        return {
+          ...ws,
+          role: (memberInfo?.role || 'member') as 'po' | 'pl' | 'member',
+          pod: memberInfo?.pod || 'General'
+        };
+      });
+
+      setUserWorkspaces(fullWorkspaces);
+      return fullWorkspaces;
+    } catch (error) {
+      console.error("Gagal mengambil workspace:", error);
+      setUserWorkspaces([]);
+      return [];
+    }
+  };
+
+  // 2. LOGIKA SYNC ON MOUNT & LOCALSTORAGE PERSISTENCE (ISMOUNTED GUARD)
   useEffect(() => {
-    const initUserDataAndWorkspaces = async () => {
+    let isMounted = true;
+
+    const initApp = async () => {
       const userId = session?.user?.id;
       if (!userId) {
-        setIsAppInitializing(false);
+        if (isMounted) setIsAppInitializing(false);
         return;
       }
 
-      setIsAppInitializing(true);
-      try {
-        // 1. Fetch workspace di mana user menjadi anggota
-        const { data: memberRows, error } = await supabase
-          .from('workspace_members')
-          .select(`
-            role,
-            pod,
-            workspaces:workspace_id (
-              id,
-              name,
-              description,
-              owner_id,
-              created_at
-            )
-          `)
-          .eq('user_id', userId);
+      if (isMounted) setIsAppInitializing(true);
+      const workspaces = await fetchUserWorkspaces(userId);
 
-        if (error) throw error;
+      if (!isMounted) return;
 
-        const accessibleWorkspaces: Workspace[] = (memberRows || [])
-          .filter((row: any) => row.workspaces !== null && row.workspaces !== undefined)
-          .map((row: any) => ({
-            ...(row.workspaces as any),
-            role: row.role as 'po' | 'pl' | 'member',
-            pod: row.pod
-          }));
-
-        setUserWorkspaces(accessibleWorkspaces);
-
-        // 2. Baca workspace terakhir dari LocalStorage
+      if (workspaces.length > 0) {
         const savedWsId = localStorage.getItem('syncflow_active_ws');
-        const matchedWs = savedWsId ? accessibleWorkspaces.find(ws => ws.id === savedWsId) : null;
+        const activeWs = workspaces.find(w => w.id === savedWsId) || workspaces[0];
 
-        if (matchedWs) {
-          // Pakai workspace terakhir yang disimpan
-          setCurrentWorkspace(matchedWs);
-          setActiveWorkspaceRole(matchedWs.role || (profile?.role === 'owner' ? 'po' : 'member'));
-        } else if (accessibleWorkspaces.length > 0) {
-          // Fallback ke workspace pertama jika yang di localstorage tidak cocok
-          setCurrentWorkspace(accessibleWorkspaces[0]);
-          setActiveWorkspaceRole(accessibleWorkspaces[0].role || (profile?.role === 'owner' ? 'po' : 'member'));
-          localStorage.setItem('syncflow_active_ws', accessibleWorkspaces[0].id);
-        } else {
-          // User benar-benar belum punya workspace
-          setCurrentWorkspace(null);
-          localStorage.removeItem('syncflow_active_ws');
-        }
-      } catch (err) {
-        console.error("Gagal inisialisasi workspace:", err);
-      } finally {
-        setIsAppInitializing(false);
+        setCurrentWorkspace(activeWs);
+        setActiveWorkspaceRole(activeWs.role || 'member');
+        localStorage.setItem('syncflow_active_ws', activeWs.id);
+      } else {
+        setCurrentWorkspace(null);
+        localStorage.removeItem('syncflow_active_ws');
       }
+
+      setIsAppInitializing(false);
     };
 
     if (session?.user && profile) {
-      initUserDataAndWorkspaces();
+      initApp();
     } else if (!authLoading && !session) {
       setIsAppInitializing(false);
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [session?.user?.id, profile?.id, authLoading]);
 
   // 2. STATE RESET SAAT SWITCH ATAU BUAT WORKSPACE & SCOPED FETCHING
@@ -543,7 +573,7 @@ export const App: React.FC = () => {
     showToast(`Beralih ke workspace: ${ws.name}`);
   };
 
-  // REWRITTEN CREATE WORKSPACE MUTATION WITH ROBUST ERROR HANDLING & VISUAL FEEDBACK
+  // 3. SIMPAN KE LOCALSTORAGE SAAT BUAT WORKSPACE
   const handleCreateWorkspaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const userId = session?.user?.id;
@@ -579,7 +609,7 @@ export const App: React.FC = () => {
       }
 
       // 3. Update State Lokal & LocalStorage
-      const createdWsObj: Workspace = { ...newWs, role: 'po' };
+      const createdWsObj: Workspace = { ...newWs, role: 'po', pod: profile?.pod || 'Project Owner' };
       setUserWorkspaces(prev => [createdWsObj, ...prev]);
       setCurrentWorkspace(createdWsObj);
       setActiveWorkspaceRole('po');
