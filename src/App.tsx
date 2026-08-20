@@ -249,6 +249,8 @@ export const App: React.FC = () => {
 
   // WORKSPACE MEMBERS MANAGEMENT STATES
   const [isManageMembersModalOpen, setIsManageMembersModalOpen] = useState<boolean>(false);
+  const [isManageMembersLoading, setIsManageMembersLoading] = useState<boolean>(false);
+  const [allFetchedProfiles, setAllFetchedProfiles] = useState<UserProfile[]>([]);
   const [currentWorkspaceMembers, setCurrentWorkspaceMembers] = useState<WorkspaceMemberDetail[]>([]);
   const [availableProfilesToInvite, setAvailableProfilesToInvite] = useState<UserProfile[]>([]);
   const [selectedUserToInvite, setSelectedUserToInvite] = useState<string>('');
@@ -682,15 +684,20 @@ export const App: React.FC = () => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
 
+    setIsManageMembersLoading(true);
+
     try {
-      // 1. Ambil seluruh akun profil terdaftar
+      // 1. Fetch seluruh profiles
       const { data: allProfiles, error: profErr } = await supabase
         .from('profiles')
-        .select('id, full_name, email, pod, role');
+        .select('*');
 
-      if (profErr) throw profErr;
+      if (profErr) {
+        console.error("Error fetch profiles:", profErr);
+        throw profErr;
+      }
 
-      // 2. Ambil list anggota yang sudah tergabung di workspace aktif
+      // 2. Fetch anggota workspace saat ini
       const { data: wsMembers, error: memErr } = await supabase
         .from('workspace_members')
         .select(`
@@ -698,15 +705,17 @@ export const App: React.FC = () => {
           user_id,
           role,
           pod,
-          created_at,
           profiles:user_id (id, full_name, email)
         `)
         .eq('workspace_id', targetWsId);
 
-      if (memErr) throw memErr;
+      if (memErr) {
+        console.error("Error fetch workspace_members:", memErr);
+        throw memErr;
+      }
 
-      console.log("Semua profiles terdaftar:", allProfiles);
-      console.log("Anggota workspace saat ini:", wsMembers);
+      console.log("-> profiles terdeteksi:", allProfiles);
+      console.log("-> anggota workspace:", wsMembers);
 
       const parsedMembers: WorkspaceMemberDetail[] = (wsMembers || []).map((row: any) => ({
         id: row.id,
@@ -719,20 +728,23 @@ export const App: React.FC = () => {
       }));
 
       setCurrentWorkspaceMembers(parsedMembers);
+      setAllFetchedProfiles(allProfiles || []);
 
-      // 3. Filter akun yang BELUM masuk ke workspace ini
-      const enrolledIds = new Set((wsMembers || []).map((m: any) => m.user_id));
-      const unenrolledProfiles = (allProfiles || []).filter((p: any) => !enrolledIds.has(p.id));
+      // 3. Filter user yang belum join
+      const joinedUserIds = new Set((wsMembers || []).map((m: any) => m.user_id));
+      const available = (allProfiles || []).filter((p: any) => !joinedUserIds.has(p.id));
 
-      setAvailableProfilesToInvite(unenrolledProfiles as UserProfile[]);
-      if (unenrolledProfiles.length > 0) {
-        setSelectedUserToInvite(unenrolledProfiles[0].id);
-        setSelectedPodToInvite(unenrolledProfiles[0].pod || 'Product Builder');
+      setAvailableProfilesToInvite(available as UserProfile[]);
+      if (available.length > 0) {
+        setSelectedUserToInvite(available[0].id);
+        setSelectedPodToInvite(available[0].pod || 'Product Builder');
       } else {
         setSelectedUserToInvite('');
       }
     } catch (err: any) {
-      console.error("Gagal sinkronisasi data anggota:", err.message || err);
+      console.error("Gagal load modal members:", err.message || err);
+    } finally {
+      setIsManageMembersLoading(false);
     }
   };
 
@@ -2878,128 +2890,141 @@ export const App: React.FC = () => {
             </div>
 
             <div className="space-y-4 flex-1 overflow-y-auto pr-1 font-sans">
-              {/* DAFTAR ANGGOTA SAAT INI (KOLOM ATAS) */}
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
-                  Anggota Saat Ini ({currentWorkspaceMembers.length})
+              {isManageMembersLoading ? (
+                <div className="flex items-center justify-center py-10 text-xs text-zinc-400 gap-2 font-sans">
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
+                  <span>Memuat data profil & anggota tim...</span>
                 </div>
+              ) : (
+                <>
+                  {/* DAFTAR ANGGOTA SAAT INI (KOLOM ATAS) */}
+                  <div className="space-y-2">
+                    <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                      Anggota Saat Ini ({currentWorkspaceMembers.length})
+                    </div>
 
-                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-                  {currentWorkspaceMembers.map(m => {
-                    const isSelf = m.user_id === session?.user?.id;
-                    return (
-                      <div key={m.id || m.user_id} className="p-3 bg-neutral-950 border border-white/10 rounded-2xl flex items-center justify-between gap-3 text-xs">
-                        <div className="space-y-0.5 truncate">
-                          <div className="font-semibold text-white truncate flex items-center gap-1.5">
-                            <span>{m.profiles?.full_name || 'Anggota Tim'}</span>
-                            {isSelf && <span className="text-[9px] bg-white/10 px-1.5 py-0.2 rounded text-zinc-400">(Anda)</span>}
+                    <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                      {currentWorkspaceMembers.map(m => {
+                        const isSelf = m.user_id === session?.user?.id;
+                        return (
+                          <div key={m.id || m.user_id} className="p-3 bg-neutral-950 border border-white/10 rounded-2xl flex items-center justify-between gap-3 text-xs">
+                            <div className="space-y-0.5 truncate">
+                              <div className="font-semibold text-white truncate flex items-center gap-1.5">
+                                <span>{m.profiles?.full_name || 'Anggota Tim'}</span>
+                                {isSelf && <span className="text-[9px] bg-white/10 px-1.5 py-0.2 rounded text-zinc-400">(Anda)</span>}
+                              </div>
+                              <div className="text-[10px] text-zinc-400 truncate">
+                                {m.profiles?.email || 'Tanpa Email'} • Pod: <span className="text-zinc-300">{m.pod}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
+                                m.role === 'po' 
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  : m.role === 'pl'
+                                    ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                                    : 'bg-white/10 text-white/70 border border-white/10'
+                              }`}>
+                                {m.role}
+                              </span>
+
+                              {!isSelf && isOwnerOrPo && (
+                                <button
+                                  onClick={() => handleRemoveMemberFromWorkspace(m.user_id, m.profiles?.full_name || 'Anggota')}
+                                  className="p-1 bg-white/5 hover:bg-rose-950/80 border border-white/10 text-zinc-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
+                                  title="Hapus dari Workspace"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-[10px] text-zinc-400 truncate">
-                            {m.profiles?.email || 'Tanpa Email'} • Pod: <span className="text-zinc-300">{m.pod}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
-                            m.role === 'po' 
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : m.role === 'pl'
-                                ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                                : 'bg-white/10 text-white/70 border border-white/10'
-                          }`}>
-                            {m.role}
-                          </span>
-
-                          {!isSelf && isOwnerOrPo && (
-                            <button
-                              onClick={() => handleRemoveMemberFromWorkspace(m.user_id, m.profiles?.full_name || 'Anggota')}
-                              className="p-1 bg-white/5 hover:bg-rose-950/80 border border-white/10 text-zinc-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
-                              title="Hapus dari Workspace"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* FORM TAMBAH / UNDANG ANGGOTA BARU */}
-              <div className="border-t border-white/10 pt-4 space-y-3 font-sans">
-                <div className="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Tambah Anggota ke Workspace</span>
-                </div>
-
-                {availableProfilesToInvite.length === 0 ? (
-                  <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center font-sans">
-                    Semua akun terdaftar sudah bergabung di dalam workspace ini.
+                        );
+                      })}
+                    </div>
                   </div>
-                ) : (
-                  <form onSubmit={handleAddMemberToWorkspace} className="space-y-3 font-sans">
-                    {/* Select User Dropdown */}
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-zinc-400 font-medium">Pilih Akun Pengguna *</label>
-                      <select
-                        value={selectedUserToInvite}
-                        onChange={e => {
-                          setSelectedUserToInvite(e.target.value);
-                          const p = availableProfilesToInvite.find(x => x.id === e.target.value);
-                          if (p?.pod) setSelectedPodToInvite(p.pod);
-                        }}
-                        className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
-                      >
-                        <option value="" disabled>Pilih akun terdaftar...</option>
-                        {availableProfilesToInvite.map(u => (
-                          <option key={u.id} value={u.id} className="bg-zinc-950 text-white">
-                            {u.full_name || 'Tanpa Nama'} ({u.email || 'Tanpa Email'})
-                          </option>
-                        ))}
-                      </select>
+
+                  {/* FORM TAMBAH / UNDANG ANGGOTA BARU */}
+                  <div className="border-t border-white/10 pt-4 space-y-3 font-sans">
+                    <div className="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Tambah Anggota ke Workspace</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Select Role */}
-                      <div className="space-y-1">
-                        <label className="block text-[10px] text-zinc-400 font-medium">Peran di Workspace *</label>
-                        <select
-                          value={selectedRoleToInvite}
-                          onChange={e => setSelectedRoleToInvite(e.target.value as any)}
-                          className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
-                        >
-                          <option value="member">Member Tim (Pelaksana)</option>
-                          <option value="pl">Project Leader (PL)</option>
-                        </select>
+                    {allFetchedProfiles.length === 0 ? (
+                      <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center font-sans">
+                        Belum ada data profil pengguna terdeteksi.
                       </div>
-
-                      {/* Select Pod */}
-                      <div className="space-y-1">
-                        <label className="block text-[10px] text-zinc-400 font-medium">Pod / Divisi *</label>
-                        <select
-                          value={selectedPodToInvite}
-                          onChange={e => setSelectedPodToInvite(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
-                        >
-                          <option value="Product Builder">Product Builder</option>
-                          <option value="Marketing">Marketing</option>
-                          <option value="UI/UX Designer">UI/UX Designer</option>
-                          <option value="General">General</option>
-                        </select>
+                    ) : availableProfilesToInvite.length === 0 ? (
+                      <div className="p-3 bg-neutral-950 border border-white/10 rounded-xl text-[11px] text-zinc-400 text-center font-sans">
+                        Semua akun terdaftar sudah bergabung di dalam workspace ini.
                       </div>
-                    </div>
+                    ) : (
+                      <form onSubmit={handleAddMemberToWorkspace} className="space-y-3 font-sans">
+                        {/* Select User Dropdown */}
+                        <div className="space-y-1">
+                          <label className="block text-[10px] text-zinc-400 font-medium">Pilih Akun Pengguna *</label>
+                          <select
+                            value={selectedUserToInvite}
+                            onChange={e => {
+                              setSelectedUserToInvite(e.target.value);
+                              const p = availableProfilesToInvite.find(x => x.id === e.target.value);
+                              if (p?.pod) setSelectedPodToInvite(p.pod);
+                            }}
+                            className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                          >
+                            <option value="" disabled>Pilih akun terdaftar...</option>
+                            {availableProfilesToInvite.map(u => (
+                              <option key={u.id} value={u.id} className="bg-zinc-950 text-white">
+                                {u.full_name || 'User'} ({u.email || 'Tanpa Email'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                    <button
-                      type="submit"
-                      disabled={isAddingMember || !selectedUserToInvite}
-                      className="w-full py-2 px-4 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      {isAddingMember ? 'Menambahkan...' : '+ Tambahkan ke Workspace'}
-                    </button>
-                  </form>
-                )}
-              </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Select Role */}
+                          <div className="space-y-1">
+                            <label className="block text-[10px] text-zinc-400 font-medium">Peran di Workspace *</label>
+                            <select
+                              value={selectedRoleToInvite}
+                              onChange={e => setSelectedRoleToInvite(e.target.value as any)}
+                              className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                            >
+                              <option value="member">Member Tim (Pelaksana)</option>
+                              <option value="pl">Project Leader (PL)</option>
+                            </select>
+                          </div>
+
+                          {/* Select Pod */}
+                          <div className="space-y-1">
+                            <label className="block text-[10px] text-zinc-400 font-medium">Pod / Divisi *</label>
+                            <select
+                              value={selectedPodToInvite}
+                              onChange={e => setSelectedPodToInvite(e.target.value)}
+                              className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer"
+                            >
+                              <option value="Product Builder">Product Builder</option>
+                              <option value="Marketing">Marketing</option>
+                              <option value="UI/UX Designer">UI/UX Designer</option>
+                              <option value="General">General</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isAddingMember || !selectedUserToInvite}
+                          className="w-full py-2 px-4 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          {isAddingMember ? 'Menambahkan...' : '+ Tambahkan ke Workspace'}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex items-center justify-end pt-3 border-t border-white/10 font-sans">
