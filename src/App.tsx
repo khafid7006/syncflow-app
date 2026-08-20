@@ -117,6 +117,10 @@ export const App: React.FC = () => {
   const totalDodCount = dodItems.length;
   const isAllDoDCompleted = totalDodCount > 0 ? completedDodCount === totalDodCount : true;
 
+  // Effective View Mode: Lock non-owner roles strictly to 'member'
+  const isOwnerRole = profile?.role === 'owner';
+  const effectiveViewMode = isOwnerRole ? viewMode : 'member';
+
   // 1. Fetch Session & Profile on Mount + Fetch Members & Tasks & Project Links
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -148,15 +152,22 @@ export const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch PO Data when viewMode is 'po' or profile is loaded
+  // Ensure role lock for viewMode
+  useEffect(() => {
+    if (profile && profile.role !== 'owner') {
+      setViewMode('member');
+    }
+  }, [profile]);
+
+  // Fetch PO Data when effectiveViewMode is 'po' or profile is loaded
   useEffect(() => {
     if (session?.user) {
       fetchProjectLinks();
-      if (profile?.role === 'owner' || viewMode === 'po') {
+      if (isOwnerRole || effectiveViewMode === 'po') {
         fetchPOData();
       }
     }
-  }, [profile, viewMode, session]);
+  }, [profile, viewMode, session, isOwnerRole, effectiveViewMode]);
 
   // 3. SUPABASE REALTIME SUBSCRIPTION FOR TASKS & PROJECT_LINKS
   useEffect(() => {
@@ -211,7 +222,6 @@ export const App: React.FC = () => {
 
       if (error) {
         console.warn("Gagal fetch project_links:", error.message);
-        // Fallback default links if table returns error or is not ready
         setProjectLinks([
           { id: '1', title: 'Drive Proyek', url: 'https://drive.google.com', icon_type: 'drive' },
           { id: '2', title: 'Figma UI/UX', url: 'https://figma.com', icon_type: 'figma' },
@@ -220,7 +230,6 @@ export const App: React.FC = () => {
       } else if (data && data.length > 0) {
         setProjectLinks(data as ProjectLink[]);
       } else {
-        // Seed default initial links into public.project_links table
         const defaults: ProjectLink[] = [
           { title: 'Drive Proyek', url: 'https://drive.google.com', icon_type: 'drive' },
           { title: 'Figma UI/UX', url: 'https://figma.com', icon_type: 'figma' },
@@ -405,6 +414,8 @@ export const App: React.FC = () => {
         setProfile(data as UserProfile);
         if (data.role === 'owner') {
           setViewMode('po');
+        } else {
+          setViewMode('member');
         }
       } else {
         const newProfile: UserProfile = {
@@ -418,6 +429,8 @@ export const App: React.FC = () => {
         setProfile(newProfile);
         if (newProfile.role === 'owner') {
           setViewMode('po');
+        } else {
+          setViewMode('member');
         }
       }
     } catch (err) {
@@ -429,6 +442,7 @@ export const App: React.FC = () => {
         pod: user.user_metadata?.pod || 'Product Builder',
       };
       setProfile(fallback);
+      setViewMode('member');
     } finally {
       setAuthLoading(false);
     }
@@ -465,6 +479,7 @@ export const App: React.FC = () => {
           await supabase.from('profiles').insert([newProfile]);
           setProfile(newProfile);
           if (newProfile.role === 'owner') setViewMode('po');
+          else setViewMode('member');
           showToast('Akun berhasil dibuat & Anda berhasil masuk!');
         }
       } else {
@@ -478,7 +493,9 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       setAuthError(err.message || 'Terjadi kesalahan autentikasi.');
-    } font-sans
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   // Auth Sign Out
@@ -720,7 +737,7 @@ export const App: React.FC = () => {
     showToast('🚨 Kendala berhasil dilaporkan ke Project Owner.');
   };
 
-  // PO DASHBOARD INTERACTION HANDLERS (MODAL INPUT INSTRUKSI - SIMPAN TEKS BLOCKER SAAT PO MEMBERIKAN SOLUSI)
+  // PO DASHBOARD INTERACTION HANDLERS (MODAL INPUT INSTRUKSI)
   const handleOpenResolveBlockerModal = (taskId: string) => {
     setTargetTaskId(taskId);
     setInputResolutionNote('');
@@ -738,7 +755,6 @@ export const App: React.FC = () => {
           status: 'in_progress', 
           is_blocked: false,
           resolution_note: inputResolutionNote.trim() 
-          // JANGAN ubah blocker_reason ke null agar riwayat kendala tetap dapat dilihat member!
         })
         .eq('id', targetTaskId);
 
@@ -1074,7 +1090,7 @@ export const App: React.FC = () => {
       <div className="relative z-10 w-full max-w-[1360px] mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-8 flex-1 min-h-screen justify-between font-sans">
         
         {/* ========================================================================= */}
-        {/* TOP BAR NAVBAR (WITH ROLE/VIEW SWITCHER CAPSULE) */}
+        {/* TOP BAR NAVBAR (ROLE-BASED VIEW CONTROL) */}
         {/* ========================================================================= */}
         <header className="w-full flex items-center justify-between gap-4 font-sans text-xs">
           
@@ -1088,29 +1104,31 @@ export const App: React.FC = () => {
             </span>
           </div>
 
-          {/* View Mode Switcher Pill */}
-          <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
-            <button
-              onClick={() => setViewMode('po')}
-              className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
-                viewMode === 'po'
-                  ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              <span>Papan PO</span>
-            </button>
-            <button
-              onClick={() => setViewMode('member')}
-              className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
-                viewMode === 'member'
-                  ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              <span>Dashboard Member</span>
-            </button>
-          </nav>
+          {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK UNTUK ROLE OWNER/PO) */}
+          {isOwnerRole && (
+            <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
+              <button
+                onClick={() => setViewMode('po')}
+                className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
+                  effectiveViewMode === 'po'
+                    ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <span>Papan PO</span>
+              </button>
+              <button
+                onClick={() => setViewMode('member')}
+                className={`px-4 py-2 rounded-full font-medium transition-all cursor-pointer ${
+                  effectiveViewMode === 'member'
+                    ? 'bg-white/20 text-white font-semibold shadow-xs border border-white/20'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <span>Dashboard Member</span>
+              </button>
+            </nav>
+          )}
 
           {/* Right Controls: User Profile Pill Dropdown */}
           <div className="relative" ref={dropdownRef}>
@@ -1158,9 +1176,9 @@ export const App: React.FC = () => {
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW ROUTER: PAPAN KONTROL PROJECT OWNER vs DASHBOARD MEMBER */}
+        {/* VIEW ROUTER: EFFECTIVE VIEW MODE ROUTING */}
         {/* ========================================================================= */}
-        {viewMode === 'po' ? (
+        {effectiveViewMode === 'po' ? (
           /* ========================================================================= */
           /* PO DASHBOARD VIEW (BENTO GRID ALL-IN-ONE PO CONTROL CENTER) */
           /* ========================================================================= */
@@ -1538,7 +1556,7 @@ export const App: React.FC = () => {
                       <span className="text-[10px] uppercase font-medium text-zinc-400 tracking-wider">
                         Tautan Utama ({projectLinks.length})
                       </span>
-                      {(profile?.role === 'owner' || viewMode === 'po') && (
+                      {isOwnerRole && (
                         <button
                           onClick={handleOpenManageLinksModal}
                           className="text-[10px] text-zinc-300 hover:text-white underline cursor-pointer font-medium"
