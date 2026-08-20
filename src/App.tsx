@@ -1137,9 +1137,7 @@ export const App: React.FC = () => {
         .select('user_id, role, pod')
         .eq('workspace_id', workspaceId);
 
-      if (memberErr) throw memberErr;
-
-      if (!memberRows || memberRows.length === 0) {
+      if (memberErr || !memberRows || memberRows.length === 0) {
         setAssigneeList([]);
         return;
       }
@@ -1151,8 +1149,6 @@ export const App: React.FC = () => {
         .select('id, full_name, email, pod')
         .in('id', userIds);
 
-      if (profileErr) throw profileErr;
-
       const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
 
       // 3. Gabungkan data anggota untuk dropdown
@@ -1160,13 +1156,14 @@ export const App: React.FC = () => {
         const p = profileMap.get(m.user_id);
         return {
           id: m.user_id,
-          full_name: p?.full_name || 'Anggota Tim',
+          full_name: p?.full_name || p?.email?.split('@')[0] || 'Anggota Tim',
           email: p?.email || '',
           pod: m.pod || p?.pod || 'General',
           role: m.role || 'member'
         };
       });
 
+      console.log("-> Assignee list loaded:", formattedAssignees);
       setAssigneeList(formattedAssignees);
 
       // Auto-select anggota pertama jika form belum memilih
@@ -1175,6 +1172,7 @@ export const App: React.FC = () => {
       }
     } catch (err) {
       console.error("Gagal load assignees:", err);
+      setAssigneeList([]);
     } finally {
       setIsLoadingAssignees(false);
     }
@@ -1742,9 +1740,15 @@ export const App: React.FC = () => {
   // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (PO KIRIM TUGAS BARU)
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAssigneeId || !newAssignTaskTitle.trim() || !currentWorkspace?.id) return;
+    if (!newAssignTaskTitle.trim() || !currentWorkspace?.id) return;
 
-    const assigneeName = memberProfiles.find(m => m.id === selectedAssigneeId)?.full_name || 'Member';
+    const targetAssigneeId = selectedAssigneeId || assigneeList[0]?.id;
+    if (!targetAssigneeId) {
+      showToast("Pilih anggota tim penerima tugas terlebih dahulu.");
+      return;
+    }
+
+    const assigneeName = assigneeList.find(m => m.id === targetAssigneeId)?.full_name || 'Member';
 
     const checklistItems = dodPoints
       .filter(p => p.trim().length > 0)
@@ -1762,7 +1766,7 @@ export const App: React.FC = () => {
         .from('tasks')
         .insert({
           workspace_id: currentWorkspace.id,
-          assignee_id: selectedAssigneeId,
+          assignee_id: targetAssigneeId,
           title: newAssignTaskTitle.trim(),
           description: newAssignDescription.trim() || null,
           due_date: dueDateIso,
