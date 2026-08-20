@@ -136,7 +136,12 @@ function getSaved<T>(key: string, fallback: T): T {
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => getSaved(`${STORAGE_KEY}_USERS`, INITIAL_USERS));
-  const [currentUser, setCurrentUser] = useState<User>(() => getSaved(`${STORAGE_KEY}_CURRENT_USER`, INITIAL_USERS[0]));
+  const [currentUser, setCurrentUser] = useState<User>(() => getSaved(`${STORAGE_KEY}_CURRENT_USER`, INITIAL_USERS[0] || {
+    id: 'user-admin',
+    name: 'Admin User',
+    email: 'admin@syncflow.local',
+    role: 'PROJECT_OWNER'
+  }));
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_AUTH`);
