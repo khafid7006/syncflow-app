@@ -61,7 +61,7 @@ export const App: React.FC = () => {
   const [taskTitle, setTaskTitle] = useState<string>('Buat Halaman Pembayaran Aplikasi');
   const [deliverableUrl, setDeliverableUrl] = useState<string>('');
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
-  const [taskStatus, setTaskStatus] = useState<'Dalam Pengerjaan' | 'Sedang Ditinjau PO' | 'Terkendala (Blocker)'>('Dalam Pengerjaan');
+  const [taskStatus, setTaskStatus] = useState<'Dalam Pengerjaan' | 'Sedang Ditinjau PO' | 'Terkendala (Blocker)' | 'Perlu Revisi'>('Dalam Pengerjaan');
 
   // PO Dashboard states (Master Task Feed & Profiles)
   const [allTasks, setAllTasks] = useState<MemberTask[]>([]);
@@ -169,7 +169,7 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER
+  // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER (LOGIKA REVISI & UNLOCK FORM)
   const fetchActiveTask = async (userId: string) => {
     try {
       console.log("Current User ID:", userId);
@@ -193,20 +193,30 @@ export const App: React.FC = () => {
         setActiveTask(data);
         if (data.title) setTaskTitle(data.title);
 
-        const existingLink = data.deliverable_link || data.deliverable_url;
-        if (existingLink) {
-          setSubmittedUrl(existingLink);
-          setTaskStatus('Sedang Ditinjau PO');
-        } else if (data.status === 'review' || data.status === 'UNDER_REVIEW') {
-          setTaskStatus('Sedang Ditinjau PO');
-        } else if (data.status === 'blocked' || data.status === 'BLOCKED' || data.is_blocked) {
-          setTaskStatus('Terkendala (Blocker)');
-        } else {
-          setTaskStatus('Dalam Pengerjaan');
-        }
+        const existingLink = data.deliverable_link || data.deliverable_url || '';
 
-        if (data.blocker_reason) {
-          setBlockerReason(data.blocker_reason);
+        // 1. REVISION MODE (STATUS IN_PROGRESS DENGAN REVISION_NOTE)
+        if (data.status === 'in_progress' && data.revision_note) {
+          setTaskStatus('Perlu Revisi');
+          setDeliverableUrl(existingLink);
+          setSubmittedUrl(null);
+        } 
+        // 2. IN REVIEW MODE (STATUS REVIEW)
+        else if (data.status === 'review' || data.status === 'UNDER_REVIEW') {
+          setTaskStatus('Sedang Ditinjau PO');
+          setSubmittedUrl(existingLink || 'Link Tugas');
+        } 
+        // 3. BLOCKED MODE (STATUS BLOCKED)
+        else if (data.status === 'blocked' || data.status === 'BLOCKED' || data.is_blocked) {
+          setTaskStatus('Terkendala (Blocker)');
+          setSubmittedUrl(null);
+          if (data.blocker_reason) setBlockerReason(data.blocker_reason);
+        } 
+        // 4. IN PROGRESS MODE (TANPA REVISION NOTE)
+        else {
+          setTaskStatus('Dalam Pengerjaan');
+          setDeliverableUrl(existingLink);
+          setSubmittedUrl(null);
         }
 
         if (data.checklist && Array.isArray(data.checklist) && data.checklist.length > 0) {
@@ -422,7 +432,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // MEMBER: SUBMIT DELIVERABLE LINK (RESET REVISION & RESOLUTION NOTES)
+  // MEMBER: SUBMIT DELIVERABLE LINK (RESET REVISION & RESOLUTION NOTES + LOCK FORM TO REVIEW MODE)
   const handleSubmitDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deliverableUrl.trim() || !session?.user?.id) return;
@@ -450,7 +460,11 @@ export const App: React.FC = () => {
           return;
         }
 
-        if (data && data[0]) setActiveTask(data[0]);
+        if (data && data[0]) {
+          setActiveTask(data[0]);
+          setTaskStatus('Sedang Ditinjau PO');
+          setSubmittedUrl(linkInput);
+        }
       } else {
         const { data, error } = await supabase
           .from('tasks')
@@ -471,7 +485,11 @@ export const App: React.FC = () => {
           return;
         }
 
-        if (data && data[0]) setActiveTask(data[0]);
+        if (data && data[0]) {
+          setActiveTask(data[0]);
+          setTaskStatus('Sedang Ditinjau PO');
+          setSubmittedUrl(linkInput);
+        }
       }
     } catch (err: any) {
       console.error('Supabase deliverable mutation error:', err);
@@ -481,7 +499,6 @@ export const App: React.FC = () => {
 
     setSubmittedUrl(linkInput);
     setTaskStatus('Sedang Ditinjau PO');
-    setDeliverableUrl('');
     showToast('Hasil tugas berhasil dikirim & sedang ditinjau PO.');
   };
 
@@ -1342,12 +1359,15 @@ export const App: React.FC = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                       <span>Tugas Aktif</span>
+                      {/* Top Right Status Badge on Member Card */}
                       <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium ${
-                        taskStatus === 'Terkendala (Blocker)'
-                          ? 'bg-neutral-800 text-zinc-300 border-white/20'
-                          : taskStatus === 'Sedang Ditinjau PO'
-                            ? 'bg-white/10 text-white border-white/20'
-                            : 'bg-white/5 text-zinc-400 border-white/10'
+                        taskStatus === 'Perlu Revisi'
+                          ? 'bg-neutral-800 text-zinc-200 border-white/30'
+                          : taskStatus === 'Terkendala (Blocker)'
+                            ? 'bg-neutral-800 text-zinc-300 border-white/20'
+                            : taskStatus === 'Sedang Ditinjau PO'
+                              ? 'bg-white/10 text-white border-white/20'
+                              : 'bg-white/5 text-zinc-400 border-white/10'
                       }`}>
                         {taskStatus}
                       </span>
@@ -1360,9 +1380,9 @@ export const App: React.FC = () => {
 
                   {/* PO Feedback Action Cards in Member Dashboard */}
                   {activeTask?.revision_note && (
-                    <div className="p-3 bg-neutral-900 border border-white/15 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
+                    <div className="p-3 bg-neutral-900 border border-white/20 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
                       <div className="font-semibold text-white text-[11px] flex items-center gap-1">
-                        <span>⚠️ Catatan Revisi dari PO:</span>
+                        <span>⚠️ Catatan Revisi PO:</span>
                       </div>
                       <p className="text-zinc-300 text-[11px] leading-relaxed">
                         {activeTask.revision_note}
@@ -1404,20 +1424,20 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* KARTU TENGAH ATAS (Submit Deliverable) */}
+                {/* KARTU TENGAH ATAS (Submit Deliverable - LOGIKA REVISI & UNLOCK FORM) */}
                 <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-zinc-500">
                       Penyerahan Tugas
                     </span>
                     <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                      Kirim Hasil Tugas
+                      {taskStatus === 'Perlu Revisi' ? 'Kirim Hasil Revisi' : 'Kirim Hasil Tugas'}
                     </h3>
                   </div>
 
-                  {/* Form Input Clean */}
+                  {/* Form Input Clean & Unlock Logic */}
                   <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans">
-                    {submittedUrl ? (
+                    {submittedUrl && taskStatus === 'Sedang Ditinjau PO' ? (
                       <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
                         <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
                         <a href={submittedUrl} target="_blank" rel="noreferrer" className="text-zinc-900 underline truncate block font-medium">
@@ -1438,15 +1458,21 @@ export const App: React.FC = () => {
 
                     <button
                       type="submit"
-                      disabled={taskStatus === 'Sedang Ditinjau PO' || submittedUrl !== null}
+                      disabled={taskStatus === 'Sedang Ditinjau PO'}
                       className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
-                        submittedUrl !== null || taskStatus === 'Sedang Ditinjau PO'
+                        taskStatus === 'Sedang Ditinjau PO'
                           ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
                           : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
                       }`}
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>{taskStatus === 'Sedang Ditinjau PO' ? 'Sedang Ditinjau PO' : 'Kirim'}</span>
+                      <span>
+                        {taskStatus === 'Sedang Ditinjau PO'
+                          ? 'Sedang Ditinjau PO'
+                          : taskStatus === 'Perlu Revisi'
+                            ? 'Kirim Hasil Revisi'
+                            : 'Kirim Hasil Tugas'}
+                      </span>
                     </button>
                   </form>
 
