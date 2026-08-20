@@ -61,13 +61,15 @@ export const FocusExecutionView: React.FC = () => {
   // Blocker modal state for Member
   const [isBlockerModalOpen, setIsBlockerModalOpen] = useState(false);
   const [blockerReasonInput, setBlockerReasonInput] = useState('');
+  const [blockerCategoryInput, setBlockerCategoryInput] = useState<import('../../types').BlockerCategory>('OTHER');
 
   const handleReportBlockerSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!blockerReasonInput.trim() || !currentExecutionTask) return;
 
-    reportBlocker(currentExecutionTask.id, blockerReasonInput.trim());
+    reportBlocker(currentExecutionTask.id, blockerReasonInput.trim(), blockerCategoryInput);
     setBlockerReasonInput('');
+    setBlockerCategoryInput('OTHER');
     setIsBlockerModalOpen(false);
   };
 
@@ -1288,6 +1290,22 @@ export const FocusExecutionView: React.FC = () => {
               <p className="text-[11px] leading-relaxed text-rose-900">
                 Status tugas akan otomatis berubah menjadi <strong>BLOCKED</strong>. Pod Owner dan Project Leader akan segera menerima sinyal darurat untuk memvalidasi dan membongkar blocker.
               </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-700">
+                Kategori Kendala Utama *
+              </label>
+              <select
+                value={blockerCategoryInput}
+                onChange={e => setBlockerCategoryInput(e.target.value as any)}
+                className="w-full p-3 border border-rose-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 bg-white rounded-2xl text-xs font-mono focus:outline-hidden text-slate-900"
+              >
+                <option value="API_DEPENDENCY">🔌 API_DEPENDENCY (Ketergantungan Service / Backend)</option>
+                <option value="ASSET_MISSING">🎨 ASSET_MISSING (Desain Figma / Asset belum siap)</option>
+                <option value="ACCESS_ISSUE">🔑 ACCESS_ISSUE (Izin Akses / Kredensial / DB / Server)</option>
+                <option value="OTHER">⚡ OTHER (Hambatan Teknis Lainnya)</option>
+              </select>
             </div>
 
             <div className="space-y-1.5">

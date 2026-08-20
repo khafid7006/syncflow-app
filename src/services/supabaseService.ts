@@ -171,6 +171,43 @@ export const supabaseService = {
     }
   },
 
+  // 7b. Update Blocker Status & Reason in Supabase
+  async updateTaskBlocker(taskId: string, isBlocked: boolean, reason?: string, category?: string): Promise<boolean> {
+    if (!isSupabaseConfigured()) return false;
+
+    try {
+      const { error } = await supabase.from('tasks').update({
+        status: isBlocked ? 'BLOCKED' : 'IN_PROGRESS',
+        is_blocked: isBlocked,
+        blocker_reason: isBlocked ? (reason || null) : null,
+        blocker_category: isBlocked ? (category || 'OTHER') : null
+      }).eq('id', taskId);
+
+      return !error;
+    } catch (err) {
+      console.warn('Supabase updateTaskBlocker error:', err);
+      return false;
+    }
+  },
+
+  // 7c. Submit Deliverable URL in Supabase
+  async submitTaskDeliverable(taskId: string, deliverableUrl: string): Promise<boolean> {
+    if (!isSupabaseConfigured()) return false;
+
+    try {
+      const { error } = await supabase.from('tasks').update({
+        status: 'UNDER_REVIEW',
+        deliverable_url: deliverableUrl,
+        deliverable_link: deliverableUrl
+      }).eq('id', taskId);
+
+      return !error;
+    } catch (err) {
+      console.warn('Supabase submitTaskDeliverable error:', err);
+      return false;
+    }
+  },
+
   // 8. Create Sprint in Supabase
   async createSprint(sprint: Sprint): Promise<boolean> {
     if (!isSupabaseConfigured()) return false;

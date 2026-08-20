@@ -33,13 +33,12 @@ export const TasksView: React.FC<{ onCreateTask: () => void }> = ({ onCreateTask
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const [isNotulensiOpen, setIsNotulensiOpen] = useState(false);
 
-  // 5 Kolom Kanban (Two-Stage Verification)
+  // 4 Kolom Kanban Linier (TODO -> IN_PROGRESS / BLOCKED -> UNDER_REVIEW -> DONE)
   const columns: { status: TaskStatus; label: string; bg: string; border: string }[] = [
-    { status: 'BACKLOG', label: 'Daftar Tugas', bg: 'bg-[#F8FAFC]', border: 'border-[#E2E8F0]' },
-    { status: 'DIKERJAKAN', label: 'Dikerjakan', bg: 'bg-[#F59E0B]/10', border: 'border-[#F59E0B]/40' },
-    { status: 'POD_REVIEW', label: 'Cek Pod', bg: 'bg-indigo-50/70', border: 'border-indigo-200' },
-    { status: 'REVIEW', label: 'Cek Tim', bg: 'bg-blue-50/70', border: 'border-blue-200' },
-    { status: 'SELESAI', label: 'Selesai', bg: 'bg-emerald-50/70', border: 'border-emerald-200' }
+    { status: 'TODO', label: 'Akan Dikerjakan (TODO)', bg: 'bg-[#F8FAFC]', border: 'border-[#E2E8F0]' },
+    { status: 'IN_PROGRESS', label: 'Sedang Dikerjakan / Blocker', bg: 'bg-[#F59E0B]/10', border: 'border-[#F59E0B]/40' },
+    { status: 'UNDER_REVIEW', label: 'Dalam Review Lead', bg: 'bg-indigo-50/70', border: 'border-indigo-200' },
+    { status: 'DONE', label: 'Disetujui Selesai (DONE)', bg: 'bg-emerald-50/70', border: 'border-emerald-200' }
   ];
 
   const isBO = currentUser.role === 'BUSINESS_OWNER';
@@ -264,7 +263,13 @@ export const TasksView: React.FC<{ onCreateTask: () => void }> = ({ onCreateTask
       {viewMode === 'board' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
           {columns.map(col => {
-            const colTasks = filteredTasks.filter(t => t.status === col.status);
+            const colTasks = filteredTasks.filter(t => {
+              if (col.status === 'TODO') return t.status === 'TODO' || t.status === 'BACKLOG';
+              if (col.status === 'IN_PROGRESS') return t.status === 'IN_PROGRESS' || t.status === 'DIKERJAKAN' || t.status === 'BLOCKED' || t.is_blocked;
+              if (col.status === 'UNDER_REVIEW') return t.status === 'UNDER_REVIEW' || t.status === 'POD_REVIEW' || t.status === 'REVIEW';
+              if (col.status === 'DONE') return t.status === 'DONE' || t.status === 'SELESAI';
+              return t.status === col.status;
+            });
             const isOver = dragOverCol === col.status;
 
             return (

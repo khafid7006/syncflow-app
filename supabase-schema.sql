@@ -21,9 +21,12 @@ DROP TYPE IF EXISTS task_status_enum CASCADE;
 DROP TYPE IF EXISTS task_priority_enum CASCADE;
 DROP TYPE IF EXISTS channel_type_enum CASCADE;
 
+DROP TYPE IF EXISTS blocker_category_enum CASCADE;
+
 -- Create Custom Enum Types
 CREATE TYPE user_role_enum AS ENUM (
   'BUSINESS_OWNER', 
+  'PROJECT_LEAD',
   'PROJECT_OWNER', 
   'PROJECT_LEADER', 
   'POD_OWNER', 
@@ -31,6 +34,10 @@ CREATE TYPE user_role_enum AS ENUM (
 );
 
 CREATE TYPE pod_type_enum AS ENUM (
+  'BUSINESS_ANALYST',
+  'PRODUCT_BUILDER',
+  'QA_DOCUMENTATION',
+  'GROWTH_MARKETING',
   'BA', 
   'PB', 
   'QA', 
@@ -38,13 +45,24 @@ CREATE TYPE pod_type_enum AS ENUM (
   'ALL'
 );
 
+CREATE TYPE blocker_category_enum AS ENUM (
+  'API_DEPENDENCY',
+  'ASSET_MISSING',
+  'ACCESS_ISSUE',
+  'OTHER'
+);
+
 CREATE TYPE task_status_enum AS ENUM (
+  'TODO',
+  'IN_PROGRESS',
+  'BLOCKED',
+  'UNDER_REVIEW',
+  'DONE',
   'BACKLOG', 
-  'TODO', 
-  'IN_PROGRESS', 
   'POD_REVIEW', 
   'TEAM_REVIEW', 
-  'DONE'
+  'REVIEW', 
+  'SELESAI'
 );
 
 CREATE TYPE task_priority_enum AS ENUM (
@@ -121,11 +139,18 @@ CREATE TABLE tasks (
   team_id VARCHAR(64) NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   sprint_id VARCHAR(64) NOT NULL REFERENCES sprints(id) ON DELETE CASCADE,
   assignee_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+  assigned_to VARCHAR(255),
+  pod pod_type_enum DEFAULT 'PRODUCT_BUILDER',
   title VARCHAR(255) NOT NULL,
   description TEXT,
   deliverable_link TEXT,
-  status task_status_enum NOT NULL DEFAULT 'BACKLOG',
+  deliverable_url TEXT,
+  status task_status_enum NOT NULL DEFAULT 'TODO',
   priority task_priority_enum NOT NULL DEFAULT 'MEDIUM',
+  is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+  blocker_reason TEXT,
+  blocker_category blocker_category_enum,
+  review_feedback TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

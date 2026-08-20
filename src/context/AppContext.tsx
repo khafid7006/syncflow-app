@@ -88,7 +88,7 @@ interface AppContextType {
   togglePodLead: (userId: string) => void;
   approveTaskReview: (taskId: string) => void;
   rejectTaskReview: (taskId: string, reason?: string) => void;
-  reportBlocker: (taskId: string, reason: string) => void;
+  reportBlocker: (taskId: string, reason: string, category?: import('../types').BlockerCategory) => void;
   resolveBlocker: (taskId: string) => void;
   addComment: (taskId: string, content: string) => void;
   addAttachment: (taskId: string, attachment: { name: string; url: string; size?: string }) => void;
@@ -725,11 +725,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Member Action: Report Blocker -> BLOCKED
-  const reportBlocker = (taskId: string, reason: string) => {
+  const reportBlocker = (taskId: string, reason: string, category?: import('../types').BlockerCategory) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task || !reason.trim()) return;
 
     const blockerText = reason.trim();
+    const blockerCat = category || 'OTHER';
 
     setTasks(prev => prev.map(t => {
       if (t.id !== taskId) return t;
@@ -738,18 +739,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: 'BLOCKED',
         is_blocked: true,
         blocker_reason: blockerText,
+        blocker_category: blockerCat,
         updated_at: new Date().toISOString().substring(0, 10)
       };
     }));
 
-    supabaseService.updateTaskStatus(taskId, 'BLOCKED');
+    supabaseService.updateTaskBlocker(taskId, true, blockerText, blockerCat);
 
     const team = teams.find(t => t.id === task.team_id);
     if (team?.project_leader_id) {
       sendNotification({
         user_id: team.project_leader_id,
         type: 'URGENT',
-        title: `🚨 Blocker Dilaporkan: [${task.code}]`,
+        title: `🚨 Blocker Dilaporkan [${blockerCat}]: [${task.code}]`,
         message: `${currentUser.name} melaporkan hambatan: "${blockerText}"`,
         related_task_id: task.id
       });
@@ -768,11 +770,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: 'DIKERJAKAN',
         is_blocked: false,
         blocker_reason: undefined,
+        blocker_category: undefined,
         updated_at: new Date().toISOString().substring(0, 10)
       };
     }));
 
-    supabaseService.updateTaskStatus(taskId, 'DIKERJAKAN');
+    supabaseService.updateTaskBlocker(taskId, false);
 
     if (task.assignee_id && task.assignee_id !== currentUser.id) {
       sendNotification({

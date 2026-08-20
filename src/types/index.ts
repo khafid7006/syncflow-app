@@ -1,31 +1,39 @@
 export type UserRole = 
   | 'BUSINESS_OWNER' 
+  | 'PROJECT_LEAD' 
   | 'PROJECT_OWNER' 
   | 'PROJECT_LEADER' 
   | 'MEMBER';
 
 export type PodType = 
+  | 'BUSINESS_ANALYST' 
+  | 'PRODUCT_BUILDER' 
+  | 'QA_DOCUMENTATION' 
+  | 'GROWTH_MARKETING'
   | 'BA' 
   | 'PB' 
   | 'QA' 
-  | 'MG'
-  | 'BUSINESS_ANALYST' 
-  | 'PRODUCT_BUILDER' 
-  | 'QUALITY_ASSURANCE' 
-  | 'MARKETING_GROWTH';
+  | 'MG';
 
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
+export type BlockerCategory = 
+  | 'API_DEPENDENCY' 
+  | 'ASSET_MISSING' 
+  | 'ACCESS_ISSUE' 
+  | 'OTHER';
+
 export type TaskStatus = 
-  | 'BACKLOG' 
   | 'TODO'
-  | 'DIKERJAKAN' 
   | 'IN_PROGRESS'
   | 'BLOCKED'
+  | 'UNDER_REVIEW'
+  | 'DONE'
+  | 'BACKLOG' 
+  | 'DIKERJAKAN' 
   | 'POD_REVIEW' 
   | 'REVIEW' 
-  | 'SELESAI'
-  | 'DONE';
+  | 'SELESAI';
 
 export type SprintStatus = 'PLANNING' | 'ACTIVE' | 'COMPLETED';
 
@@ -41,10 +49,10 @@ export interface User {
   email: string;
   password?: string;
   role: UserRole;
-  team_id?: string; // Khusus Project Owner, Project Leader & Member
-  pod_label?: PodType; // Khusus Member sebagai penanda fungsi peran (BA, PB, QA, MG)
-  is_pod_lead?: boolean; // True jika ditunjuk sebagai Pod Owner / Pod Lead (memiliki delegasi approval review pod)
-  is_pod_owner?: boolean; // Field boolean penunjuk Pod Owner
+  team_id?: string;
+  pod_label?: PodType;
+  is_pod_lead?: boolean;
+  is_pod_owner?: boolean;
   avatar_url: string;
   title: string;
   bio?: string;
@@ -56,8 +64,8 @@ export interface Team {
   id: string;
   name: string;
   code: string;
-  project_owner_id: string; // FK users (Project Owner)
-  project_leader_id: string; // FK users (Project Leader)
+  project_owner_id: string;
+  project_leader_id: string;
 }
 
 export interface Sprint {
@@ -67,8 +75,8 @@ export interface Sprint {
   start_date: string;
   end_date: string;
   goal: string;
-  meeting_notes: string; // Notulensi / background rapat perencanaan sprint (Wajib)
-  document_url?: string; // Link dokumen pendukung (Google Docs, Figma, Notion, dll.)
+  meeting_notes: string;
+  document_url?: string;
   status: SprintStatus;
   created_at?: string;
 }
@@ -81,7 +89,7 @@ export interface TaskComment {
   user_avatar: string;
   user_role?: UserRole;
   content: string;
-  is_private_bo?: boolean; // True jika dibuat oleh Business Owner (hanya terbaca oleh BO & PO)
+  is_private_bo?: boolean;
   created_at: string;
 }
 
@@ -106,14 +114,19 @@ export interface Task {
   title: string;
   description: string;
   assignee_id: string;
+  assigned_to?: string;
   pod_label: PodType;
+  pod?: PodType;
   priority: TaskPriority;
   deadline: string;
   status: TaskStatus;
   is_blocked?: boolean;
   blocker_reason?: string;
-  progress: number; // 0-100%
-  dod_checklist: DodItem[]; // Definition of Done checklist
+  blocker_category?: BlockerCategory;
+  deliverable_url?: string;
+  review_feedback?: string;
+  progress: number;
+  dod_checklist: DodItem[];
   comments: TaskComment[];
   attachments: TaskAttachment[];
   created_at: string;
@@ -124,7 +137,7 @@ export type NotificationPriority = 'INFO' | 'WARNING' | 'IMPORTANT' | 'URGENT' |
 
 export interface Notification {
   id: string;
-  user_id: string; // Target penerima notifikasi
+  user_id: string;
   type: NotificationPriority;
   title: string;
   message: string;
