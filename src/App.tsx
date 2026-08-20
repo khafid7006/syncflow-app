@@ -1,50 +1,376 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from './lib/supabase';
 import { 
   Layers, Check, Send, AlertTriangle, ExternalLink, 
-  Folder, Figma, X
+  Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown
 } from 'lucide-react';
 
-export const App: React.FC = () => {
-  const [activeNav, setActiveNav] = useState<number>(0);
-  
-  // Interactive states
-  const [deliverableUrl, setDeliverableUrl] = useState('');
-  const [isBlockerModalOpen, setIsBlockerModalOpen] = useState(false);
-  const [blockerReason, setBlockerReason] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isBlockerReported, setIsBlockerReported] = useState(false);
+export interface UserProfile {
+  id: string;
+  full_name: string;
+  role: 'member' | 'owner';
+  pod: 'Product Builder' | 'BA' | 'QA' | 'Marketing';
+}
 
-  // Simplified checklist for SMK students
+export const App: React.FC = () => {
+  // Auth & Profile state
+  const [session, setSession] = useState<any>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+
+  // Login / Signup form states
+  const [isSignUp, setIsSignUp] = useState<boolean>(false);
+  const [authEmail, setAuthEmail] = useState<string>('');
+  const [authPassword, setAuthPassword] = useState<string>('');
+  const [authFullName, setAuthFullName] = useState<string>('');
+  const [authRole, setAuthRole] = useState<'member' | 'owner'>('member');
+  const [authPod, setAuthPod] = useState<'Product Builder' | 'BA' | 'QA' | 'Marketing'>('Product Builder');
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Profile dropdown menu state
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState<boolean>(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Dashboard Task & Workflow states
+  const [activeNav, setActiveNav] = useState<number>(0);
+  const [deliverableUrl, setDeliverableUrl] = useState<string>('');
+  const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
+  const [taskStatus, setTaskStatus] = useState<'Dalam Pengerjaan' | 'Sedang Ditinjau PO' | 'Terkendala (Blocker)'>('Dalam Pengerjaan');
+  
+  // Modals & Toasts
+  const [isBlockerModalOpen, setIsBlockerModalOpen] = useState<boolean>(false);
+  const [blockerReason, setBlockerReason] = useState<string>('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // DoD checklist state
   const [dodItems, setDodItems] = useState([
     { id: 1, text: 'Buat tampilan tombol dan form pembayaran', checked: true },
     { id: 2, text: 'Sambungkan tombol ke halaman sukses', checked: false },
     { id: 3, text: 'Lampirkan link hasil kerjaan', checked: false },
   ]);
 
+  // 1. Fetch Session & Profile on Mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        fetchOrCreateProfile(session.user);
+      } else {
+        setAuthLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        fetchOrCreateProfile(session.user);
+      } else {
+        setProfile(null);
+        setAuthLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  // Fetch or Create Profile in Supabase
+  const fetchOrCreateProfile = async (user: any) => {
+    try {
+      setAuthLoading(true);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (data) {
+        setProfile(data as UserProfile);
+      } else {
+        // Create default profile if not exists
+        const newProfile: UserProfile = {
+          id: user.id,
+          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Anggota Tim',
+          role: user.user_metadata?.role || 'member',
+          pod: user.user_metadata?.pod || 'Product Builder',
+        };
+
+        await supabase.from('profiles').insert([newProfile]);
+        setProfile(newProfile);
+      }
+    } catch (err) {
+      console.warn('Fetch profile error:', err);
+      // Fallback profile from user metadata or email
+      setProfile({
+        id: user.id,
+        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Dimas',
+        role: user.user_metadata?.role || 'member',
+        pod: user.user_metadata?.pod || 'Product Builder',
+      });
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Auth Submit (Login / Sign Up)
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+
+    try {
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: {
+            data: {
+              full_name: authFullName,
+              role: authRole,
+              pod: authPod,
+            }
+          }
+        });
+
+        if (error) throw error;
+        if (data.user) {
+          const newProfile: UserProfile = {
+            id: data.user.id,
+            full_name: authFullName || 'Anggota Tim',
+            role: authRole,
+            pod: authPod,
+          };
+          await supabase.from('profiles').insert([newProfile]);
+          setProfile(newProfile);
+          showToast('Akun berhasil dibuat & Anda berhasil masuk!');
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+
+        if (error) throw error;
+        showToast('Berhasil masuk!');
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Terjadi kesalahan autentikasi.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Auth Sign Out
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setIsProfileDropdownOpen(false);
+    showToast('Anda telah keluar.');
+  };
+
+  // Toast Helper
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
   const toggleDod = (id: number) => {
     setDodItems(dodItems.map(item => item.id === id ? { ...item, checked: !item.checked } : item));
   };
 
+  // Workflow Action 1: Kirim Hasil Tugas
   const handleSubmitDeliverable = (e: React.FormEvent) => {
     e.preventDefault();
     if (!deliverableUrl.trim()) return;
-    setIsSubmitted(true);
-    setTimeout(() => setIsSubmitted(false), 4000);
+
+    setSubmittedUrl(deliverableUrl.trim());
+    setTaskStatus('Sedang Ditinjau PO');
+    setDeliverableUrl('');
+    showToast('Hasil tugas berhasil dikirim & sedang ditinjau PO.');
   };
 
+  // Workflow Action 2: Laporkan Kendala (Blocker)
   const handleReportBlockerSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!blockerReason.trim()) return;
-    setIsBlockerReported(true);
+
+    setTaskStatus('Terkendala (Blocker)');
     setIsBlockerModalOpen(false);
-    setTimeout(() => setIsBlockerReported(false), 5000);
+    setBlockerReason('');
+    showToast('🚨 Kendala berhasil dilaporkan ke Project Owner.');
   };
 
+  // Loading Screen
+  if (authLoading && !session) {
+    return (
+      <div className="min-h-screen w-full bg-[#0a0a0c] text-white flex items-center justify-center font-sans">
+        <div className="p-8 bg-neutral-900/80 backdrop-blur-2xl border border-white/10 rounded-3xl text-center space-y-3 shadow-2xl">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs text-zinc-400 font-medium">Memuat sesi SyncFlow...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // AUTH SCREEN (LOGIN / SIGN UP) - STRICT MONOCHROME GLASSMORPHISM
+  // =========================================================================
+  if (!session) {
+    return (
+      <div className="min-h-screen w-full bg-[#0a0a0c] text-white flex items-center justify-center p-4 font-sans relative overflow-hidden">
+        {/* BACKGROUND STONE & AMBIENT GLOW */}
+        <div 
+          className="fixed inset-0 bg-cover bg-center opacity-20 mix-blend-luminosity pointer-events-none scale-105"
+          style={{ backgroundImage: `url('/assets/dark_stone_bg_1787219104310.png')` }}
+        />
+        <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-zinc-500/10 rounded-full blur-[140px] pointer-events-none" />
+
+        {/* AUTH CONTAINER CARD */}
+        <div className="relative z-10 w-full max-w-md bg-neutral-900/80 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-2xl space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white font-bold mx-auto shadow-md">
+              <Layers className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-white tracking-tight">
+              SyncFlow Auth
+            </h1>
+            <p className="text-xs text-zinc-400">
+              {isSignUp ? 'Daftar akun anggota tim baru' : 'Masuk ke Dashboard Anggota Tim'}
+            </p>
+          </div>
+
+          {authError && (
+            <div className="p-3 bg-rose-950/40 border border-rose-800/60 text-rose-200 rounded-xl text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleAuthSubmit} className="space-y-4 text-xs font-sans">
+            {isSignUp && (
+              <div className="space-y-1">
+                <label className="block text-zinc-400 font-medium">Nama Lengkap *</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nama Anda"
+                    value={authFullName}
+                    onChange={e => setAuthFullName(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <label className="block text-zinc-400 font-medium">Email *</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <input
+                  type="email"
+                  required
+                  placeholder="email@domain.com"
+                  value={authEmail}
+                  onChange={e => setAuthEmail(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-zinc-400 font-medium">Kata Sandi *</label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={authPassword}
+                  onChange={e => setAuthPassword(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
+                />
+              </div>
+            </div>
+
+            {isSignUp && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-zinc-400 font-medium">Pod *</label>
+                  <select
+                    value={authPod}
+                    onChange={e => setAuthPod(e.target.value as any)}
+                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30"
+                  >
+                    <option value="Product Builder">Product Builder</option>
+                    <option value="BA">BA</option>
+                    <option value="QA">QA</option>
+                    <option value="Marketing">Marketing</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-zinc-400 font-medium">Peran *</label>
+                  <select
+                    value={authRole}
+                    onChange={e => setAuthRole(e.target.value as any)}
+                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30"
+                  >
+                    <option value="member">Member</option>
+                    <option value="owner">Project Owner</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full py-3 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-xl shadow-lg transition-all cursor-pointer mt-2"
+            >
+              {authLoading ? 'Memproses...' : isSignUp ? 'Daftar Akun Baru' : 'Masuk'}
+            </button>
+          </form>
+
+          <div className="text-center pt-2 border-t border-white/10">
+            <button
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setAuthError(null);
+              }}
+              className="text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            >
+              {isSignUp ? 'Sudah punya akun? Masuk' : 'Belum punya akun? Daftar disini'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // User Profile metadata
+  const userName = profile?.full_name || session.user.email?.split('@')[0] || 'Anggota Tim';
+  const userPod = profile?.pod || 'Product Builder';
+  const userRole = profile?.role === 'owner' ? 'Project Owner' : userPod;
+
+  // =========================================================================
+  // MAIN DASHBOARD SCREEN - STRICT MONOCHROME GLASSMORPHISM
+  // =========================================================================
   return (
     <div className="min-h-screen w-full bg-[#0a0a0c] text-white flex flex-col justify-between font-sans relative overflow-x-hidden selection:bg-white selection:text-black">
       {/* BACKGROUND 3D DARK METALLIC / STONE LAYER */}
       <div 
-        className="fixed inset-0 bg-cover bg-center bg-no-repeat opacity-25 mix-blend-luminosity pointer-events-none scale-105 transition-all duration-700"
+        className="fixed inset-0 bg-cover bg-center opacity-25 mix-blend-luminosity pointer-events-none scale-105"
         style={{ backgroundImage: `url('/assets/dark_stone_bg_1787219104310.png')` }}
       />
 
@@ -52,11 +378,11 @@ export const App: React.FC = () => {
       <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-zinc-500/10 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-zinc-500/5 rounded-full blur-[160px] pointer-events-none" />
 
-      {/* MAIN CONTAINER (CANVAS ULTRACLEAN BENTO GLASS) */}
+      {/* MAIN CONTAINER */}
       <div className="relative z-10 w-full max-w-[1360px] mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-8 flex-1 min-h-screen justify-between font-sans">
         
         {/* ========================================================================= */}
-        {/* 1. TOP BAR NAVBAR (WITHOUT SEARCH BAR) */}
+        {/* 1. TOP BAR NAVBAR */}
         {/* ========================================================================= */}
         <header className="w-full flex items-center justify-between gap-4 font-sans text-xs">
           
@@ -87,31 +413,48 @@ export const App: React.FC = () => {
             ))}
           </nav>
 
-          {/* Right Controls: User Profile Badge Only (No Search Bar) */}
-          <div className="flex items-center gap-3">
-            <div className="px-4 py-2 bg-white/10 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium">
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-white">Dimas — Product Builder</span>
-            </div>
+          {/* Right Controls: User Profile Pill Dropdown (Monochrome) */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+              className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors shadow-md"
+            >
+              <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              <span className="text-white font-semibold">{userName} — {userRole}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+            </button>
+
+            {/* Profile Dropdown Menu */}
+            {isProfileDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-56 bg-neutral-900/95 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-2 z-50 space-y-1 text-xs font-sans">
+                <div className="p-2.5 border-b border-white/10 space-y-0.5">
+                  <div className="font-bold text-white truncate">{userName}</div>
+                  <div className="text-[11px] text-zinc-400 truncate">{session.user.email}</div>
+                  <div className="text-[10px] text-zinc-500 font-mono">Pod: {userPod}</div>
+                </div>
+
+                <button
+                  onClick={handleSignOut}
+                  className="w-full p-2.5 text-left text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl flex items-center gap-2 font-medium cursor-pointer transition-colors"
+                >
+                  <LogOut className="w-4 h-4 text-zinc-400" />
+                  <span>Keluar (Logout)</span>
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
-        {/* NOTIFICATION FEEDBACK BANNERS */}
-        {isSubmitted && (
-          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-2xl flex items-center justify-between text-xs font-sans backdrop-blur-md shadow-lg animate-fade-in">
+        {/* MONOCHROME TOAST NOTIFICATION */}
+        {toastMessage && (
+          <div className="p-4 bg-neutral-900/90 border border-white/15 text-white rounded-2xl flex items-center justify-between text-xs font-sans backdrop-blur-md shadow-2xl animate-fade-in">
             <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-400" />
-              <span>Hasil tugas berhasil dikirim!</span>
+              <Check className="w-4 h-4 text-white" />
+              <span>{toastMessage}</span>
             </div>
-          </div>
-        )}
-
-        {isBlockerReported && (
-          <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-2xl flex items-center justify-between text-xs font-sans backdrop-blur-md shadow-lg animate-fade-in">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-400" />
-              <span>Kendala berhasil dilaporkan ke tim.</span>
-            </div>
+            <button onClick={() => setToastMessage(null)} className="text-zinc-400 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 
@@ -131,16 +474,25 @@ export const App: React.FC = () => {
               {/* KARTU KIRI ATAS (Tugas Aktif) */}
               <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all">
                 <div className="space-y-3">
-                  <div className="text-xs font-medium text-zinc-400">
-                    Tugas Aktif
+                  <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
+                    <span>Tugas Aktif</span>
+                    <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium ${
+                      taskStatus === 'Terkendala (Blocker)'
+                        ? 'bg-neutral-800 text-zinc-300 border-white/20'
+                        : taskStatus === 'Sedang Ditinjau PO'
+                          ? 'bg-white/10 text-white border-white/20'
+                          : 'bg-white/5 text-zinc-400 border-white/10'
+                    }`}>
+                      {taskStatus}
+                    </span>
                   </div>
-                  {/* Judul Tugas Singkat & Jelas */}
+                  {/* Judul Tugas Singkat */}
                   <h2 className="text-base font-bold text-white tracking-tight leading-snug">
                     Buat Halaman Pembayaran Aplikasi
                   </h2>
                 </div>
 
-                {/* Checklist Bulat Simpel dengan Teks Pendek */}
+                {/* Checklist Bulat Simpel */}
                 <div className="space-y-2 pt-4 border-t border-white/10 text-xs">
                   {dodItems.map(item => (
                     <div
@@ -176,31 +528,46 @@ export const App: React.FC = () => {
 
                 {/* Form Input Clean & Tombol Hitam Solid */}
                 <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Link tugas..."
-                    value={deliverableUrl}
-                    onChange={e => setDeliverableUrl(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors"
-                  />
+                  {submittedUrl ? (
+                    <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1">
+                      <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
+                      <a href={submittedUrl} target="_blank" rel="noreferrer" className="text-zinc-900 underline truncate block font-medium">
+                        {submittedUrl}
+                      </a>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      required
+                      disabled={taskStatus === 'Sedang Ditinjau PO'}
+                      placeholder="Link tugas..."
+                      value={deliverableUrl}
+                      onChange={e => setDeliverableUrl(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors disabled:opacity-50"
+                    />
+                  )}
 
                   <button
                     type="submit"
-                    className="w-full py-2.5 bg-zinc-950 hover:bg-zinc-800 text-white font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    disabled={taskStatus === 'Sedang Ditinjau PO' || submittedUrl !== null}
+                    className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
+                      submittedUrl !== null || taskStatus === 'Sedang Ditinjau PO'
+                        ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
+                        : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
+                    }`}
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>Kirim</span>
+                    <span>{taskStatus === 'Sedang Ditinjau PO' ? 'Sedang Ditinjau PO' : 'Kirim'}</span>
                   </button>
                 </form>
 
-                {/* Tombol Outline Merah Minimalis */}
+                {/* Tombol Outline Minimalis */}
                 <div className="pt-2 border-t border-zinc-100">
                   <button
                     onClick={() => setIsBlockerModalOpen(true)}
-                    className="w-full py-2 border border-rose-200 hover:bg-rose-50 text-rose-600 font-medium text-xs rounded-full transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2 border border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium text-xs rounded-full transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                    <AlertTriangle className="w-3.5 h-3.5 text-zinc-600" />
                     <span>🚨 Laporkan Kendala</span>
                   </button>
                 </div>
@@ -208,10 +575,10 @@ export const App: React.FC = () => {
 
             </div>
 
-            {/* AREA BAWAH KIRI (Header Teks & Target Ringkas Santai) */}
+            {/* AREA BAWAH KIRI (Header Teks Otomatis Ikuti Nama Session) */}
             <div className="space-y-2 pt-2">
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
-                Halo, Dimas
+                Halo, {userName}
               </h1>
               <p className="text-base text-zinc-400 font-sans">
                 Target hari ini: Selesaikan halaman pembayaran ya!
@@ -225,7 +592,7 @@ export const App: React.FC = () => {
           {/* ========================================================================= */}
           <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans">
             
-            {/* KARTU KANAN (Cukup 2 Baris Clean Link dengan Icon Monokrom Sederhana) */}
+            {/* KARTU KANAN (Aset Tim) */}
             <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all">
               
               <div className="space-y-1">
@@ -272,7 +639,7 @@ export const App: React.FC = () => {
                 </a>
               </div>
 
-              <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5">
+              <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
                 SyncFlow Dashboard
               </div>
 
@@ -283,19 +650,19 @@ export const App: React.FC = () => {
         </main>
 
         {/* FOOTER */}
-        <footer className="w-full text-center py-2 text-xs text-zinc-500">
-          SyncFlow • Modern Minimalist Dashboard
+        <footer className="w-full text-center py-2 text-xs text-zinc-500 font-sans">
+          SyncFlow • Strict Monochrome Glassmorphism
         </footer>
 
       </div>
 
-      {/* MODAL LAPORKAN KENDALA MINIMALIS */}
+      {/* MODAL LAPORKAN KENDALA (STRICT MONOCHROME GLASSMORPHISM) */}
       {isBlockerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-zinc-900 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-xs">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <AlertTriangle className="w-4 h-4 text-rose-500" />
+                <AlertTriangle className="w-4 h-4 text-zinc-300" />
                 <span>Laporkan Kendala</span>
               </div>
               <button
@@ -310,17 +677,17 @@ export const App: React.FC = () => {
               <textarea
                 rows={3}
                 required
-                placeholder="Tuliskan kendala..."
+                placeholder="Tuliskan kendala Anda..."
                 value={blockerReason}
                 onChange={e => setBlockerReason(e.target.value)}
-                className="w-full p-3 bg-zinc-950 border border-white/15 rounded-2xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
+                className="w-full p-3 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30"
               />
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsBlockerModalOpen(false)}
-                  className="px-4 py-2 bg-zinc-800 text-zinc-300 font-medium rounded-full cursor-pointer"
+                  className="px-4 py-2 bg-neutral-800 text-zinc-300 font-medium rounded-full cursor-pointer hover:bg-neutral-700 transition-colors"
                 >
                   Batal
                 </button>
@@ -329,8 +696,8 @@ export const App: React.FC = () => {
                   disabled={!blockerReason.trim()}
                   className={`px-5 py-2 font-medium rounded-full shadow-md flex items-center gap-1.5 transition-all ${
                     blockerReason.trim()
-                      ? 'bg-white text-zinc-950 cursor-pointer'
-                      : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                      ? 'bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer'
+                      : 'bg-neutral-800 text-zinc-500 cursor-not-allowed'
                   }`}
                 >
                   <span>Kirim Kendala</span>

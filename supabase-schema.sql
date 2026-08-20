@@ -86,6 +86,20 @@ CREATE TYPE channel_type_enum AS ENUM (
 -- ============================================================================
 -- 1. TEAMS TABLE
 -- ============================================================================
+-- ============================================================================
+-- PROFILES TABLE LINKED WITH SUPABASE AUTH (auth.users)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member', -- 'member' | 'owner'
+  pod TEXT DEFAULT 'Product Builder', -- 'Product Builder' | 'BA' | 'QA' | 'Marketing'
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- ============================================================================
+-- 2. USERS TABLE
+-- ============================================================================
 CREATE TABLE teams (
   id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name VARCHAR(255) NOT NULL,
@@ -93,9 +107,6 @@ CREATE TABLE teams (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ============================================================================
--- 2. USERS TABLE
--- ============================================================================
 CREATE TABLE users (
   id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name VARCHAR(255) NOT NULL,
