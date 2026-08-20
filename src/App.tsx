@@ -503,6 +503,7 @@ export const App: React.FC = () => {
 
       await fetchActiveTask(session.user.id, ws.id);
       await fetchProjectLinks(ws.id);
+      await fetchWorkspaceAssignees(ws.id);
     } catch (err: any) {
       console.error("Gagal bergabung:", err);
       showToast(`Gagal bergabung: ${err.message || 'Terjadi kesalahan'}`);
@@ -650,12 +651,13 @@ export const App: React.FC = () => {
       setReviewTasks([]);
       setProjectLinks([]);
       setActiveTask(null);
+      setAssigneeList([]); // Reset list lama agar tidak bocor
 
       // Fetch data baru khusus untuk workspace terpilih
       fetchActiveTask(session.user.id, currentWorkspace.id);
       fetchProjectLinks(currentWorkspace.id);
       fetchPOData(currentWorkspace.id);
-      fetchWorkspaceAssignees(currentWorkspace.id);
+      fetchWorkspaceAssignees(currentWorkspace.id); // Fetch list anggota baru
     }
   }, [currentWorkspace?.id, session?.user?.id]);
 
@@ -746,6 +748,7 @@ export const App: React.FC = () => {
     setActiveWorkspaceRole(ws.role || (profile?.role === 'owner' ? 'po' : 'member'));
     localStorage.setItem('syncflow_active_ws', ws.id);
     setIsWorkspaceMenuOpen(false);
+    fetchWorkspaceAssignees(ws.id);
     showToast(`Beralih ke workspace: ${ws.name}`);
   };
 
@@ -837,7 +840,8 @@ export const App: React.FC = () => {
       setNewWorkspaceName('');
       setIsCreateWorkspaceModalOpen(false);
       
-      // 5. Trigger fetch ulang data PO & Direktori Publik
+      // 5. Trigger fetch ulang data PO, Assignees & Direktori Publik
+      await fetchWorkspaceAssignees(newWs.id);
       await fetchPOData(newWs.id);
       await fetchPublicWorkspaces();
       showToast(`✓ Workspace "${newWs.name}" berhasil dibuat! Kode Akses: ${generatedInviteCode}`);
@@ -1120,6 +1124,9 @@ export const App: React.FC = () => {
 
       if (blockedData) setBlockedTasks(blockedData);
       if (reviewData) setReviewTasks(reviewData);
+
+      // Auto-fetch assignees setiap kali PO data di-fetch
+      await fetchWorkspaceAssignees(targetWsId);
     } catch (err: any) {
       console.error('Fetch PO Data error:', err);
     }
