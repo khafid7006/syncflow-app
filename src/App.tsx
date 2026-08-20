@@ -4,7 +4,7 @@ import {
   Layers, Check, Send, AlertTriangle, ExternalLink, 
   Folder, Figma, X, LogOut, User, Lock, Mail, ChevronDown,
   ShieldAlert, ClipboardCheck, PlusCircle, RotateCcw, CheckCircle2, Plus,
-  GitBranch, Activity, Clock, CheckCircle
+  GitBranch, Activity, Clock, CheckCircle, Sparkles
 } from 'lucide-react';
 
 export interface UserProfile {
@@ -169,7 +169,7 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER (LOGIKA REVISI & UNLOCK FORM)
+  // FETCHING ACTIVE TASK FROM SUPABASE FOR MEMBER (FILTER HANYA AMBIL TUGAS BERJALAN & EMPTY STATE)
   const fetchActiveTask = async (userId: string) => {
     try {
       console.log("Current User ID:", userId);
@@ -178,7 +178,7 @@ export const App: React.FC = () => {
         .from('tasks')
         .select('*')
         .eq('assignee_id', userId)
-        .neq('status', 'done')
+        .in('status', ['in_progress', 'review', 'blocked'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -226,9 +226,15 @@ export const App: React.FC = () => {
             checked: item.checked ?? item.is_checked ?? false
           })));
         }
+      } else {
+        // EMPTY STATE: TIDAK ADA TUGAS AKTIF
+        setActiveTask(null);
+        setSubmittedUrl(null);
+        setDeliverableUrl('');
       }
     } catch (err: any) {
       console.error('Fetch active task error:', err);
+      setActiveTask(null);
     }
   };
 
@@ -1370,90 +1376,133 @@ export const App: React.FC = () => {
               {/* TOP ROW KIRI: 2 Kartu */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 
-                {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member) */}
-                <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all space-y-3 font-sans">
-                  <div className="space-y-3">
+                {/* KARTU KIRI ATAS (Fetch & Render Tugas Aktif Member / Empty State) */}
+                {!activeTask ? (
+                  /* EMPTY STATE: TIDAK ADA TUGAS AKTIF */
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all font-sans">
                     <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                       <span>Tugas Aktif</span>
-                      {/* Top Right Status Badge on Member Card */}
-                      <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium ${
-                        taskStatus === 'Perlu Revisi'
-                          ? 'bg-neutral-800 text-zinc-200 border-white/30'
-                          : taskStatus === 'Terkendala (Blocker)'
-                            ? 'bg-neutral-800 text-zinc-300 border-white/20'
-                            : taskStatus === 'Sedang Ditinjau PO'
-                              ? 'bg-white/10 text-white border-white/20'
-                              : 'bg-white/5 text-zinc-400 border-white/10'
-                      }`}>
-                        {taskStatus}
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-zinc-400 font-medium">
+                        Standby
                       </span>
                     </div>
-                    {/* Render Judul Tugas */}
-                    <h2 className="text-base font-bold text-white tracking-tight leading-snug">
-                      {taskTitle}
-                    </h2>
+
+                    <div className="text-center my-auto py-4 space-y-2">
+                      <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white mx-auto shadow-md">
+                        <CheckCircle2 className="w-6 h-6 text-zinc-300" />
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="text-xs font-bold text-white tracking-tight leading-snug">
+                          Semua tugas selesai atau belum ada penugasan baru.
+                        </h3>
+                        <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
+                          Tunggu instruksi tugas berikutnya dari Project Owner.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
+                      SyncFlow Status: Standby
+                    </div>
                   </div>
-
-                  {/* PO Feedback Action Cards in Member Dashboard */}
-                  {activeTask?.revision_note && (
-                    <div className="p-3 bg-neutral-900 border border-white/20 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
-                      <div className="font-semibold text-white text-[11px] flex items-center gap-1">
-                        <span>⚠️ Catatan Revisi PO:</span>
-                      </div>
-                      <p className="text-zinc-300 text-[11px] leading-relaxed">
-                        {activeTask.revision_note}
-                      </p>
-                    </div>
-                  )}
-
-                  {activeTask?.resolution_note && (
-                    <div className="p-3 bg-white/10 border border-white/15 rounded-2xl text-xs text-white font-sans space-y-1">
-                      <div className="font-semibold text-white text-[11px] flex items-center gap-1">
-                        <span>💡 Solusi Kendala dari PO:</span>
-                      </div>
-                      <p className="text-zinc-200 text-[11px] leading-relaxed">
-                        {activeTask.resolution_note}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Render Array Checklist (DoD) */}
-                  <div className="space-y-2 pt-3 border-t border-white/10 text-xs font-sans">
-                    {dodItems.map(item => (
-                      <div
-                        key={item.id}
-                        onClick={() => toggleDod(item.id)}
-                        className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors"
-                      >
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0 ${
-                          item.checked 
-                            ? 'bg-white border-white text-zinc-950' 
-                            : 'border-zinc-500 bg-transparent'
+                ) : (
+                  /* KARTU TUGAS AKTIF BIASA */
+                  <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all space-y-3 font-sans">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
+                        <span>Tugas Aktif</span>
+                        {/* Top Right Status Badge on Member Card */}
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium ${
+                          taskStatus === 'Perlu Revisi'
+                            ? 'bg-neutral-800 text-zinc-200 border-white/30'
+                            : taskStatus === 'Terkendala (Blocker)'
+                              ? 'bg-neutral-800 text-zinc-300 border-white/20'
+                              : taskStatus === 'Sedang Ditinjau PO'
+                                ? 'bg-white/10 text-white border-white/20'
+                                : 'bg-white/5 text-zinc-400 border-white/10'
                         }`}>
-                          {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
-                        </div>
-                        <span className={`text-xs ${item.checked ? 'line-through text-zinc-500' : 'text-zinc-200'}`}>
-                          {item.text}
+                          {taskStatus}
                         </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      {/* Render Judul Tugas */}
+                      <h2 className="text-base font-bold text-white tracking-tight leading-snug">
+                        {taskTitle}
+                      </h2>
+                    </div>
 
-                {/* KARTU TENGAH ATAS (Submit Deliverable - LOGIKA REVISI & UNLOCK FORM) */}
+                    {/* PO Feedback Action Cards in Member Dashboard */}
+                    {activeTask?.revision_note && (
+                      <div className="p-3 bg-neutral-900 border border-white/20 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
+                        <div className="font-semibold text-white text-[11px] flex items-center gap-1">
+                          <span>⚠️ Catatan Revisi PO:</span>
+                        </div>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed">
+                          {activeTask.revision_note}
+                        </p>
+                      </div>
+                    )}
+
+                    {activeTask?.resolution_note && (
+                      <div className="p-3 bg-white/10 border border-white/15 rounded-2xl text-xs text-white font-sans space-y-1">
+                        <div className="font-semibold text-white text-[11px] flex items-center gap-1">
+                          <span>💡 Solusi Kendala dari PO:</span>
+                        </div>
+                        <p className="text-zinc-200 text-[11px] leading-relaxed">
+                          {activeTask.resolution_note}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Render Array Checklist (DoD) */}
+                    <div className="space-y-2 pt-3 border-t border-white/10 text-xs font-sans">
+                      {dodItems.map(item => (
+                        <div
+                          key={item.id}
+                          onClick={() => toggleDod(item.id)}
+                          className="flex items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-xl hover:bg-white/5 transition-colors"
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0 ${
+                            item.checked 
+                              ? 'bg-white border-white text-zinc-950' 
+                              : 'border-zinc-500 bg-transparent'
+                          }`}>
+                            {item.checked && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+                          <span className={`text-xs ${item.checked ? 'line-through text-zinc-500' : 'text-zinc-200'}`}>
+                            {item.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* KARTU TENGAH ATAS (Submit Deliverable - LOGIKA REVISI & UNLOCK FORM & EMPTY STATE) */}
                 <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-transform font-sans">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-zinc-500">
                       Penyerahan Tugas
                     </span>
                     <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                      {taskStatus === 'Perlu Revisi' ? 'Kirim Hasil Revisi' : 'Kirim Hasil Tugas'}
+                      {!activeTask
+                        ? 'Kirim Hasil Tugas'
+                        : taskStatus === 'Perlu Revisi'
+                          ? 'Kirim Hasil Revisi'
+                          : 'Kirim Hasil Tugas'}
                     </h3>
                   </div>
 
-                  {/* Form Input Clean & Unlock Logic */}
+                  {/* Form Input Clean & Unlock / Disabled Logic */}
                   <form onSubmit={handleSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans">
-                    {submittedUrl && taskStatus === 'Sedang Ditinjau PO' ? (
+                    {!activeTask ? (
+                      /* EMPTY STATE INPUT FORM TERKUNCI */
+                      <input
+                        type="text"
+                        disabled
+                        placeholder="Menunggu tugas aktif..."
+                        className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-400 placeholder-zinc-400 cursor-not-allowed font-sans"
+                      />
+                    ) : submittedUrl && taskStatus === 'Sedang Ditinjau PO' ? (
                       <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
                         <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
                         <a href={submittedUrl} target="_blank" rel="noreferrer" className="text-zinc-900 underline truncate block font-medium">
@@ -1474,20 +1523,22 @@ export const App: React.FC = () => {
 
                     <button
                       type="submit"
-                      disabled={taskStatus === 'Sedang Ditinjau PO'}
+                      disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO'}
                       className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-colors ${
-                        taskStatus === 'Sedang Ditinjau PO'
-                          ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
+                        !activeTask || taskStatus === 'Sedang Ditinjau PO'
+                          ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                           : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
                       }`}
                     >
                       <Send className="w-3.5 h-3.5" />
                       <span>
-                        {taskStatus === 'Sedang Ditinjau PO'
-                          ? 'Sedang Ditinjau PO'
-                          : taskStatus === 'Perlu Revisi'
-                            ? 'Kirim Hasil Revisi'
-                            : 'Kirim Hasil Tugas'}
+                        {!activeTask
+                          ? 'Belum Ada Tugas'
+                          : taskStatus === 'Sedang Ditinjau PO'
+                            ? 'Sedang Ditinjau PO'
+                            : taskStatus === 'Perlu Revisi'
+                              ? 'Kirim Hasil Revisi'
+                              : 'Kirim Hasil Tugas'}
                       </span>
                     </button>
                   </form>
@@ -1496,9 +1547,14 @@ export const App: React.FC = () => {
                   <div className="pt-2 border-t border-zinc-100 font-sans">
                     <button
                       onClick={() => setIsBlockerModalOpen(true)}
-                      className="w-full py-2 border border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium text-xs rounded-full transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      disabled={!activeTask}
+                      className={`w-full py-2 border text-xs rounded-full transition-colors flex items-center justify-center gap-1.5 ${
+                        !activeTask
+                          ? 'border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed'
+                          : 'border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium cursor-pointer'
+                      }`}
                     >
-                      <AlertTriangle className="w-3.5 h-3.5 text-zinc-600" />
+                      <AlertTriangle className={`w-3.5 h-3.5 ${!activeTask ? 'text-zinc-400' : 'text-zinc-600'}`} />
                       <span>🚨 Laporkan Kendala</span>
                     </button>
                   </div>
@@ -1506,13 +1562,15 @@ export const App: React.FC = () => {
 
               </div>
 
-              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis) */}
+              {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis) */}
               <div className="space-y-2 pt-2 font-sans">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                   Halo, {userName}
                 </h1>
                 <p className="text-base text-zinc-400 font-sans">
-                  Target hari ini: Selesaikan halaman pembayaran ya!
+                  {activeTask
+                    ? `Target: ${taskTitle}`
+                    : 'Status: Standby / Menunggu Sprint Berikutnya'}
                 </p>
               </div>
 
