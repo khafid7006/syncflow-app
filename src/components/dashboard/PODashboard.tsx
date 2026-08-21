@@ -76,6 +76,19 @@ interface PODashboardProps {
   setSprintGoalInput?: (val: string) => void;
   handleSaveSprintMandate?: (e: React.FormEvent) => void;
   isSavingSprint?: boolean;
+  sprintsList?: any[];
+  setActiveSprint?: (sprint: any) => void;
+  editingSprintId?: string | null;
+  setEditingSprintId?: (id: string | null) => void;
+  sprintBriefNotes?: string;
+  setSprintBriefNotes?: (val: string) => void;
+  sprintDocUrl?: string;
+  setSprintDocUrl?: (val: string) => void;
+  sprintDocName?: string;
+  setSprintDocName?: (val: string) => void;
+  isUploadingDoc?: boolean;
+  handleSprintDocUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  handleSaveSprint?: (targetStatus: 'draft' | 'active') => void;
 }
 
 export const PODashboard: React.FC<PODashboardProps> = ({
@@ -142,6 +155,19 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   setSprintGoalInput = () => {},
   handleSaveSprintMandate = () => {},
   isSavingSprint = false,
+  sprintsList = [],
+  setActiveSprint = () => {},
+  editingSprintId = null,
+  setEditingSprintId = () => {},
+  sprintBriefNotes = '',
+  setSprintBriefNotes = () => {},
+  sprintDocUrl = '',
+  setSprintDocUrl = () => {},
+  sprintDocName = '',
+  setSprintDocName = () => {},
+  isUploadingDoc = false,
+  handleSprintDocUpload = () => {},
+  handleSaveSprint = () => {},
 }) => {
   const isUserPL = isPlRole || activeWorkspaceRole === 'pl';
   const isUserPO = !isUserPL;
@@ -269,6 +295,63 @@ export const PODashboard: React.FC<PODashboardProps> = ({
     return (
       <main className="w-full max-w-7xl mx-auto space-y-6 font-sans animate-in fade-in duration-300">
 
+        {/* SPRINT ROADMAP BAR (ACTIVE VS DRAFT QUEUE) */}
+        <div className="flex items-center justify-between gap-4 pb-2 overflow-x-auto custom-scrollbar font-sans">
+          <div className="flex items-center gap-2 font-sans">
+            {sprintsList.map((s) => {
+              const isActive = s.status === 'active';
+              const isSelected = activeSprint?.id === s.id;
+
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveSprint(s);
+                    setEditingSprintId(s.id);
+                    setSprintGoalInput(s.goal_title || '');
+                    setSprintBriefNotes(s.brief_notes || '');
+                    setSprintDocUrl(s.document_url || '');
+                    setSprintDocName(s.document_name || '');
+                    setSprintStartDate(s.start_date || '');
+                    setSprintEndDate(s.end_date || '');
+                    setIsEditingSprint(false);
+                  }}
+                  className={`px-4 py-2 rounded-2xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border font-sans ${
+                    isSelected
+                      ? 'bg-white text-zinc-950 border-white shadow-lg font-bold'
+                      : 'bg-neutral-950/60 text-zinc-400 border-white/10 hover:border-white/20 hover:text-white'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                  <span className="truncate max-w-[160px] font-sans">{s.goal_title}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isActive ? 'bg-emerald-500/20 text-emerald-700' : 'bg-amber-400/20 text-amber-600'}`}>
+                    {isActive ? 'Active' : 'Draft'}
+                  </span>
+                </button>
+              );
+            })}
+
+            {/* Tombol Buat Sprint Baru */}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingSprintId(null);
+                setSprintGoalInput('');
+                setSprintBriefNotes('');
+                setSprintDocUrl('');
+                setSprintDocName('');
+                setSprintStartDate(new Date().toISOString().split('T')[0]);
+                setSprintEndDate('');
+                setIsEditingSprint(true);
+              }}
+              className="px-3.5 py-2 rounded-2xl border border-dashed border-white/20 hover:border-white/40 text-xs font-bold text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer font-sans"
+            >
+              <span>+ Rancang Sprint Berikutnya</span>
+            </button>
+          </div>
+        </div>
+
         {/* JIKA SEDANG MODE EDIT / SETUP SPRINT BARU */}
         {isEditingSprint ? (
           <div className="p-6 rounded-[32px] border border-white/10 bg-neutral-950/80 backdrop-blur-2xl shadow-2xl space-y-5 font-sans">
@@ -276,91 +359,117 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-1.5 font-sans">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Sprint Planning & Auto-Forecasting
+                  Sprint Planner & Briefing Architecture
                 </span>
                 <h3 className="text-lg font-extrabold text-white tracking-tight mt-0.5 font-sans">
-                  Atur Target & Batas Waktu Sprint
+                  {editingSprintId ? 'Edit Rencana Sprint' : 'Rancang Sprint Baru'}
                 </h3>
               </div>
-              {activeSprint && (
-                <button
-                  type="button"
-                  onClick={() => setIsEditingSprint(false)}
-                  className="px-3.5 py-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 transition-all cursor-pointer font-sans"
-                >
-                  Batal
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsEditingSprint(false)}
+                className="px-3.5 py-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 transition-all cursor-pointer font-sans"
+              >
+                Tutup
+              </button>
             </div>
 
-            {/* Form Kalender + Forecast Simulator */}
-            <form onSubmit={(e) => { handleSaveSprintMandate(e); setIsEditingSprint(false); }} className="space-y-5 font-sans">
-              <div className="space-y-1.5 font-sans">
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
-                  Nama / Mandat Goal Sprint
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Sprint 1 - Rilis 10 Konten + UI Mockup"
-                  value={sprintGoalInput}
-                  onChange={(e) => setSprintGoalInput(e.target.value)}
-                  className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3 text-xs text-white placeholder-zinc-600 outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start font-sans">
-                {/* Kalender Full-Width Proporsional */}
-                <div className="md:col-span-6 space-y-2 font-sans">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start font-sans">
+              {/* Kolom Kiri: Input Judul, Briefing & Upload File */}
+              <div className="lg:col-span-6 space-y-4 font-sans">
+                <div className="space-y-1.5 font-sans">
                   <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
-                    Pilih Rentang Tanggal Sprint
+                    Nama / Goal Utama Sprint
                   </label>
-                  <CustomGlassRangeCalendar
-                    startDate={sprintStartDate}
-                    endDate={sprintEndDate}
-                    onChange={(start, end) => {
-                      setSprintStartDate(start);
-                      setSprintEndDate(end);
-                    }}
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Sprint 2 - Scale Konten & Finalize UI Kit"
+                    value={sprintGoalInput}
+                    onChange={(e) => setSprintGoalInput(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans"
                   />
                 </div>
 
-                {/* Forecast Box */}
-                <div className="md:col-span-6 p-5 rounded-2xl border border-white/10 bg-neutral-900/60 flex flex-col justify-between h-full space-y-4 font-sans">
-                  <div>
-                    <span className="text-[10px] font-bold text-sky-400 font-mono uppercase tracking-wider">
-                      ⚡ Realtime Auto-Forecast
+                <div className="space-y-1.5 font-sans">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
+                    Catatan Briefing & Kriteria Output
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Tuliskan arahan strategis, ekspektasi kualitas, atau batasan scope kerja untuk PL..."
+                    value={sprintBriefNotes}
+                    onChange={(e) => setSprintBriefNotes(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-neutral-900 p-3.5 text-xs text-white outline-hidden focus:border-white/30 resize-none font-sans"
+                  />
+                </div>
+
+                {/* Upload Lampiran Dokumen Panduan / File Brief */}
+                <div className="space-y-1.5 font-sans">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
+                    Lampiran Dokumen Panduan (PDF/DOCX/Gambar Maks. 5MB)
+                  </label>
+                  <div className="flex items-center gap-3 p-3 rounded-2xl border border-white/10 bg-neutral-900/60 font-sans">
+                    <input
+                      type="file"
+                      id="sprint-doc-file"
+                      onChange={handleSprintDocUpload}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="sprint-doc-file"
+                      className="px-3 py-1.5 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition-all cursor-pointer font-sans"
+                    >
+                      {isUploadingDoc ? 'Mengunggah...' : '📎 Pilih File'}
+                    </label>
+                    <span className="text-xs text-zinc-400 truncate flex-1 font-mono">
+                      {sprintDocName || 'Belum ada dokumen dilampirkan'}
                     </span>
-                    <div className="mt-3 space-y-2 text-xs font-sans">
-                      <div className="flex justify-between text-zinc-400 font-sans">
-                        <span>Durasi Sprint:</span>
-                        <span className="text-white font-bold font-mono">{sprintDays > 0 ? `${sprintDays} Hari Kerja` : 'Pilih Tanggal'}</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-400 font-sans">
-                        <span>Anggota Aktif:</span>
-                        <span className="text-white font-bold font-mono">{memberCount} Orang</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-400 border-t border-white/5 pt-2 font-sans">
-                        <span>Kapasitas Aman (DoD):</span>
-                        <span className="text-emerald-400 font-extrabold font-mono">~{maxSafeDoDCapacity} Poin DoD</span>
-                      </div>
-                    </div>
+                    {sprintDocUrl && (
+                      <button
+                        type="button"
+                        onClick={() => { setSprintDocUrl(''); setSprintDocName(''); }}
+                        className="text-rose-400 text-xs hover:underline cursor-pointer font-sans"
+                      >
+                        Hapus
+                      </button>
+                    )}
                   </div>
+                </div>
+              </div>
 
-                  <div className="p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-950/20 text-xs text-emerald-300 leading-snug font-sans">
-                    💡 <strong>Rekomendasi Kapasitas:</strong> Target {sprintDays} hari dengan {memberCount} anggota ideal memuat maksimal <strong>{maxSafeDoDCapacity} checklist tugas</strong>.
-                  </div>
+              {/* Kolom Kanan: Kalender Range & Forecasting Simulator */}
+              <div className="lg:col-span-6 space-y-4 font-sans">
+                <CustomGlassRangeCalendar
+                  startDate={sprintStartDate}
+                  endDate={sprintEndDate}
+                  onChange={(start, end) => {
+                    setSprintStartDate(start);
+                    setSprintEndDate(end);
+                  }}
+                />
 
+                {/* Tombol Aksi Draft vs Rilis */}
+                <div className="flex items-center justify-end gap-3 pt-2 font-sans">
                   <button
-                    type="submit"
+                    type="button"
                     disabled={isSavingSprint || !sprintEndDate}
-                    className="w-full py-3 rounded-xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-md cursor-pointer disabled:opacity-40 font-sans"
+                    onClick={() => { handleSaveSprint('draft'); setIsEditingSprint(false); }}
+                    className="px-5 py-2.5 rounded-2xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-200 transition-all cursor-pointer disabled:opacity-40 font-sans"
                   >
-                    {isSavingSprint ? 'Mengunci...' : '🔒 Kunci & Rilis ke Project Leader'}
+                    💾 Simpan sebagai Draft
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingSprint || !sprintEndDate}
+                    onClick={() => { handleSaveSprint('active'); setIsEditingSprint(false); }}
+                    className="px-6 py-2.5 rounded-2xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-xl cursor-pointer disabled:opacity-40 font-sans"
+                  >
+                    🚀 Rilis & Aktifkan Sprint ke Tim
                   </button>
                 </div>
               </div>
-            </form>
+            </div>
           </div>
         ) : (
           /* JIKA SPRINT SEDANG BERJALAN (EXECUTIVE MONITORING VIEW) */
@@ -376,7 +485,16 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setIsEditingSprint(true)}
+                    onClick={() => {
+                      setEditingSprintId(activeSprint?.id || null);
+                      setSprintGoalInput(activeSprint?.goal_title || '');
+                      setSprintBriefNotes(activeSprint?.brief_notes || '');
+                      setSprintDocUrl(activeSprint?.document_url || '');
+                      setSprintDocName(activeSprint?.document_name || '');
+                      setSprintStartDate(activeSprint?.start_date || '');
+                      setSprintEndDate(activeSprint?.end_date || '');
+                      setIsEditingSprint(true);
+                    }}
                     className="px-2.5 py-1 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-[11px] font-semibold text-zinc-300 transition-colors cursor-pointer font-sans"
                   >
                     ⚙️ Ubah
@@ -385,9 +503,22 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                 <h2 className="text-xl font-extrabold text-white tracking-tight leading-snug font-sans">
                   {activeSprint?.goal_title || 'Belum Ada Sprint Goal'}
                 </h2>
-                <div className="flex items-center justify-between text-xs text-zinc-400 font-mono pt-2 border-t border-white/5">
+
+                {activeSprint?.document_url && (
+                  <a
+                    href={activeSprint.document_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 font-mono truncate font-sans"
+                  >
+                    <span>📄 Unduh Brief PO:</span>
+                    <span className="underline font-bold font-sans">{activeSprint.document_name || 'Dokumen Sprint'}</span>
+                  </a>
+                )}
+
+                <div className="flex items-center justify-between text-xs text-zinc-400 font-mono pt-2 border-t border-white/5 font-sans">
                   <span>{activeSprint?.start_date} → {activeSprint?.end_date}</span>
-                  <span className="text-white font-bold">{calculateDaysLeft(activeSprint?.end_date)} Hari Sisa</span>
+                  <span className="text-white font-bold font-sans">{calculateDaysLeft(activeSprint?.end_date)} Hari Sisa</span>
                 </div>
               </div>
 
@@ -986,16 +1117,36 @@ export const PODashboard: React.FC<PODashboardProps> = ({
           <div className="space-y-4 font-sans">
             {/* 1. Guideline Box dari PO */}
             {activeSprint && (
-              <div className="p-4 rounded-2xl border border-emerald-500/20 bg-emerald-950/40 text-emerald-300 text-xs flex items-center justify-between shadow-lg font-sans">
-                <div>
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-emerald-400">
-                    🎯 Arahan Sprint dari PO:
+              <div className="p-4 rounded-2xl border border-emerald-500/20 bg-emerald-950/40 text-emerald-300 text-xs flex flex-col gap-2.5 shadow-lg font-sans">
+                <div className="flex items-center justify-between font-sans">
+                  <div>
+                    <span className="font-bold text-[10px] uppercase tracking-wider text-emerald-400 font-sans">
+                      🎯 Arahan Sprint dari PO:
+                    </span>
+                    <p className="font-semibold text-white text-sm mt-0.5 font-sans">{activeSprint.goal_title}</p>
+                  </div>
+                  <span className="text-[10px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 shrink-0">
+                    Batas: {activeSprint.end_date}
                   </span>
-                  <p className="font-semibold text-white text-sm mt-0.5">{activeSprint.goal_title}</p>
                 </div>
-                <span className="text-[10px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 shrink-0">
-                  Batas: {activeSprint.end_date}
-                </span>
+
+                {activeSprint.brief_notes && (
+                  <p className="text-xs text-zinc-300 bg-black/20 p-2.5 rounded-xl border border-white/5 font-sans leading-relaxed">
+                    📝 <strong>Catatan Briefing:</strong> {activeSprint.brief_notes}
+                  </p>
+                )}
+
+                {activeSprint.document_url && (
+                  <a
+                    href={activeSprint.document_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all font-sans"
+                  >
+                    <span>📄 Unduh Dokumen Briefing PO:</span>
+                    <span className="underline font-bold font-sans">{activeSprint.document_name || 'Dokumen Sprint'}</span>
+                  </a>
+                )}
               </div>
             )}
 

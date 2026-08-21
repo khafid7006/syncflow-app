@@ -212,68 +212,129 @@ export const App: React.FC = () => {
   const [isBlockerModalOpen, setIsBlockerModalOpen] = useState<boolean>(false);
   const [blockerReason, setBlockerReason] = useState<string>('');
 
-  // LIGHT AGILE SPRINT STATES & HANDLERS
+  // LIGHT AGILE MULTI-SPRINT STATES & HANDLERS
+  const [sprintsList, setSprintsList] = useState<any[]>([]);
   const [activeSprint, setActiveSprint] = useState<any>(null);
-  const [isSprintModalOpen, setIsSprintModalOpen] = useState<boolean>(false);
+  const [editingSprintId, setEditingSprintId] = useState<string | null>(null);
+
+  // Form State
   const [sprintGoalInput, setSprintGoalInput] = useState<string>('');
+  const [sprintBriefNotes, setSprintBriefNotes] = useState<string>('');
   const [sprintStartDate, setSprintStartDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
   const [sprintEndDate, setSprintEndDate] = useState<string>('');
+  const [sprintDocUrl, setSprintDocUrl] = useState<string>('');
+  const [sprintDocName, setSprintDocName] = useState<string>('');
+  const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
   const [isSavingSprint, setIsSavingSprint] = useState<boolean>(false);
 
-  // Ambil sprint aktif per workspace
-  const fetchActiveSprint = async (workspaceId: string) => {
+  // Ambil semua sprint per workspace
+  const fetchAllSprints = async (workspaceId: string) => {
     try {
       const { data, error } = await supabase
         .from('sprints')
         .select('*')
         .eq('workspace_id', workspaceId)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('created_at', { ascending: true });
 
       if (!error && data) {
-        setActiveSprint(data);
-        setSprintGoalInput(data.goal_title || '');
-        setSprintStartDate(data.start_date || new Date().toISOString().split('T')[0]);
-        setSprintEndDate(data.end_date || '');
+        setSprintsList(data);
+        const active = data.find((s) => s.status === 'active') || data[data.length - 1] || null;
+        setActiveSprint(active);
+        if (active) {
+          setSprintGoalInput(active.goal_title || '');
+          setSprintBriefNotes(active.brief_notes || '');
+          setSprintDocUrl(active.document_url || '');
+          setSprintDocName(active.document_name || '');
+          setSprintStartDate(active.start_date || new Date().toISOString().split('T')[0]);
+          setSprintEndDate(active.end_date || '');
+        }
       } else {
+        setSprintsList([]);
         setActiveSprint(null);
       }
     } catch (err) {
-      console.error("Gagal fetch sprint:", err);
+      console.error("Fetch sprints error:", err);
     }
   };
 
-  // Handler Simpan/Kunci Sprint Baru oleh PO
-  const handleSaveSprintMandate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentWorkspace?.id || !sprintGoalInput.trim() || !sprintEndDate) return;
+  // Handler Upload Dokumen Briefing ke Storage
+  const handleSprintDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !session?.user?.id) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("⚠️ Ukuran file briefing maksimal 5 MB!");
+      return;
+    }
+
+    setIsUploadingDoc(true);
+    try {
+      const filePath = `sprint_docs/${session.user.id}/${Date.now()}_${file.name}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      if (publicUrlData?.publicUrl) {
+        setSprintDocUrl(publicUrlData.publicUrl);
+        setSprintDocName(file.name);
+        showToast("✓ File brief berhasil diunggah!");
+      }
+    } catch (err: any) {
+      showToast(`Gagal unggah dokumen: ${err.message}`);
+    } finally {
+      setIsUploadingDoc(false);
+    }
+  };
+
+  // Handler Simpan Sprint (Draft atau Langsung Rilis/Active)
+  const handleSaveSprint = async (targetStatus: 'draft' | 'active') => {
+    if (!currentWorkspace?.id || !sprintGoalInput.trim() || !sprintEndDate) {
+      showToast("⚠️ Mohon lengkapi judul dan rentang tanggal!");
+      return;
+    }
     setIsSavingSprint(true);
 
     try {
-      const { data, error } = await supabase
-        .from('sprints')
-        .upsert({
-          workspace_id: currentWorkspace.id,
-          goal_title: sprintGoalInput.trim(),
-          start_date: sprintStartDate,
-          end_date: sprintEndDate,
-          is_locked: true,
-          status: 'active'
-        })
-        .select()
-        .single();
+      // Jika targetStatus 'active', nonaktifkan active sprint yang lama
+      if (targetStatus === 'active' && activeSprint && activeSprint.id !== editingSprintId) {
+        await supabase
+          .from('sprints')
+          .update({ status: 'completed' })
+          .eq('id', activeSprint.id);
+      }
 
-      if (error) throw error;
+      const payload = {
+        workspace_id: currentWorkspace.id,
+        goal_title: sprintGoalInput.trim(),
+        brief_notes: sprintBriefNotes.trim(),
+        document_url: sprintDocUrl || null,
+        document_name: sprintDocName || null,
+        start_date: sprintStartDate,
+        end_date: sprintEndDate,
+        status: targetStatus,
+        is_locked: targetStatus === 'active'
+      };
 
-      setActiveSprint(data);
-      setIsSprintModalOpen(false);
-      showToast("✓ Sprint Goal berhasil dikunci & dirilis ke Project Leader!");
+      if (editingSprintId) {
+        await supabase.from('sprints').update(payload).eq('id', editingSprintId);
+      } else {
+        await supabase.from('sprints').insert([payload]);
+      }
+
+      showToast(targetStatus === 'active' ? "🚀 Sprint berhasil dirilis ke tim!" : "💾 Sprint disimpan sebagai Draft");
+      setEditingSprintId(null);
+      fetchAllSprints(currentWorkspace.id);
     } catch (err: any) {
-      showToast(`Gagal set sprint: ${err.message || err}`);
+      showToast(`Gagal menyimpan sprint: ${err.message}`);
     } finally {
       setIsSavingSprint(false);
     }
@@ -737,7 +798,7 @@ export const App: React.FC = () => {
       fetchProjectLinks(currentWorkspace.id);
       fetchPOData(currentWorkspace.id);
       fetchWorkspaceAssignees(currentWorkspace.id); // Fetch list anggota baru
-      fetchActiveSprint(currentWorkspace.id);
+      fetchAllSprints(currentWorkspace.id);
     }
   }, [currentWorkspace?.id, session?.user?.id]);
 
@@ -2228,8 +2289,19 @@ export const App: React.FC = () => {
             setSprintEndDate={setSprintEndDate}
             sprintGoalInput={sprintGoalInput}
             setSprintGoalInput={setSprintGoalInput}
-            handleSaveSprintMandate={handleSaveSprintMandate}
             isSavingSprint={isSavingSprint}
+            sprintsList={sprintsList}
+            editingSprintId={editingSprintId}
+            setEditingSprintId={setEditingSprintId}
+            sprintBriefNotes={sprintBriefNotes}
+            setSprintBriefNotes={setSprintBriefNotes}
+            sprintDocUrl={sprintDocUrl}
+            setSprintDocUrl={setSprintDocUrl}
+            sprintDocName={sprintDocName}
+            setSprintDocName={setSprintDocName}
+            isUploadingDoc={isUploadingDoc}
+            handleSprintDocUpload={handleSprintDocUpload}
+            handleSaveSprint={handleSaveSprint}
           />
         )}
 
