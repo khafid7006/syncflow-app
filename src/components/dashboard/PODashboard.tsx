@@ -230,6 +230,133 @@ export const PODashboard: React.FC<PODashboardProps> = ({
     }
   };
 
+  if (isUserPO) {
+    return (
+      <main className="w-full max-w-7xl mx-auto space-y-6 font-sans animate-in fade-in duration-300">
+        {/* TOP BAR: SPRINT GOAL & METRIC CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 font-sans">
+          {/* Sprint Goal Header */}
+          <div className="md:col-span-2 p-6 rounded-3xl border border-white/10 bg-neutral-950/60 backdrop-blur-2xl flex flex-col justify-between shadow-xl font-sans">
+            <div className="space-y-2 font-sans">
+              <div className="flex items-center justify-between font-sans">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Active Sprint Mandate
+                </span>
+                <button
+                  type="button"
+                  onClick={onOpenSprintModal}
+                  className="px-3 py-1 rounded-xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all cursor-pointer font-sans"
+                >
+                  {activeSprint ? 'Atur Sprint' : '➕ Buat Sprint'}
+                </button>
+              </div>
+              <h2 className="text-2xl font-extrabold text-white tracking-tight font-sans">
+                {activeSprint?.goal_title || 'Belum Ada Sprint Goal'}
+              </h2>
+            </div>
+            <div className="pt-4 flex items-center justify-between text-xs text-zinc-400 font-mono border-t border-white/5">
+              <span>Rentang: {activeSprint?.start_date || '-'} → {activeSprint?.end_date || '-'}</span>
+              <span className="text-white font-bold">{calculateDaysLeft(activeSprint?.end_date)} Hari Tersisa</span>
+            </div>
+          </div>
+
+          {/* Metric 1: Sprint Velocity */}
+          <div className="p-6 rounded-3xl border border-white/10 bg-neutral-950/60 backdrop-blur-2xl flex flex-col justify-between shadow-xl font-sans">
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">Sprint Velocity</span>
+            <div>
+              <div className="text-3xl font-extrabold text-white tracking-tight font-sans">{sprintProgressPct}%</div>
+              <p className="text-xs text-zinc-400 mt-1 font-sans">{completedDoDCount} dari {totalDoDCount} DoD Selesai</p>
+            </div>
+            <div className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-400 rounded-full transition-all duration-500" style={{ width: `${sprintProgressPct}%` }} />
+            </div>
+          </div>
+
+          {/* Metric 2: Health & Forecasting */}
+          <div className="p-6 rounded-3xl border border-white/10 bg-neutral-950/60 backdrop-blur-2xl flex flex-col justify-between shadow-xl font-sans">
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">Status & Prediksi ETA</span>
+            <div>
+              <div className={`text-xl font-extrabold tracking-tight font-sans ${forecastingResult.status === 'delay_risk' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                {forecastingResult.status === 'delay_risk' ? '⚠️ Delay Risk' : '⚡ On Track'}
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1 leading-snug font-sans">{forecastingResult.text}</p>
+            </div>
+            <span className="text-[10px] text-zinc-500 font-mono">{allTasks.length} Tugas Terdistribusi di Lapangan</span>
+          </div>
+        </div>
+
+        {/* MAIN SECTION: FULL-WIDTH SPRINT GANTT TIMELINE */}
+        <div className="p-6 rounded-[32px] border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-2xl space-y-6 font-sans">
+          <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
+            <div>
+              <h3 className="text-lg font-bold text-white tracking-tight font-sans">Timeline & Velocity Radar POD (Sprint Gantt)</h3>
+              <p className="text-xs text-zinc-400 font-sans">Monitoring distribusi beban kerja per divisi secara realtime</p>
+            </div>
+            <div className="flex items-center gap-4 text-xs font-mono text-zinc-400">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-500" /> Aktif</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Selesai</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Blocker</span>
+            </div>
+          </div>
+
+          {/* GANTT MATRIX TABLE */}
+          <div className="space-y-4 font-sans">
+            {/* Header Hari Grid */}
+            <div className="grid grid-cols-12 gap-2 text-xs font-mono text-zinc-400 pb-2 border-b border-white/5">
+              <div className="col-span-3 font-bold uppercase tracking-wider text-zinc-300">Divisi / POD</div>
+              <div className="col-span-9 grid grid-cols-7 gap-2 text-center text-[11px]">
+                <div>Hari 1</div>
+                <div>Hari 2</div>
+                <div>Hari 3</div>
+                <div>Hari 4</div>
+                <div>Hari 5</div>
+                <div>Hari 6</div>
+                <div>Hari 7</div>
+              </div>
+            </div>
+
+            {/* Baris Gantt Tiap Divisi */}
+            {podGanttData.length === 0 ? (
+              <div className="py-12 text-center text-xs text-zinc-500 font-mono">
+                Project Leader belum mendistribusikan tugas ke divisi manapun.
+              </div>
+            ) : (
+              podGanttData.map((item) => (
+                <div key={item.pod} className="grid grid-cols-12 gap-2 items-center text-xs py-2 font-sans">
+                  <div className="col-span-3 pr-2 font-sans">
+                    <div className="font-semibold text-white text-sm font-sans">{item.pod}</div>
+                    <div className="text-[11px] text-zinc-500 font-mono">{item.doneTasks}/{item.totalTasks} Tugas Selesai</div>
+                  </div>
+
+                  <div className="col-span-9 h-10 rounded-2xl bg-neutral-900/60 border border-white/5 relative flex items-center px-2">
+                    {/* Grid Lines Background */}
+                    <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/[0.03] pointer-events-none" />
+
+                    {/* Glowing Gantt Bar Span */}
+                    <div
+                      className={`relative h-6 rounded-xl px-3 flex items-center justify-between text-xs font-bold text-white shadow-lg transition-all duration-500 ${
+                        item.blockedTasks > 0
+                          ? 'bg-gradient-to-r from-rose-500/80 to-amber-500/80 border border-rose-400/30'
+                          : item.progress === 100
+                          ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/30'
+                          : 'bg-gradient-to-r from-sky-500/80 via-indigo-500/80 to-purple-500/80 border border-sky-400/30'
+                      }`}
+                      style={{ width: `${Math.max(20, item.progress)}%` }}
+                    >
+                      <span className="truncate">{item.totalTasks} Tugas</span>
+                      <span className="font-mono text-[10px] opacity-90">{item.progress}%</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
       
