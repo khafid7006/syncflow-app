@@ -2125,6 +2125,7 @@ export const App: React.FC = () => {
           userId={session?.user?.id}
           notificationsList={workspaceActivities}
           onOpenProfileModal={handleOpenProfileModal}
+          isPlRole={isPlRole}
         />
 
         {/* WORKSPACE CONDITIONAL RENDERING GUARD */}
@@ -2218,6 +2219,8 @@ export const App: React.FC = () => {
             completedDoDCount={completedDoDCount}
             sprintProgressPct={sprintProgressPct}
             calculateDaysLeft={calculateDaysLeft}
+            isPlRole={isPlRole}
+            activeWorkspaceRole={activeWorkspaceRole}
           />
         )}
 

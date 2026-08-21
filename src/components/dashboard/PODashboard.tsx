@@ -65,6 +65,8 @@ interface PODashboardProps {
   completedDoDCount?: number;
   sprintProgressPct?: number;
   calculateDaysLeft?: (targetDate: string) => number;
+  isPlRole?: boolean;
+  activeWorkspaceRole?: string;
 }
 
 export const PODashboard: React.FC<PODashboardProps> = ({
@@ -121,7 +123,11 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   completedDoDCount = 0,
   sprintProgressPct = 0,
   calculateDaysLeft = () => 0,
+  isPlRole = false,
+  activeWorkspaceRole = 'member',
 }) => {
+  const isUserPL = isPlRole || activeWorkspaceRole === 'pl';
+  const isUserPO = !isUserPL;
   // Set ID tugas yang sedang dibuka detailnya (default: hanya tugas dengan Blocker atau Review yang otomatis terbuka)
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(new Set());
 
@@ -524,376 +530,396 @@ export const PODashboard: React.FC<PODashboardProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* KOLOM 2 (TENGAH - 4 KOLOM): SPRINT COMMAND HUB & BAGI TUGAS BARU */}
+      {/* KOLOM 2 (TENGAH - 4 KOLOM): STRATEGIC COMMAND CENTER (PO) / TASK DISPATCHER (PL) */}
       {/* ========================================================================= */}
-      <div className="lg:col-span-4 flex flex-col justify-between transition-all duration-300 ease-in-out gap-6">
-        
-        {/* SPRINT COMMAND & FORECASTING HUB (SISI PO) */}
-        <div className="rounded-[32px] border border-white/10 bg-neutral-950/60 backdrop-blur-2xl p-6 space-y-5 shadow-2xl font-sans">
-          {/* Header Sprint */}
-          <div className="flex items-center justify-between border-b border-white/10 pb-4">
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
-                ● ACTIVE SPRINT MANDATE
-              </span>
-              <h3 className="text-xl font-extrabold text-white tracking-tight mt-1">
-                {activeSprint?.goal_title || 'Belum Ada Sprint Goal yang Aktif'}
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={onOpenSprintModal}
-              className="px-3.5 py-1.5 rounded-xl border border-white/15 bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition-all cursor-pointer shrink-0 font-sans"
-            >
-              {activeSprint ? '⚙️ Atur Ulang Sprint' : '➕ Buat Sprint Baru'}
-            </button>
-          </div>
-
-          {/* Visual Mini Gantt / Progress Bar */}
-          <div className="space-y-2 font-sans">
-            <div className="flex justify-between text-xs text-zinc-400 font-medium">
-              <span>Progress Sprint (DoD Selesai)</span>
-              <span className="text-white font-bold">{sprintProgressPct}% ({completedDoDCount}/{totalDoDCount} DoD)</span>
-            </div>
-            <div className="w-full h-3 rounded-full bg-neutral-900 border border-white/10 overflow-hidden p-0.5">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-400 transition-all duration-500"
-                style={{ width: `${sprintProgressPct}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Forecasting Metric Bento */}
-          <div className="grid grid-cols-2 gap-3 pt-1 font-sans">
-            <div className="p-3.5 rounded-2xl border border-white/10 bg-white/[0.02]">
-              <span className="text-[10px] font-bold text-zinc-500 uppercase">Sisa Waktu Sprint</span>
-              <p className="text-lg font-extrabold text-white mt-1">
-                {activeSprint ? `${calculateDaysLeft(activeSprint.end_date)} Hari Lagi` : '-'}
-              </p>
-              <span className="text-[10px] text-zinc-400 font-mono">Target: {activeSprint?.end_date || '-'}</span>
-            </div>
-
-            <div className="p-3.5 rounded-2xl border border-white/10 bg-white/[0.02]">
-              <span className="text-[10px] font-bold text-zinc-500 uppercase">Status Kelancaran</span>
-              <p className="text-lg font-extrabold text-emerald-400 mt-1">
-                {activeSprint ? (sprintProgressPct >= 50 ? 'On Track ⚡' : 'In Progress ⏳') : 'Standby'}
-              </p>
-              <span className="text-[10px] text-zinc-400 font-mono">Total {filteredMasterTasks.length} Tugas Terdistribusi</span>
-            </div>
-          </div>
-        </div>
-
-        {/* BAGI TUGAS BARU CONTAINER */}
-        <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <span className="text-xs font-medium text-zinc-500 block truncate max-w-[180px] sm:max-w-[220px]">
-                Penugasan Workspace: {currentWorkspace?.name}
-              </span>
-              <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                Bagi Tugas Baru
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsPoFocusMode(true)}
-              className="text-[10px] font-semibold text-zinc-600 hover:text-zinc-950 flex items-center gap-1 px-2.5 py-1 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 transition-all cursor-pointer shadow-2xs shrink-0"
-              title="Buka Zen Focus Mode"
-            >
-              <Maximize2 className="w-3 h-3 text-zinc-500" />
-              <span>⛶ Mode Fokus</span>
-            </button>
-          </div>
-
-          <form onSubmit={onCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
-            {/* SPRINT GUARDRAIL BOX UNTUK PL/PO */}
-            {activeSprint && (
-              <div className="p-3.5 rounded-2xl border border-emerald-500/20 bg-emerald-950/90 text-emerald-300 text-xs flex items-center justify-between mb-2 font-sans shadow-md">
-                <div className="space-y-0.5">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-emerald-400">
-                    🎯 Arahan Target PO:
+      <div className="lg:col-span-4 flex flex-col justify-between transition-all duration-300 ease-in-out gap-6 font-sans">
+        {isUserPO ? (
+          /* ========== KHUSUS LAYAR PROJECT OWNER (PO) ========== */
+          <div className="rounded-[32px] border border-white/10 bg-neutral-950/70 backdrop-blur-2xl p-6 space-y-6 shadow-2xl font-sans">
+            {/* Header Sprint & Tombol Set Mandat */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <div className="flex items-center gap-2 font-sans">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
+                    ACTIVE SPRINT STRATEGY
                   </span>
-                  <p className="font-semibold text-white">{activeSprint.goal_title}</p>
                 </div>
-                <span className="text-[10px] font-mono px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 shrink-0 text-emerald-200">
-                  Maks Deadline: {activeSprint.end_date}
+                <h3 className="text-xl font-extrabold text-white tracking-tight mt-1">
+                  {activeSprint?.goal_title || 'Belum Ada Sprint Goal yang Aktif'}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={onOpenSprintModal}
+                className="px-3.5 py-2 rounded-xl border border-white/15 bg-white text-zinc-950 hover:bg-zinc-200 text-xs font-bold transition-all shadow-md cursor-pointer shrink-0 font-sans"
+              >
+                {activeSprint ? '⚙️ Atur Ulang Sprint' : '➕ Buat Sprint Baru'}
+              </button>
+            </div>
+
+            {/* Mini-Gantt / Progress Bar Agregat Sprint */}
+            <div className="space-y-2 font-sans">
+              <div className="flex justify-between text-xs text-zinc-400 font-medium">
+                <span>Sprint Velocity (Penyelesaian DoD)</span>
+                <span className="text-white font-bold">{sprintProgressPct}% ({completedDoDCount}/{totalDoDCount} DoD)</span>
+              </div>
+              <div className="w-full h-3 rounded-full bg-neutral-900 border border-white/10 overflow-hidden p-0.5">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-400 transition-all duration-500"
+                  style={{ width: `${sprintProgressPct}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Bento Metric Forecasting Waktu & Kesehatan Sprint */}
+            <div className="grid grid-cols-2 gap-3 font-sans">
+              <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] space-y-1">
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Durasi Sprint</span>
+                <p className="text-xl font-extrabold text-white">
+                  {activeSprint ? `${calculateDaysLeft(activeSprint.end_date)} Hari Sisa` : '-'}
+                </p>
+                <p className="text-[11px] text-zinc-400 font-mono">
+                  {activeSprint?.start_date || '-'} → {activeSprint?.end_date || '-'}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] space-y-1">
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Status Proyek</span>
+                <p className="text-xl font-extrabold text-emerald-400">
+                  {activeSprint ? (sprintProgressPct >= 50 ? 'On Track ⚡' : 'In Progress ⏳') : 'Standby'}
+                </p>
+                <p className="text-[11px] text-zinc-400 font-sans">
+                  {allTasks.filter(t => t.status === 'blocked' || t.is_blocked).length > 0 ? (
+                    <span className="text-rose-400 font-semibold">🚨 Ada kendala di lapangan</span>
+                  ) : (
+                    'Semua pod berjalan lancar'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Petunjuk Operasional PO */}
+            <div className="p-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.01] text-xs text-zinc-400 space-y-1 font-sans">
+              <p className="font-semibold text-white">📌 Mandat Sprint Terkunci untuk Project Leader:</p>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Project Leader (PL) akan memecah goal di atas menjadi tugas harian kepada anggota tim sesuai batas tanggal yang telah Anda tentukan.
+              </p>
+            </div>
+          </div>
+        ) : (
+          /* ========== KHUSUS LAYAR PROJECT LEADER (PL) ========== */
+          <div className="space-y-4 font-sans">
+            {/* 1. Guideline Box dari PO */}
+            {activeSprint && (
+              <div className="p-4 rounded-2xl border border-emerald-500/20 bg-emerald-950/40 text-emerald-300 text-xs flex items-center justify-between shadow-lg font-sans">
+                <div>
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-emerald-400">
+                    🎯 Arahan Sprint dari PO:
+                  </span>
+                  <p className="font-semibold text-white text-sm mt-0.5">{activeSprint.goal_title}</p>
+                </div>
+                <span className="text-[10px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 shrink-0">
+                  Batas: {activeSprint.end_date}
                 </span>
               </div>
             )}
-            {/* 1. TOGGLE MODE PENUGASAN */}
-            <div className="space-y-1.5 font-sans">
-              <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-                Target Penerima Tugas
-              </label>
-              <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-100 rounded-xl text-[11px] font-semibold">
+
+            {/* 2. Form Bagi Tugas Baru Milik PL */}
+            <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-medium text-zinc-500 block truncate max-w-[180px] sm:max-w-[220px]">
+                    Penugasan Workspace: {currentWorkspace?.name}
+                  </span>
+                  <h3 className="text-base font-bold text-zinc-950 tracking-tight">
+                    Bagi Tugas Baru
+                  </h3>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setAssignTargetType('individual')}
-                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
-                    assignTargetType === 'individual'
-                      ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
-                      : 'text-zinc-500 hover:text-zinc-900 font-medium'
-                  }`}
+                  onClick={() => setIsPoFocusMode(true)}
+                  className="text-[10px] font-semibold text-zinc-600 hover:text-zinc-950 flex items-center gap-1 px-2.5 py-1 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 transition-all cursor-pointer shadow-2xs shrink-0"
+                  title="Buka Zen Focus Mode"
                 >
-                  👤 Individu
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAssignTargetType('pod')}
-                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
-                    assignTargetType === 'pod'
-                      ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
-                      : 'text-zinc-500 hover:text-zinc-900 font-medium'
-                  }`}
-                >
-                  👥 1 Divisi
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAssignTargetType('all')}
-                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
-                    assignTargetType === 'all'
-                      ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
-                      : 'text-zinc-500 hover:text-zinc-900 font-medium'
-                  }`}
-                >
-                  🌐 Semua Tim
+                  <Maximize2 className="w-3 h-3 text-zinc-500" />
+                  <span>⛶ Mode Fokus</span>
                 </button>
               </div>
-            </div>
 
-            {/* 2. DYNAMIC INPUT SELECTOR BERDASARKAN MODE TARGET */}
-            {assignTargetType === 'individual' ? (
-              <div className="space-y-1 font-sans">
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
-                {(() => {
-                  const nonPoMembers = assigneeList.filter(m => m.role !== 'po');
-                  const poMembers = assigneeList.filter(m => m.role === 'po');
+              <form onSubmit={onCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
+                {/* 1. TOGGLE MODE PENUGASAN */}
+                <div className="space-y-1.5 font-sans">
+                  <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                    Target Penerima Tugas
+                  </label>
+                  <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-100 rounded-xl text-[11px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setAssignTargetType('individual')}
+                      className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                        assignTargetType === 'individual'
+                          ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
+                          : 'text-zinc-500 hover:text-zinc-900 font-medium'
+                      }`}
+                    >
+                      👤 Individu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignTargetType('pod')}
+                      className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                        assignTargetType === 'pod'
+                          ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
+                          : 'text-zinc-500 hover:text-zinc-900 font-medium'
+                      }`}
+                    >
+                      👥 1 Divisi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignTargetType('all')}
+                      className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                        assignTargetType === 'all'
+                          ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
+                          : 'text-zinc-500 hover:text-zinc-900 font-medium'
+                      }`}
+                    >
+                      🌐 Semua Tim
+                    </button>
+                  </div>
+                </div>
 
-                  const memberOptions: GlassSelectOption[] = [];
-                  if (nonPoMembers.length > 0) {
-                    memberOptions.push({ value: 'hdr-1', label: 'Anggota Tim & Lead', isHeader: true });
-                    nonPoMembers.forEach(m => {
-                      memberOptions.push({
-                        value: m.id,
-                        label: m.full_name,
-                        sublabel: `${m.pod} • ${m.role.toUpperCase()}`,
-                        badge: m.role.toUpperCase()
-                      });
-                    });
-                  }
-                  if (poMembers.length > 0) {
-                    memberOptions.push({ value: 'hdr-2', label: 'Project Owner (Self Assign)', isHeader: true });
-                    poMembers.forEach(m => {
-                      memberOptions.push({
-                        value: m.id,
-                        label: `👤 ${m.full_name}`,
-                        sublabel: `${m.pod} • PO`,
-                        badge: 'PO'
-                      });
-                    });
-                  }
+                {/* 2. DYNAMIC INPUT SELECTOR BERDASARKAN MODE TARGET */}
+                {assignTargetType === 'individual' ? (
+                  <div className="space-y-1 font-sans">
+                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
+                    {(() => {
+                      const nonPoMembers = assigneeList.filter(m => m.role !== 'po');
+                      const poMembers = assigneeList.filter(m => m.role === 'po');
 
-                  return (
+                      const memberOptions: GlassSelectOption[] = [];
+                      if (nonPoMembers.length > 0) {
+                        memberOptions.push({ value: 'hdr-1', label: 'Anggota Tim & Lead', isHeader: true });
+                        nonPoMembers.forEach(m => {
+                          memberOptions.push({
+                            value: m.id,
+                            label: m.full_name,
+                            sublabel: `${m.pod} • ${m.role.toUpperCase()}`,
+                            badge: m.role.toUpperCase()
+                          });
+                        });
+                      }
+                      if (poMembers.length > 0) {
+                        memberOptions.push({ value: 'hdr-2', label: 'Project Owner', isHeader: true });
+                        poMembers.forEach(m => {
+                          memberOptions.push({
+                            value: m.id,
+                            label: m.full_name,
+                            sublabel: `${m.pod} • OWNER`,
+                            badge: 'OWNER'
+                          });
+                        });
+                      }
+
+                      return (
+                        <CustomGlassSelect
+                          theme="light"
+                          value={selectedAssigneeId}
+                          onChange={setSelectedAssigneeId}
+                          placeholder={isLoadingAssignees ? 'Memuat anggota...' : '-- Pilih Anggota --'}
+                          options={memberOptions}
+                        />
+                      );
+                    })()}
+                  </div>
+                ) : assignTargetType === 'pod' ? (
+                  <div className="space-y-1 font-sans">
+                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Divisi / POD</label>
                     <CustomGlassSelect
                       theme="light"
-                      disabled={isLoadingAssignees || assigneeList.length === 0}
-                      value={selectedAssigneeId}
-                      onChange={setSelectedAssigneeId}
-                      options={memberOptions}
-                      placeholder={isLoadingAssignees ? "Memuat daftar tim..." : "Pilih Anggota Tim..."}
+                      value={selectedTargetPod}
+                      onChange={setSelectedTargetPod}
+                      options={[
+                        { value: 'Marketing', label: 'Marketing' },
+                        { value: 'Product Builder', label: 'Product Builder' },
+                        { value: 'BA', label: 'BA (Business Analyst)' },
+                        { value: 'UI/UX Designer', label: 'UI/UX Designer' },
+                        { value: 'QA', label: 'QA' },
+                        { value: 'General', label: 'General' },
+                      ]}
                     />
-                  );
-                })()}
-              </div>
-            ) : assignTargetType === 'pod' ? (
-              <div className="space-y-1 font-sans">
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-                  Pilih Divisi / POD Target
-                </label>
-                <CustomGlassSelect
-                  theme="light"
-                  value={selectedTargetPod}
-                  onChange={setSelectedTargetPod}
-                  options={[
-                    { value: 'Marketing', label: 'Marketing', badge: 'Divisi' },
-                    { value: 'Product Builder', label: 'Product Builder', badge: 'Divisi' },
-                    { value: 'BA', label: 'BA (Business Analyst)', badge: 'Divisi' },
-                    { value: 'UI/UX Designer', label: 'UI/UX Designer', badge: 'Divisi' },
-                    { value: 'QA', label: 'QA', badge: 'Divisi' },
-                    { value: 'General', label: 'General', badge: 'Divisi' },
-                  ]}
-                  placeholder="Pilih Divisi Target..."
-                />
-                <p className="text-[10px] text-zinc-500 font-sans">
-                  Tugas akan otomatis dikirimkan ke seluruh anggota di divisi ini.
-                </p>
-              </div>
-            ) : (
-              <div className="p-2.5 rounded-xl bg-zinc-100 border border-zinc-200 text-xs text-zinc-700 font-medium font-sans">
-                📢 Tugas ini akan ditugaskan serentak ke seluruh ({assigneeList.length}) anggota di workspace ini.
-              </div>
-            )}
-
-            {/* Task Title Input with Ref for Auto-Focus */}
-            <div className="space-y-1">
-              <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Judul Tugas</label>
-              <input
-                ref={taskTitleInputRef}
-                type="text"
-                required
-                placeholder="Nama tugas..."
-                value={newAssignTaskTitle}
-                onChange={e => setNewAssignTaskTitle(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 font-sans"
-              />
-            </div>
-
-            {/* FORM INPUT DESKRIPSI TUGAS (PO VIEW - TENGAH) */}
-            <div className="space-y-1">
-              <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
-                Deskripsi / Brief Singkat
-              </label>
-              <textarea
-                placeholder="Jelaskan detail brief atau konteks pengerjaan..."
-                value={newAssignDescription}
-                onChange={e => setNewAssignDescription(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-900 outline-hidden focus:border-zinc-400 min-h-[70px] resize-none font-sans"
-              />
-            </div>
-
-            {/* INPUT DEADLINE DI FORM PO DENGAN PRESET TENGGAT WAKTU CEPAT */}
-            <CustomGlassDatePicker
-              theme="light"
-              value={newAssignDueDate}
-              onChange={setNewAssignDueDate}
-              maxDate={activeSprint?.end_date}
-              presetButtons={
-                <div className="flex items-center gap-1 font-sans">
-                  <button
-                    type="button"
-                    onClick={() => onApplyDeadlinePreset(0, 'create')}
-                    className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
-                  >
-                    Hari Ini (17:00)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onApplyDeadlinePreset(1, 'create')}
-                    className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
-                  >
-                    Besok (17:00)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onApplyDeadlinePreset(3, 'create')}
-                    className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
-                  >
-                    3 Hari
-                  </button>
-                </div>
-              }
-            />
-
-            {/* TOGGLE PILIHAN PRIORITAS TUGAS */}
-            <div className="space-y-1">
-              <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-                Prioritas Tugas
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setNewAssignPriority('normal')}
-                  className={`py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
-                    newAssignPriority === 'normal'
-                      ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
-                      : 'bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200'
-                  }`}
-                >
-                  📌 Normal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewAssignPriority('urgent')}
-                  className={`py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
-                    newAssignPriority === 'urgent'
-                      ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
-                      : 'bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200'
-                  }`}
-                >
-                  🔥 Urgent
-                </button>
-              </div>
-            </div>
-
-            {/* DYNAMIC DOD CHECKLIST LIST (MAX 10 POINTS) */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between">
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-                  Checklist DoD ({dodPoints.length}/10 Poin)
-                </label>
-                {dodPoints.length < 10 && (
-                  <button
-                    type="button"
-                    onClick={onAddDodPoint}
-                    className="text-[10px] font-bold text-zinc-900 hover:text-zinc-600 flex items-center gap-0.5 cursor-pointer transition-colors duration-300"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>+ Tambah Poin</span>
-                  </button>
+                    <p className="text-[10px] text-zinc-500 mt-1 font-medium font-sans">
+                      📢 Tugas ini akan ditugaskan ke seluruh anggota di divisi <strong className="text-zinc-800">{selectedTargetPod}</strong>.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-xl bg-zinc-100 border border-zinc-200 text-xs text-zinc-700 font-medium font-sans">
+                    📢 Tugas ini akan ditugaskan serentak ke seluruh ({assigneeList.length}) anggota di workspace ini.
+                  </div>
                 )}
-              </div>
 
-              <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                {dodPoints.map((point, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      placeholder={`DoD ${idx + 1}...`}
-                      value={point}
-                      onChange={e => onDodPointChange(idx, e.target.value)}
-                      className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans focus:outline-hidden focus:border-zinc-800"
-                    />
-                    {dodPoints.length > 1 && (
+                {/* Task Title Input with Ref for Auto-Focus */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Judul Tugas</label>
+                  <input
+                    ref={taskTitleInputRef}
+                    type="text"
+                    required
+                    placeholder="Nama tugas..."
+                    value={newAssignTaskTitle}
+                    onChange={e => setNewAssignTaskTitle(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-800 transition-colors duration-300 font-sans"
+                  />
+                </div>
+
+                {/* FORM INPUT DESKRIPSI TUGAS (PO VIEW - TENGAH) */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+                    Deskripsi / Brief Singkat
+                  </label>
+                  <textarea
+                    placeholder="Jelaskan detail brief atau konteks pengerjaan..."
+                    value={newAssignDescription}
+                    onChange={e => setNewAssignDescription(e.target.value)}
+                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-900 outline-hidden focus:border-zinc-400 min-h-[70px] resize-none font-sans"
+                  />
+                </div>
+
+                {/* INPUT DEADLINE DI FORM PO DENGAN PRESET TENGGAT WAKTU CEPAT */}
+                <CustomGlassDatePicker
+                  theme="light"
+                  value={newAssignDueDate}
+                  onChange={setNewAssignDueDate}
+                  maxDate={activeSprint?.end_date}
+                  presetButtons={
+                    <div className="flex items-center gap-1 font-sans">
                       <button
                         type="button"
-                        onClick={() => onRemoveDodPoint(idx)}
-                        className="w-6 h-6 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center cursor-pointer transition-colors duration-300 text-xs font-bold shrink-0"
+                        onClick={() => onApplyDeadlinePreset(0, 'create')}
+                        className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
                       >
-                        ×
+                        Hari Ini (17:00)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onApplyDeadlinePreset(1, 'create')}
+                        className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
+                      >
+                        Besok (17:00)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onApplyDeadlinePreset(3, 'create')}
+                        className="text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded border border-zinc-200 transition-colors duration-300 cursor-pointer"
+                      >
+                        3 Hari
+                      </button>
+                    </div>
+                  }
+                />
+
+                {/* TOGGLE PILIHAN PRIORITAS TUGAS */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                    Prioritas Tugas
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewAssignPriority('normal')}
+                      className={`py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                        newAssignPriority === 'normal'
+                          ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
+                          : 'bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200'
+                      }`}
+                    >
+                      📌 Normal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewAssignPriority('high')}
+                      className={`py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                        newAssignPriority === 'high'
+                          ? 'bg-rose-600 text-white border-rose-600 shadow-xs font-bold'
+                          : 'bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200'
+                      }`}
+                    >
+                      🔥 Tinggi (Priority)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Checklist Definition (DoD Points) Input */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                      Definition of Done (DoD) Checklist
+                    </label>
+                    {dodPoints.length < 5 && (
+                      <button
+                        type="button"
+                        onClick={onAddDodPoint}
+                        className="text-[10px] font-semibold text-zinc-600 hover:text-zinc-950 flex items-center gap-1 cursor-pointer transition-colors duration-300"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>+ Tambah Poin</span>
                       </button>
                     )}
                   </div>
-                ))}
-              </div>
+
+                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                    {dodPoints.map((point, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          placeholder={`DoD ${idx + 1}...`}
+                          value={point}
+                          onChange={e => onDodPointChange(idx, e.target.value)}
+                          className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-[11px] text-zinc-900 font-sans focus:outline-hidden focus:border-zinc-800"
+                        />
+                        {dodPoints.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => onRemoveDodPoint(idx)}
+                            className="w-6 h-6 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center cursor-pointer transition-colors duration-300 text-xs font-bold shrink-0"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
+                  className={`w-full py-3 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
+                    isTaskSubmitSuccess
+                      ? 'bg-emerald-600 text-white cursor-default'
+                      : selectedAssigneeId && newAssignTaskTitle.trim()
+                        ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
+                        : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
+                  }`}
+                >
+                  {isTaskSubmitSuccess ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-white animate-bounce" />
+                      <span>✓ Tugas Terkirim</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Kirim Tugas ke Member</span>
+                    </>
+                  )}
+                </button>
+              </form>
             </div>
-
-            <button
-              type="submit"
-              disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
-              className={`w-full py-3 font-bold text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
-                isTaskSubmitSuccess
-                  ? 'bg-emerald-600 text-white cursor-default'
-                  : selectedAssigneeId && newAssignTaskTitle.trim()
-                    ? 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
-                    : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
-              }`}
-            >
-              {isTaskSubmitSuccess ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-white animate-bounce" />
-                  <span>✓ Tugas Terkirim</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Kirim Tugas ke Member</span>
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}

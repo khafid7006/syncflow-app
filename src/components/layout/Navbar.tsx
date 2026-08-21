@@ -27,6 +27,7 @@ interface NavbarProps {
   userId?: string;
   notificationsList?: ActivityLog[];
   onOpenProfileModal?: () => void;
+  isPlRole?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -54,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   userId,
   notificationsList = [],
   onOpenProfileModal,
+  isPlRole = false,
 }) => {
   const [isNotifPopoverOpen, setIsNotifPopoverOpen] = useState<boolean>(false);
   const notifPopoverRef = useRef<HTMLDivElement>(null);
@@ -219,8 +221,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
       </div>
 
-      {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK WORKSPACE ROLE PO DAN PL) */}
-      {isPoOrPlRole && currentWorkspace && (
+      {/* View Mode Switcher Pill (HANYA DITAMPILKAN UNTUK PROJECT LEADER (PL)) */}
+      {isPlRole && currentWorkspace && (
         <nav className="flex items-center gap-1 p-1 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-full shadow-lg text-xs font-sans">
           <button
             onClick={() => setViewMode('po')}
@@ -230,7 +232,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 : 'text-zinc-400 hover:text-white hover:bg-white/10'
             }`}
           >
-            <span>{isOwnerOrPo ? 'Papan PO' : 'Papan PL'}</span>
+            <span>Papan PL</span>
           </button>
           <button
             onClick={() => setViewMode('member')}
