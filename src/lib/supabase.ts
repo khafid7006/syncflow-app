@@ -1,8 +1,14 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Live Supabase Environment variables configuration
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) || 'https://bvjyqotpaenglurlnwjb.supabase.co';
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2anlxb3RwYWVuZ2x1cmxud2piIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyMDUxNjksImV4cCI6MjEwMjc4MTE2OX0.jtUt4k4F8JcddezmZaeswmQEgmpEZHb6pTHyDgJ2Z7A';
+// Live Supabase Environment variables configuration with safe fallback for localhost
+const rawUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const rawAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+const DEFAULT_SUPABASE_URL = 'https://bvjyqotpaenglurlnwjb.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2anlxb3RwYWVuZ2x1cmxud2piIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyMDUxNjksImV4cCI6MjEwMjc4MTE2OX0.jtUt4k4F8JcddezmZaeswmQEgmpEZHb6pTHyDgJ2Z7A';
+
+const supabaseUrl = rawUrl && rawUrl.startsWith('http') ? rawUrl : DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = rawAnonKey && rawAnonKey.length > 20 ? rawAnonKey : DEFAULT_SUPABASE_ANON_KEY;
 
 // Check if credentials are valid
 export const isSupabaseConfigured = (): boolean => {

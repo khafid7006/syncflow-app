@@ -17,7 +17,7 @@ import { PODashboard } from './components/dashboard/PODashboard';
 import { MemberDashboard } from './components/dashboard/MemberDashboard';
 
 // Import UI Components
-import { CustomGlassSelect } from './components/ui/CustomGlassSelect';
+import { CustomGlassSelect, GlassSelectOption } from './components/ui/CustomGlassSelect';
 
 // Import Modal Components
 import { AccessCodeModal } from './components/modals/AccessCodeModal';
@@ -26,7 +26,6 @@ import { ManageMembersModal } from './components/modals/ManageMembersModal';
 import { ManageLinksModal } from './components/modals/ManageLinksModal';
 import { EditTaskModal } from './components/modals/EditTaskModal';
 import { ResolveBlockerModal } from './components/modals/ResolveBlockerModal';
-import { CustomGlassSelect, GlassSelectOption } from './components/ui/CustomGlassSelect';
 import { RevisionModal } from './components/modals/RevisionModal';
 import { ReportBlockerModal } from './components/modals/ReportBlockerModal';
 
