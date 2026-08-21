@@ -6,7 +6,6 @@ import {
 import { Workspace, MemberTask, ProjectLink, ActivityLog } from '../../types';
 import { CustomGlassSelect, GlassSelectOption } from '../ui/CustomGlassSelect';
 import { CustomGlassDatePicker } from '../ui/CustomGlassDatePicker';
-import { TeamNotificationStack } from '../ui/TeamNotificationStack';
 
 interface PODashboardProps {
   currentWorkspace: Workspace | null;
@@ -856,8 +855,44 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               )}
             </div>
 
-            {/* WIDGET NOTIFIKASI TIM (IOS/MACOS NOTIFICATION STACK) */}
-            <TeamNotificationStack notifications={activities} />
+            {/* SEKSI ANGGOTA TIM WORKSPACE */}
+            <div className="space-y-2 pt-3 border-t border-white/10 font-sans">
+              <div className="flex items-center justify-between text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                <span>Anggota Tim Workspace</span>
+                <span className="font-mono text-white/80">{assigneeList.length} Orang</span>
+              </div>
+
+              {assigneeList.length === 0 ? (
+                <p className="text-xs text-zinc-500 text-center py-2">Belum ada anggota terdaftar.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-0.5">
+                  {assigneeList.map((m) => {
+                    const initial = (m.full_name || 'A').charAt(0).toUpperCase();
+                    const isPO = m.role === 'po';
+                    const isPL = m.role === 'pl';
+                    return (
+                      <div key={m.id || m.email} className="p-2 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between text-xs hover:bg-white/10 transition-colors">
+                        <div className="flex items-center gap-2 truncate max-w-[70%]">
+                          <div className="w-5 h-5 rounded-full bg-white/15 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                            {initial}
+                          </div>
+                          <div className="truncate">
+                            <span className="font-semibold text-white text-[11px] block truncate">{m.full_name}</span>
+                            <span className="text-[9px] text-white/40 block truncate">{m.pod || 'General'}</span>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase shrink-0 ${
+                          isPO ? 'bg-white/20 text-white border border-white/30' :
+                          isPL ? 'bg-white/15 text-zinc-200' : 'bg-white/5 text-zinc-400'
+                        }`}>
+                          {isPO ? 'PO' : isPL ? 'PL' : 'Member'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">

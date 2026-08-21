@@ -1,7 +1,6 @@
 import React from 'react';
 import { CheckCircle2, Send, AlertTriangle, ExternalLink, Check, Users } from 'lucide-react';
 import { Workspace, MemberTask, ProjectLink, ActivityLog } from '../../types';
-import { TeamNotificationStack } from '../ui/TeamNotificationStack';
 
 interface MemberDashboardProps {
   currentWorkspace: Workspace | null;
@@ -523,9 +522,6 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
               </div>
             )}
           </div>
-
-          {/* WIDGET NOTIFIKASI TIM (IOS/MACOS NOTIFICATION STACK) */}
-          <TeamNotificationStack notifications={teamNotifications} />
 
           <div className="text-xs text-zinc-500 text-center pt-2 border-t border-white/5 font-sans">
             SyncFlow Dashboard ({currentWorkspace?.name})

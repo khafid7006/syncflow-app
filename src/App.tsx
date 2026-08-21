@@ -1882,6 +1882,7 @@ export const App: React.FC = () => {
           userEmail={session?.user?.email}
           onSignOut={handleSignOut}
           profile={profile}
+          notificationsList={workspaceActivities}
         />
 
         {/* WORKSPACE CONDITIONAL RENDERING GUARD */}
