@@ -172,36 +172,47 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   const isUserPL = isPlRole || activeWorkspaceRole === 'pl';
   const isUserPO = !isUserPL;
 
-  // 1. Kelompokkan tugas aktif berdasarkan Pod/Divisi untuk Gantt Chart Radar
-  const podGanttData = React.useMemo(() => {
-    const pods: Record<string, { totalTasks: number; doneTasks: number; blockedTasks: number; earliestDeadline: string; latestDeadline: string }> = {};
+  // 1. Gabungkan data visual Gantt untuk Active vs Draft (Ghost Forecasting vs Live Active)
+  const combinedGanttData = React.useMemo(() => {
+    const isViewingDraft = activeSprint?.status === 'draft';
+    const pods = ['Marketing', 'Product Builder', 'BA', 'UI/UX Designer', 'General'];
+    const memberCount = Math.max(1, assigneeList.length);
 
-    allTasks.forEach((task) => {
-      const podName = task.pod || 'General';
-      if (!pods[podName]) {
-        pods[podName] = {
-          totalTasks: 0,
-          doneTasks: 0,
-          blockedTasks: 0,
-          earliestDeadline: task.deadline || '',
-          latestDeadline: task.deadline || ''
-        };
-      }
-      pods[podName].totalTasks += 1;
-      if (task.status === 'done') pods[podName].doneTasks += 1;
-      if (task.status === 'blocked' || task.is_blocked) pods[podName].blockedTasks += 1;
+    // Jika sedang membuka sprint DRAFT: Buat proyeksi visual forecasting
+    if (isViewingDraft) {
+      const estimatedSprintDays = Math.max(1, calculateDaysLeft(activeSprint.end_date));
+      const projectedDoDPerPod = Math.round((estimatedSprintDays * memberCount * 1.5) / pods.length);
 
-      if (task.deadline && (!pods[podName].latestDeadline || task.deadline > pods[podName].latestDeadline)) {
-        pods[podName].latestDeadline = task.deadline;
-      }
-    });
+      return pods.map((pod) => ({
+        pod,
+        isDraft: true,
+        totalTasks: Math.max(2, Math.round(projectedDoDPerPod / 3)),
+        projectedDoD: projectedDoDPerPod,
+        doneTasks: 0,
+        blockedTasks: 0,
+        progress: 0,
+        forecastLabel: `Proyeksi ~${projectedDoDPerPod} DoD (${estimatedSprintDays} Hari)`
+      }));
+    }
 
-    return Object.entries(pods).map(([pod, data]) => ({
-      pod,
-      ...data,
-      progress: data.totalTasks > 0 ? Math.round((data.doneTasks / data.totalTasks) * 100) : 0
-    }));
-  }, [allTasks]);
+    // Jika SPRINT AKTIF: Gunakan data live pengerjaan tim
+    return pods.map((pod) => {
+      const podTaskList = allTasks.filter((t) => (t.pod || 'General') === pod);
+      const doneTasks = podTaskList.filter((t) => t.status === 'done').length;
+      const blockedTasks = podTaskList.filter((t) => t.status === 'blocked' || t.is_blocked).length;
+      const progress = podTaskList.length > 0 ? Math.round((doneTasks / podTaskList.length) * 100) : 0;
+
+      return {
+        pod,
+        isDraft: false,
+        totalTasks: podTaskList.length,
+        doneTasks,
+        blockedTasks,
+        progress,
+        forecastLabel: `${doneTasks}/${podTaskList.length} Tugas Selesai (${progress}%)`
+      };
+    }).filter((p) => p.totalTasks > 0 || !activeSprint);
+  }, [activeSprint, allTasks, assigneeList.length, calculateDaysLeft]);
 
   // 2. Kalkulasi Smart Velocity Forecasting ETA
   const forecastingResult = React.useMemo(() => {
@@ -544,24 +555,38 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   <p className="text-xs text-zinc-400 mt-1 leading-snug font-sans">{forecastingResult.text}</p>
                 </div>
                 <span className="text-[10px] text-zinc-500 font-mono">{allTasks.length} Tugas Terdistribusi di Lapangan</span>
-              </div>
-            </div>
-
-            {/* BOTTOM ROW: FULL-WIDTH GANTT MATRIX TABLE */}
+                      {/* BOTTOM ROW: FULL-WIDTH SPRINT GANTT MATRIX TABLE */}
             <div className="p-6 rounded-[32px] border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-2xl space-y-6 font-sans">
+              {/* Header & Legend */}
               <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
                 <div>
-                  <h3 className="text-lg font-bold text-white tracking-tight font-sans">Timeline & Velocity Radar POD (Sprint Gantt)</h3>
-                  <p className="text-xs text-zinc-400 font-sans">Monitoring distribusi beban kerja per divisi secara realtime</p>
+                  <div className="flex items-center gap-2 font-sans">
+                    <h3 className="text-lg font-bold text-white tracking-tight font-sans">
+                      Timeline & Velocity Radar POD (Sprint Gantt)
+                    </h3>
+                    {activeSprint?.status === 'draft' && (
+                      <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 font-sans">
+                        Simulasi Proyeksi Draft
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-zinc-400 font-sans">
+                    {activeSprint?.status === 'draft'
+                      ? 'Menampilkan simulasi distribusi kapasitas masa depan sebelum sprint dirilis ke PL'
+                      : 'Monitoring distribusi beban kerja per divisi secara realtime'}
+                  </p>
                 </div>
+
+                {/* Legend Status */}
                 <div className="flex items-center gap-4 text-xs font-mono text-zinc-400 font-sans">
                   <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-500" /> Aktif</span>
                   <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Selesai</span>
                   <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Blocker</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-zinc-600 border border-zinc-400 border-dashed" /> Proyeksi Draft</span>
                 </div>
               </div>
 
-              {/* Render Baris Gantt Tiap Divisi */}
+              {/* GANTT MATRIX TABLE */}
               <div className="space-y-4 font-sans">
                 <div className="grid grid-cols-12 gap-2 text-xs font-mono text-zinc-400 pb-2 border-b border-white/5 font-sans">
                   <div className="col-span-3 font-bold uppercase tracking-wider text-zinc-300">Divisi / POD</div>
@@ -570,37 +595,63 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   </div>
                 </div>
 
-                {podGanttData.length === 0 ? (
+                {/* Render Baris Gantt Tiap Divisi */}
+                {combinedGanttData.length === 0 ? (
                   <div className="py-12 text-center text-xs text-zinc-500 font-mono">
                     Project Leader belum mendistribusikan tugas ke divisi manapun.
                   </div>
                 ) : (
-                  podGanttData.map((item) => (
+                  combinedGanttData.map((item) => (
                     <div key={item.pod} className="grid grid-cols-12 gap-2 items-center text-xs py-2 font-sans">
                       <div className="col-span-3 pr-2 font-sans">
-                        <div className="font-semibold text-white text-sm font-sans">{item.pod}</div>
-                        <div className="text-[11px] text-zinc-500 font-mono">{item.doneTasks}/{item.totalTasks} Tugas Selesai</div>
-                      </div>
-                      <div className="col-span-9 h-10 rounded-2xl bg-neutral-900/60 border border-white/5 relative flex items-center px-2">
-                        <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/[0.03] pointer-events-none" />
-                        <div
-                          className={`relative h-6 rounded-xl px-3 flex items-center justify-between text-xs font-bold text-white shadow-lg transition-all duration-500 ${
-                            item.blockedTasks > 0
-                              ? 'bg-gradient-to-r from-rose-500/80 to-amber-500/80 border border-rose-400/30'
-                              : item.progress === 100
-                              ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/30'
-                              : 'bg-gradient-to-r from-sky-500/80 via-indigo-500/80 to-purple-500/80 border border-sky-400/30'
-                          }`}
-                          style={{ width: `${Math.max(20, item.progress)}%` }}
-                        >
-                          <span className="truncate">{item.totalTasks} Tugas</span>
-                          <span className="font-mono text-[10px] opacity-90">{item.progress}%</span>
+                        <div className="font-semibold text-white text-sm flex items-center gap-1.5 font-sans">
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            item.isDraft ? 'bg-zinc-500 border border-zinc-300' : (item.blockedTasks > 0 ? 'bg-rose-400' : 'bg-emerald-400')
+                          }`} />
+                          {item.pod}
                         </div>
+                        <div className="text-[11px] text-zinc-500 font-mono">{item.forecastLabel}</div>
+                      </div>
+
+                      <div className="col-span-9 h-10 rounded-2xl bg-neutral-900/60 border border-white/5 relative flex items-center px-2 font-sans">
+                        {/* Grid Background */}
+                        <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/[0.03] pointer-events-none" />
+
+                        {/* GANTT BAR: DRAFT PROYEKSI (ABU-ABU DASHED) VS ACTIVE LIVE (NEON GLOW) */}
+                        {item.isDraft ? (
+                          /* DRAFT GHOST FORECAST BAR */
+                          <div
+                            className="relative h-6 rounded-xl px-3 flex items-center justify-between text-xs font-bold text-zinc-300 border border-dashed border-zinc-500/50 bg-gradient-to-r from-zinc-800/80 via-zinc-800/50 to-zinc-900/80 shadow-inner font-sans"
+                            style={{ width: '75%' }}
+                          >
+                            <span className="truncate flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
+                              <span>◌ Est. Beban:</span>
+                              <span className="text-white font-semibold">{item.totalTasks} Tugas</span>
+                            </span>
+                            <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-wider">Simulasi Draft</span>
+                          </div>
+                        ) : (
+                          /* ACTIVE LIVE GANTT BAR */
+                          <div
+                            className={`relative h-6 rounded-xl px-3 flex items-center justify-between text-xs font-bold text-white shadow-lg transition-all duration-500 font-sans ${
+                              item.blockedTasks > 0
+                                ? 'bg-gradient-to-r from-rose-500/80 to-amber-500/80 border border-rose-400/30'
+                                : item.progress === 100
+                                ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/30'
+                                : 'bg-gradient-to-r from-sky-500/80 via-indigo-500/80 to-purple-500/80 border border-sky-400/30'
+                            }`}
+                            style={{ width: `${Math.max(20, item.progress)}%` }}
+                          >
+                            <span className="truncate">{item.totalTasks} Tugas</span>
+                            <span className="font-mono text-[10px] opacity-90">{item.progress}%</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
                 )}
               </div>
+            </div>      </div>
             </div>
           </>
         )}
