@@ -202,10 +202,10 @@ export const PODashboard: React.FC<PODashboardProps> = ({
 
   // 1. Gabungkan data visual Gantt untuk Active vs Draft (Ghost Forecasting vs Live Active)
   const combinedGanttData = React.useMemo(() => {
-    const targetSprint = selectedSprint || activeSprint;
+    const targetSprint = currentSelectedSprint || activeSprint;
     const isViewingDraft = targetSprint?.status === 'draft';
     const pods = ['Marketing', 'Product Builder', 'BA', 'UI/UX Designer', 'General'];
-    const memberCount = Math.max(1, assigneeList.length);
+    const memberCount = Math.max(1, (assigneeList || []).length);
 
     // Jika sedang membuka sprint DRAFT: Buat proyeksi visual forecasting
     if (isViewingDraft) {
@@ -226,8 +226,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
 
     // Filter tugas khusus untuk sprint terpilih
     const sprintTasks = targetSprint?.id
-      ? allTasks.filter((t) => !t.sprint_id || t.sprint_id === targetSprint.id)
-      : allTasks;
+      ? (allTasks || []).filter((t) => !t.sprint_id || t.sprint_id === targetSprint.id)
+      : (allTasks || []);
 
     // Jika SPRINT AKTIF: Gunakan data live pengerjaan tim
     return pods.map((pod) => {
@@ -246,17 +246,17 @@ export const PODashboard: React.FC<PODashboardProps> = ({
         forecastLabel: `${doneTasks}/${podTaskList.length} Tugas Selesai (${progress}%)`
       };
     }).filter((p) => p.totalTasks > 0 || !targetSprint);
-  }, [selectedSprint, activeSprint, allTasks, assigneeList.length, calculateDaysLeft]);
+  }, [currentSelectedSprint, activeSprint, allTasks, assigneeList, calculateDaysLeft]);
 
   // 2. Kalkulasi Smart Velocity Forecasting ETA
   const forecastingResult = React.useMemo(() => {
-    const targetSprint = selectedSprint || activeSprint;
-    if (!targetSprint || allTasks.length === 0) {
+    const targetSprint = currentSelectedSprint || activeSprint;
+    if (!targetSprint || (allTasks || []).length === 0) {
       return { status: 'standby', text: 'Menunggu PL membagikan tugas ke anggota tim...', etaDate: '-' };
     }
 
     const remainingDoD = Math.max(0, totalDoDCount - completedDoDCount);
-    const activeMembersCount = Math.max(1, assigneeList.length);
+    const activeMembersCount = Math.max(1, (assigneeList || []).length);
     // Asumsi 1 member menyelesaikan ~1.5 DoD poin per hari kerja
     const estimatedDaysNeeded = Math.max(1, Math.ceil(remainingDoD / (activeMembersCount * 1.5)));
 
@@ -271,7 +271,7 @@ export const PODashboard: React.FC<PODashboardProps> = ({
         ? `⚠️ Potensi Delay: Beban sisa ${remainingDoD} DoD butuh ~${estimatedDaysNeeded} hari, sisa sprint ${sprintDaysLeft} hari.`
         : `🟢 Tepat Waktu: Diprediksi selesai dalam ~${estimatedDaysNeeded} hari kerja.`
     };
-  }, [selectedSprint, activeSprint, allTasks, totalDoDCount, completedDoDCount, assigneeList.length, calculateDaysLeft]);
+  }, [currentSelectedSprint, activeSprint, allTasks, totalDoDCount, completedDoDCount, assigneeList, calculateDaysLeft]);
 
   // Set ID tugas yang sedang dibuka detailnya (default: hanya tugas dengan Blocker atau Review yang otomatis terbuka)
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(new Set());
