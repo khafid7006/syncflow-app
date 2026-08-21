@@ -1066,9 +1066,12 @@ export const App: React.FC = () => {
       console.log("-> Assignee list loaded:", formattedAssignees);
       setAssigneeList(formattedAssignees);
 
-      // Auto-select anggota pertama jika form belum memilih
+      // Auto-select anggota non-PO jika tersedia, fallback ke anggota pertama
       if (formattedAssignees.length > 0) {
-        setSelectedAssigneeId(formattedAssignees[0].id);
+        const defaultMember = formattedAssignees.find(m => m.role !== 'po') || formattedAssignees[0];
+        if (defaultMember) {
+          setSelectedAssigneeId(defaultMember.id);
+        }
       }
     } catch (err) {
       console.error("Gagal load assignees:", err);
@@ -1724,8 +1727,9 @@ export const App: React.FC = () => {
     );
   }
 
-  // User Profile metadata
-  const userName = profile?.full_name || session.user.email?.split('@')[0] || 'Anggota Tim';
+  // User Profile metadata (Clean Username - Hapus angka duplikat auth/tanda kurung)
+  const rawUserName = profile?.full_name || session?.user?.email?.split('@')[0] || 'Anggota Tim';
+  const userName = rawUserName.replace(/\s*\(\d+\)$/, '').replace(/\s+\d+$/, '').trim();
 
   // =========================================================================
   // MAIN APP CONTAINER (HEADER & ROUTING SWITCHER)

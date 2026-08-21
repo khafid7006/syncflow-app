@@ -487,8 +487,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   onClick={() => setAssignTargetType('individual')}
                   className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                     assignTargetType === 'individual'
-                      ? 'bg-zinc-950 text-white shadow-xs'
-                      : 'text-zinc-500 hover:text-zinc-900'
+                      ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
+                      : 'text-zinc-500 hover:text-zinc-900 font-medium'
                   }`}
                 >
                   👤 Individu
@@ -498,8 +498,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   onClick={() => setAssignTargetType('pod')}
                   className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                     assignTargetType === 'pod'
-                      ? 'bg-zinc-950 text-white shadow-xs'
-                      : 'text-zinc-500 hover:text-zinc-900'
+                      ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
+                      : 'text-zinc-500 hover:text-zinc-900 font-medium'
                   }`}
                 >
                   👥 1 Divisi
@@ -509,8 +509,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   onClick={() => setAssignTargetType('all')}
                   className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                     assignTargetType === 'all'
-                      ? 'bg-zinc-950 text-white shadow-xs'
-                      : 'text-zinc-500 hover:text-zinc-900'
+                      ? 'bg-zinc-950 text-white font-bold shadow-xs border border-zinc-950'
+                      : 'text-zinc-500 hover:text-zinc-900 font-medium'
                   }`}
                 >
                   🌐 Semua Tim
@@ -814,6 +814,45 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                     <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
                   </a>
                 ))
+              )}
+            </div>
+
+            {/* WIDGET: ANGGOTA AKTIF WORKSPACE (MENGISI RUANG KOSONG KOLOM 3) */}
+            <div className="space-y-2 pt-3 border-t border-white/10 font-sans">
+              <div className="flex items-center justify-between text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                <span>Anggota Tim Workspace</span>
+                <span className="font-mono text-white/80">{assigneeList.length} Orang</span>
+              </div>
+
+              {assigneeList.length === 0 ? (
+                <p className="text-xs text-zinc-500 text-center py-2">Belum ada anggota terdaftar.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-0.5">
+                  {assigneeList.map((m) => {
+                    const initial = (m.full_name || 'A').charAt(0).toUpperCase();
+                    const isPO = m.role === 'po';
+                    const isPL = m.role === 'pl';
+                    return (
+                      <div key={m.id || m.email} className="p-2 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between text-xs hover:bg-white/10 transition-colors">
+                        <div className="flex items-center gap-2 truncate max-w-[70%]">
+                          <div className="w-5 h-5 rounded-full bg-white/15 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                            {initial}
+                          </div>
+                          <div className="truncate">
+                            <span className="font-semibold text-white text-[11px] block truncate">{m.full_name}</span>
+                            <span className="text-[9px] text-white/40 block truncate">{m.pod || 'General'}</span>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase shrink-0 ${
+                          isPO ? 'bg-white/20 text-white border border-white/30' :
+                          isPL ? 'bg-white/15 text-zinc-200' : 'bg-white/5 text-zinc-400'
+                        }`}>
+                          {isPO ? 'PO' : isPL ? 'PL' : 'Member'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
