@@ -1196,12 +1196,13 @@ export const App: React.FC = () => {
 
         if (error) throw error;
         if (data.user) {
+          const targetPod = authRole === 'owner' ? 'Management' : pod;
           const newProf: UserProfile = {
             id: data.user.id,
             full_name: fullName,
             email: email,
             role: authRole,
-            pod: pod
+            pod: targetPod
           };
 
           await supabase.from('profiles').upsert(newProf);
@@ -1389,16 +1390,16 @@ export const App: React.FC = () => {
     let targetUserIds: string[] = [];
 
     if (assignTargetType === 'individual') {
-      const targetId = selectedAssigneeId || assigneeList[0]?.id;
+      const targetId = selectedAssigneeId || assigneeList.find(m => m.role !== 'po')?.id || assigneeList[0]?.id;
       if (!targetId) {
         showToast("Pilih anggota tim penerima tugas.");
         return;
       }
       targetUserIds = [targetId];
     } else if (assignTargetType === 'pod') {
-      // Filter seluruh member yang ada di POD terpilih
+      // Filter seluruh member yang ada di POD terpilih (Kecualikan PO)
       targetUserIds = assigneeList
-        .filter(m => (m.pod || '').toLowerCase() === assignTargetPod.toLowerCase())
+        .filter(m => m.role !== 'po' && (m.pod || '').toLowerCase() === assignTargetPod.toLowerCase())
         .map(m => m.id);
 
       if (targetUserIds.length === 0) {
@@ -1406,9 +1407,13 @@ export const App: React.FC = () => {
         return;
       }
     } else if (assignTargetType === 'all') {
-      targetUserIds = assigneeList.map(m => m.id);
+      // Filter seluruh member di workspace ini (Kecualikan PO)
+      targetUserIds = assigneeList
+        .filter(m => m.role !== 'po')
+        .map(m => m.id);
+
       if (targetUserIds.length === 0) {
-        showToast("Belum ada anggota di workspace ini.");
+        showToast("Belum ada anggota (non-PO) di workspace ini.");
         return;
       }
     }
@@ -1662,26 +1667,48 @@ export const App: React.FC = () => {
 
             {isSignUp && (
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-zinc-400 font-medium">Pod / Divisi *</label>
-                  <select
-                    value={pod}
-                    onChange={e => setPod(e.target.value as any)}
-                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans"
-                  >
-                    <option value="Product Builder">Product Builder</option>
-                    <option value="BA">Business Analyst</option>
-                    <option value="QA">QA & Testing</option>
-                    <option value="Marketing">Marketing</option>
-                  </select>
-                </div>
+                {authRole === 'owner' ? (
+                  <div className="space-y-1">
+                    <label className="block text-zinc-400 font-medium text-xs">Pod / Divisi *</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value="Management / Lead"
+                      className="w-full p-2.5 bg-neutral-900 border border-white/10 rounded-xl text-zinc-400 font-sans cursor-not-allowed text-xs font-semibold"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="block text-zinc-400 font-medium text-xs">Pod / Divisi *</label>
+                    <select
+                      value={pod}
+                      onChange={e => setPod(e.target.value as any)}
+                      className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans text-xs cursor-pointer"
+                    >
+                      <option value="Product Builder">Product Builder</option>
+                      <option value="BA">Business Analyst</option>
+                      <option value="UI/UX Designer">UI/UX Designer</option>
+                      <option value="QA">QA & Testing</option>
+                      <option value="Marketing">Marketing</option>
+                      <option value="General">General</option>
+                    </select>
+                  </div>
+                )}
 
                 <div className="space-y-1">
-                  <label className="block text-zinc-400 font-medium">Peran *</label>
+                  <label className="block text-zinc-400 font-medium text-xs">Peran *</label>
                   <select
                     value={authRole}
-                    onChange={e => setAuthRole(e.target.value as any)}
-                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans"
+                    onChange={e => {
+                      const selectedRole = e.target.value as 'member' | 'owner';
+                      setAuthRole(selectedRole);
+                      if (selectedRole === 'owner') {
+                        setPod('Management' as any);
+                      } else {
+                        setPod('Product Builder');
+                      }
+                    }}
+                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans text-xs cursor-pointer"
                   >
                     <option value="member">Member</option>
                     <option value="owner">Project Owner</option>

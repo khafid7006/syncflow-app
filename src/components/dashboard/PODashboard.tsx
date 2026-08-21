@@ -532,13 +532,33 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                     <option value="">Memuat daftar tim...</option>
                   ) : assigneeList.length === 0 ? (
                     <option value="">Belum ada anggota tim terdaftar...</option>
-                  ) : (
-                    assigneeList.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.full_name} — {member.pod} ({member.role.toUpperCase()})
-                      </option>
-                    ))
-                  )}
+                  ) : (() => {
+                    const nonPoMembers = assigneeList.filter(m => m.role !== 'po');
+                    const poMembers = assigneeList.filter(m => m.role === 'po');
+
+                    return (
+                      <>
+                        {nonPoMembers.length > 0 && (
+                          <optgroup label="Anggota Tim & Lead">
+                            {nonPoMembers.map((member) => (
+                              <option key={member.id} value={member.id}>
+                                {member.full_name} — {member.pod} ({member.role.toUpperCase()})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {poMembers.length > 0 && (
+                          <optgroup label="Project Owner (Self Assign)">
+                            {poMembers.map((member) => (
+                              <option key={member.id} value={member.id}>
+                                👤 {member.full_name} (PO)
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </>
+                    );
+                  })()}
                 </select>
               </div>
             ) : assignTargetType === 'pod' ? (
