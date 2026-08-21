@@ -6,13 +6,15 @@ interface CustomGlassDatePickerProps {
   onChange: (val: string) => void;
   presetButtons?: React.ReactNode;
   theme?: 'dark' | 'light';
+  maxDate?: string;
 }
 
 export const CustomGlassDatePicker: React.FC<CustomGlassDatePickerProps> = ({
   value,
   onChange,
   presetButtons,
-  theme = 'light'
+  theme = 'light',
+  maxDate
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 

@@ -211,6 +211,93 @@ export const App: React.FC = () => {
   const [isBlockerModalOpen, setIsBlockerModalOpen] = useState<boolean>(false);
   const [blockerReason, setBlockerReason] = useState<string>('');
 
+  // LIGHT AGILE SPRINT STATES & HANDLERS
+  const [activeSprint, setActiveSprint] = useState<any>(null);
+  const [isSprintModalOpen, setIsSprintModalOpen] = useState<boolean>(false);
+  const [sprintGoalInput, setSprintGoalInput] = useState<string>('');
+  const [sprintStartDate, setSprintStartDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [sprintEndDate, setSprintEndDate] = useState<string>('');
+  const [isSavingSprint, setIsSavingSprint] = useState<boolean>(false);
+
+  // Ambil sprint aktif per workspace
+  const fetchActiveSprint = async (workspaceId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('sprints')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        setActiveSprint(data);
+        setSprintGoalInput(data.goal_title || '');
+        setSprintStartDate(data.start_date || new Date().toISOString().split('T')[0]);
+        setSprintEndDate(data.end_date || '');
+      } else {
+        setActiveSprint(null);
+      }
+    } catch (err) {
+      console.error("Gagal fetch sprint:", err);
+    }
+  };
+
+  // Handler Simpan/Kunci Sprint Baru oleh PO
+  const handleSaveSprintMandate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentWorkspace?.id || !sprintGoalInput.trim() || !sprintEndDate) return;
+    setIsSavingSprint(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('sprints')
+        .upsert({
+          workspace_id: currentWorkspace.id,
+          goal_title: sprintGoalInput.trim(),
+          start_date: sprintStartDate,
+          end_date: sprintEndDate,
+          is_locked: true,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setActiveSprint(data);
+      setIsSprintModalOpen(false);
+      showToast("✓ Sprint Goal berhasil dikunci & dirilis ke Project Leader!");
+    } catch (err: any) {
+      showToast(`Gagal set sprint: ${err.message || err}`);
+    } finally {
+      setIsSavingSprint(false);
+    }
+  };
+
+  // Metrik DoD & Progress Sprint
+  const activeTasksListForSprint = allTasks.length > 0 ? allTasks : memberTasksList;
+  const totalDoDCount = activeTasksListForSprint.reduce(
+    (acc, t) => acc + (t.checklist?.length || 1),
+    0
+  );
+  const completedDoDCount = activeTasksListForSprint.reduce(
+    (acc, t) => acc + (t.checklist?.filter((c: any) => c.done || c.is_checked)?.length || 0),
+    0
+  );
+  const sprintProgressPct =
+    totalDoDCount > 0 ? Math.round((completedDoDCount / totalDoDCount) * 100) : 0;
+
+  // Hitung Sisa Hari Sprint
+  const calculateDaysLeft = (targetDate: string) => {
+    if (!targetDate) return 0;
+    const diff = new Date(targetDate).getTime() - new Date().getTime();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
   // PROFILE & AVATAR CROPPER STATES
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -649,6 +736,7 @@ export const App: React.FC = () => {
       fetchProjectLinks(currentWorkspace.id);
       fetchPOData(currentWorkspace.id);
       fetchWorkspaceAssignees(currentWorkspace.id); // Fetch list anggota baru
+      fetchActiveSprint(currentWorkspace.id);
     }
   }, [currentWorkspace?.id, session?.user?.id]);
 
@@ -2124,6 +2212,12 @@ export const App: React.FC = () => {
             getDeadlineStatus={getDeadlineStatus}
             profile={profile}
             onOpenProfileModal={handleOpenProfileModal}
+            activeSprint={activeSprint}
+            onOpenSprintModal={() => setIsSprintModalOpen(true)}
+            totalDoDCount={totalDoDCount}
+            completedDoDCount={completedDoDCount}
+            sprintProgressPct={sprintProgressPct}
+            calculateDaysLeft={calculateDaysLeft}
           />
         )}
 
@@ -2473,6 +2567,88 @@ export const App: React.FC = () => {
                 {isUploadingAvatar ? 'Memproses...' : 'Terapkan & Simpan'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FORM BUAT SPRINT OLEH PO */}
+      {isSprintModalOpen && (
+        <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 font-sans animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-neutral-900/95 border border-white/15 rounded-3xl p-6 shadow-2xl text-white space-y-5 font-sans animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div>
+                <h4 className="font-bold text-base text-white">Target & Koridor Sprint Baru</h4>
+                <p className="text-[11px] text-zinc-400">Tentukan goal sprint makro untuk Project Leader</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSprintModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSprintMandate} className="space-y-4 font-sans">
+              <div className="space-y-1 font-sans">
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                  Nama / Goal Utama Sprint
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Sprint 1 - Rilis 10 Konten + UI Mockup"
+                  value={sprintGoalInput}
+                  onChange={(e) => setSprintGoalInput(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-neutral-950 px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 font-sans">
+                <div className="space-y-1 font-sans">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    Tanggal Mulai
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={sprintStartDate}
+                    onChange={(e) => setSprintStartDate(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-neutral-950 px-3 py-2 text-xs text-white outline-hidden font-sans cursor-pointer"
+                  />
+                </div>
+
+                <div className="space-y-1 font-sans">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    Batas Akhir (Deadline Sprint)
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={sprintEndDate}
+                    onChange={(e) => setSprintEndDate(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-neutral-950 px-3 py-2 text-xs text-white outline-hidden font-sans cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10 font-sans">
+                <button
+                  type="button"
+                  onClick={() => setIsSprintModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSprint}
+                  className="px-5 py-2 rounded-xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-md cursor-pointer disabled:opacity-50 font-sans"
+                >
+                  {isSavingSprint ? 'Mengunci...' : '🔒 Kunci & Rilis ke Leader'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

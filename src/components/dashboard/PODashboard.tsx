@@ -59,6 +59,12 @@ interface PODashboardProps {
   getDeadlineStatus: (isoString?: string) => string | null;
   profile?: any;
   onOpenProfileModal?: () => void;
+  activeSprint?: any;
+  onOpenSprintModal?: () => void;
+  totalDoDCount?: number;
+  completedDoDCount?: number;
+  sprintProgressPct?: number;
+  calculateDaysLeft?: (targetDate: string) => number;
 }
 
 export const PODashboard: React.FC<PODashboardProps> = ({
@@ -109,6 +115,12 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   getDeadlineStatus,
   profile,
   onOpenProfileModal,
+  activeSprint,
+  onOpenSprintModal,
+  totalDoDCount = 0,
+  completedDoDCount = 0,
+  sprintProgressPct = 0,
+  calculateDaysLeft = () => 0,
 }) => {
   // Set ID tugas yang sedang dibuka detailnya (default: hanya tugas dengan Blocker atau Review yang otomatis terbuka)
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(new Set());
@@ -512,10 +524,66 @@ export const PODashboard: React.FC<PODashboardProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* KOLOM 2 (TENGAH - PUTIH SOLID - 4 KOLOM): BAGI TUGAS BARU */}
+      {/* KOLOM 2 (TENGAH - 4 KOLOM): SPRINT COMMAND HUB & BAGI TUGAS BARU */}
       {/* ========================================================================= */}
-      <div className="lg:col-span-4 flex flex-col justify-between transition-all duration-300 ease-in-out">
+      <div className="lg:col-span-4 flex flex-col justify-between transition-all duration-300 ease-in-out gap-6">
         
+        {/* SPRINT COMMAND & FORECASTING HUB (SISI PO) */}
+        <div className="rounded-[32px] border border-white/10 bg-neutral-950/60 backdrop-blur-2xl p-6 space-y-5 shadow-2xl font-sans">
+          {/* Header Sprint */}
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
+                ● ACTIVE SPRINT MANDATE
+              </span>
+              <h3 className="text-xl font-extrabold text-white tracking-tight mt-1">
+                {activeSprint?.goal_title || 'Belum Ada Sprint Goal yang Aktif'}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenSprintModal}
+              className="px-3.5 py-1.5 rounded-xl border border-white/15 bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition-all cursor-pointer shrink-0 font-sans"
+            >
+              {activeSprint ? '⚙️ Atur Ulang Sprint' : '➕ Buat Sprint Baru'}
+            </button>
+          </div>
+
+          {/* Visual Mini Gantt / Progress Bar */}
+          <div className="space-y-2 font-sans">
+            <div className="flex justify-between text-xs text-zinc-400 font-medium">
+              <span>Progress Sprint (DoD Selesai)</span>
+              <span className="text-white font-bold">{sprintProgressPct}% ({completedDoDCount}/{totalDoDCount} DoD)</span>
+            </div>
+            <div className="w-full h-3 rounded-full bg-neutral-900 border border-white/10 overflow-hidden p-0.5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-400 transition-all duration-500"
+                style={{ width: `${sprintProgressPct}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Forecasting Metric Bento */}
+          <div className="grid grid-cols-2 gap-3 pt-1 font-sans">
+            <div className="p-3.5 rounded-2xl border border-white/10 bg-white/[0.02]">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase">Sisa Waktu Sprint</span>
+              <p className="text-lg font-extrabold text-white mt-1">
+                {activeSprint ? `${calculateDaysLeft(activeSprint.end_date)} Hari Lagi` : '-'}
+              </p>
+              <span className="text-[10px] text-zinc-400 font-mono">Target: {activeSprint?.end_date || '-'}</span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl border border-white/10 bg-white/[0.02]">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase">Status Kelancaran</span>
+              <p className="text-lg font-extrabold text-emerald-400 mt-1">
+                {activeSprint ? (sprintProgressPct >= 50 ? 'On Track ⚡' : 'In Progress ⏳') : 'Standby'}
+              </p>
+              <span className="text-[10px] text-zinc-400 font-mono">Total {filteredMasterTasks.length} Tugas Terdistribusi</span>
+            </div>
+          </div>
+        </div>
+
+        {/* BAGI TUGAS BARU CONTAINER */}
         <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
@@ -538,6 +606,20 @@ export const PODashboard: React.FC<PODashboardProps> = ({
           </div>
 
           <form onSubmit={onCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
+            {/* SPRINT GUARDRAIL BOX UNTUK PL/PO */}
+            {activeSprint && (
+              <div className="p-3.5 rounded-2xl border border-emerald-500/20 bg-emerald-950/90 text-emerald-300 text-xs flex items-center justify-between mb-2 font-sans shadow-md">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-emerald-400">
+                    🎯 Arahan Target PO:
+                  </span>
+                  <p className="font-semibold text-white">{activeSprint.goal_title}</p>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 shrink-0 text-emerald-200">
+                  Maks Deadline: {activeSprint.end_date}
+                </span>
+              </div>
+            )}
             {/* 1. TOGGLE MODE PENUGASAN */}
             <div className="space-y-1.5 font-sans">
               <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
@@ -685,6 +767,7 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               theme="light"
               value={newAssignDueDate}
               onChange={setNewAssignDueDate}
+              maxDate={activeSprint?.end_date}
               presetButtons={
                 <div className="flex items-center gap-1 font-sans">
                   <button
