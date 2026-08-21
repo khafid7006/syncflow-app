@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   Activity, Sparkles, Edit3, AlertTriangle, RotateCcw, Clock, ExternalLink, 
-  CheckCircle, Plus, Check, Send, UserPlus 
+  CheckCircle, Plus, Check, Send, UserPlus, Maximize2, Minimize2 
 } from 'lucide-react';
 import { Workspace, MemberTask, ProjectLink } from '../../types';
 import { CustomGlassSelect, GlassSelectOption } from '../ui/CustomGlassSelect';
@@ -106,6 +106,9 @@ export const PODashboard: React.FC<PODashboardProps> = ({
 }) => {
   // Set ID tugas yang sedang dibuka detailnya (default: hanya tugas dengan Blocker atau Review yang otomatis terbuka)
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(new Set());
+
+  // Zen Focus Mode State for PO Task Drafting
+  const [isPoFocusMode, setIsPoFocusMode] = React.useState<boolean>(false);
 
   // Auto-expand Blocker atau Review task saat list berubah
   React.useEffect(() => {
@@ -468,13 +471,24 @@ export const PODashboard: React.FC<PODashboardProps> = ({
       <div className="lg:col-span-4 flex flex-col justify-between transition-all duration-300 ease-in-out">
         
         <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[460px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-zinc-500">
-              Penugasan Workspace: {currentWorkspace?.name}
-            </span>
-            <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-              Bagi Tugas Baru
-            </h3>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <span className="text-xs font-medium text-zinc-500 block truncate max-w-[180px] sm:max-w-[220px]">
+                Penugasan Workspace: {currentWorkspace?.name}
+              </span>
+              <h3 className="text-base font-bold text-zinc-950 tracking-tight">
+                Bagi Tugas Baru
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPoFocusMode(true)}
+              className="text-[10px] font-semibold text-zinc-600 hover:text-zinc-950 flex items-center gap-1 px-2.5 py-1 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 transition-all cursor-pointer shadow-2xs shrink-0"
+              title="Buka Zen Focus Mode"
+            >
+              <Maximize2 className="w-3 h-3 text-zinc-500" />
+              <span>⛶ Mode Fokus</span>
+            </button>
           </div>
 
           <form onSubmit={onCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
@@ -884,6 +898,306 @@ export const PODashboard: React.FC<PODashboardProps> = ({
 
       </div>
 
+      {/* ========================================================================= */}
+      {/* ZEN FOCUS MODE MODAL (MODE DRAFTING TUGAS PO FULLSCREEN) */}
+      {/* ========================================================================= */}
+      {isPoFocusMode && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
+          <div className="max-w-2xl w-full bg-neutral-900 border border-white/15 rounded-3xl p-6 sm:p-8 shadow-2xl text-white space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col justify-between">
+            {/* Header Zen Focus */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold uppercase tracking-wider">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Zen Focus Mode — Drafting Penugasan</span>
+                </div>
+                <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight mt-0.5">
+                  Bagi Tugas Baru ({currentWorkspace?.name})
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPoFocusMode(false)}
+                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Minimize Mode Fokus"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>Tutup Mode Fokus</span>
+              </button>
+            </div>
+
+            {/* Form Content in Zen Focus */}
+            <form onSubmit={(e) => {
+              onCreateNewTask(e);
+              setIsPoFocusMode(false);
+            }} className="space-y-4 flex-1 font-sans">
+
+              {/* 1. TOGGLE MODE PENUGASAN */}
+              <div className="space-y-1.5 font-sans">
+                <label className="block text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+                  Target Penerima Tugas
+                </label>
+                <div className="grid grid-cols-3 gap-1 p-1 bg-neutral-950 border border-white/10 rounded-xl text-[11px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setAssignTargetType('individual')}
+                    className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                      assignTargetType === 'individual'
+                        ? 'bg-white text-zinc-950 font-bold shadow-xs'
+                        : 'text-zinc-400 hover:text-white font-medium'
+                    }`}
+                  >
+                    👤 Individu
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignTargetType('pod')}
+                    className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                      assignTargetType === 'pod'
+                        ? 'bg-white text-zinc-950 font-bold shadow-xs'
+                        : 'text-zinc-400 hover:text-white font-medium'
+                    }`}
+                  >
+                    👥 1 Divisi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignTargetType('all')}
+                    className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                      assignTargetType === 'all'
+                        ? 'bg-white text-zinc-950 font-bold shadow-xs'
+                        : 'text-zinc-400 hover:text-white font-medium'
+                    }`}
+                  >
+                    🌐 Semua Tim
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. DYNAMIC INPUT SELECTOR BERDASARKAN MODE TARGET */}
+              {assignTargetType === 'individual' ? (
+                <div className="space-y-1 font-sans">
+                  <label className="block text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Pilih Anggota Tim</label>
+                  <CustomGlassSelect
+                    theme="dark"
+                    disabled={isLoadingAssignees || assigneeList.length === 0}
+                    value={selectedAssigneeId}
+                    onChange={setSelectedAssigneeId}
+                    options={(() => {
+                      const nonPoMembers = assigneeList.filter(m => m.role !== 'po');
+                      const poMembers = assigneeList.filter(m => m.role === 'po');
+
+                      const memberOptions: GlassSelectOption[] = [];
+                      if (nonPoMembers.length > 0) {
+                        memberOptions.push({ value: 'hdr-1', label: 'Anggota Tim & Lead', isHeader: true });
+                        nonPoMembers.forEach(m => {
+                          memberOptions.push({
+                            value: m.id,
+                            label: m.full_name,
+                            sublabel: `${m.pod} • ${m.role.toUpperCase()}`,
+                            badge: m.role.toUpperCase()
+                          });
+                        });
+                      }
+                      if (poMembers.length > 0) {
+                        memberOptions.push({ value: 'hdr-2', label: 'Project Owner (Self Assign)', isHeader: true });
+                        poMembers.forEach(m => {
+                          memberOptions.push({
+                            value: m.id,
+                            label: `👤 ${m.full_name}`,
+                            sublabel: `${m.pod} • PO`,
+                            badge: 'PO'
+                          });
+                        });
+                      }
+                      return memberOptions;
+                    })()}
+                    placeholder={isLoadingAssignees ? "Memuat daftar tim..." : "Pilih Anggota Tim..."}
+                  />
+                </div>
+              ) : assignTargetType === 'pod' ? (
+                <div className="space-y-1 font-sans">
+                  <label className="block text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+                    Pilih Divisi / POD Target
+                  </label>
+                  <CustomGlassSelect
+                    theme="dark"
+                    value={selectedTargetPod}
+                    onChange={setSelectedTargetPod}
+                    options={[
+                      { value: 'Marketing', label: 'Marketing', badge: 'Divisi' },
+                      { value: 'Product Builder', label: 'Product Builder', badge: 'Divisi' },
+                      { value: 'BA', label: 'BA (Business Analyst)', badge: 'Divisi' },
+                      { value: 'UI/UX Designer', label: 'UI/UX Designer', badge: 'Divisi' },
+                      { value: 'QA', label: 'QA', badge: 'Divisi' },
+                      { value: 'General', label: 'General', badge: 'Divisi' },
+                    ]}
+                    placeholder="Pilih Divisi Target..."
+                  />
+                </div>
+              ) : null}
+
+              {/* Judul Tugas Input */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Judul Tugas</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Nama tugas..."
+                  value={newAssignTaskTitle}
+                  onChange={e => setNewAssignTaskTitle(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              {/* Deskripsi Brief Textarea (Lapang di Zen Mode) */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
+                  Deskripsi / Brief Singkat
+                </label>
+                <textarea
+                  rows={5}
+                  placeholder="Jelaskan detail brief atau konteks pengerjaan..."
+                  value={newAssignDescription}
+                  onChange={e => setNewAssignDescription(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-neutral-950 p-3 text-xs text-white placeholder-zinc-500 outline-hidden focus:border-white/30 min-h-[120px] resize-y font-sans"
+                />
+              </div>
+
+              {/* Hybrid Date Picker */}
+              <CustomGlassDatePicker
+                theme="dark"
+                value={newAssignDueDate}
+                onChange={setNewAssignDueDate}
+                presetButtons={
+                  <div className="flex items-center gap-1 font-sans">
+                    <button
+                      type="button"
+                      onClick={() => onApplyDeadlinePreset(0, 'create')}
+                      className="text-[10px] bg-white/10 hover:bg-white/20 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors cursor-pointer"
+                    >
+                      Hari Ini (17:00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onApplyDeadlinePreset(1, 'create')}
+                      className="text-[10px] bg-white/10 hover:bg-white/20 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors cursor-pointer"
+                    >
+                      Besok (17:00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onApplyDeadlinePreset(3, 'create')}
+                      className="text-[10px] bg-white/10 hover:bg-white/20 text-zinc-300 px-2 py-0.5 rounded border border-white/10 transition-colors cursor-pointer"
+                    >
+                      3 Hari
+                    </button>
+                  </div>
+                }
+              />
+
+              {/* Prioritas Toggle */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+                  Prioritas Tugas
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewAssignPriority('normal')}
+                    className={`py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                      newAssignPriority === 'normal'
+                        ? 'bg-white text-zinc-950 border-white shadow-xs'
+                        : 'bg-neutral-950 text-zinc-400 border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    📌 Normal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewAssignPriority('urgent')}
+                    className={`py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                      newAssignPriority === 'urgent'
+                        ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
+                        : 'bg-neutral-950 text-zinc-400 border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    🔥 Urgent
+                  </button>
+                </div>
+              </div>
+
+              {/* Checklist DoD (Hingga 10 poin) */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] font-medium text-zinc-400 uppercase tracking-wider">
+                    Checklist DoD ({dodPoints.length}/10 Poin)
+                  </label>
+                  {dodPoints.length < 10 && (
+                    <button
+                      type="button"
+                      onClick={onAddDodPoint}
+                      className="text-[10px] font-bold text-white hover:text-zinc-300 flex items-center gap-0.5 cursor-pointer transition-colors duration-300"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>+ Tambah Poin</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
+                  {dodPoints.map((point, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        placeholder={`DoD ${idx + 1}...`}
+                        value={point}
+                        onChange={e => onDodPointChange(idx, e.target.value)}
+                        className="flex-1 px-3 py-1.5 bg-neutral-950 border border-white/10 rounded-lg text-[11px] text-white font-sans focus:outline-hidden focus:border-white/30"
+                      />
+                      {dodPoints.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveDodPoint(idx)}
+                          className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors text-xs font-bold shrink-0"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={!selectedAssigneeId || !newAssignTaskTitle.trim()}
+                className={`w-full py-3.5 font-bold text-xs rounded-full shadow-lg flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
+                  isTaskSubmitSuccess
+                    ? 'bg-emerald-600 text-white cursor-default'
+                    : selectedAssigneeId && newAssignTaskTitle.trim()
+                      ? 'bg-white hover:bg-zinc-200 text-zinc-950 cursor-pointer'
+                      : 'bg-white/10 text-white/40 cursor-not-allowed'
+                }`}
+              >
+                {isTaskSubmitSuccess ? (
+                  <>
+                    <Check className="w-4 h-4 text-white animate-bounce" />
+                    <span>✓ Tugas Terkirim</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Kirim Tugas (Zen Focus Mode)</span>
+                  </>
+                )}
+              </button>
+
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 };

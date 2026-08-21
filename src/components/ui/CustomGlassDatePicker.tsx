@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface CustomGlassDatePickerProps {
   value: string; // ISO / YYYY-MM-DDTHH:mm string
@@ -7,6 +7,37 @@ interface CustomGlassDatePickerProps {
   presetButtons?: React.ReactNode;
   theme?: 'dark' | 'light';
 }
+
+const parseInputToISO = (str: string): string | null => {
+  if (!str.trim()) return null;
+  // Match YYYY-MM-DD HH:mm or YYYY-MM-DDTHH:mm
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  if (isoMatch) {
+    const [_, y, m, d, h, min] = isoMatch;
+    return `${y}-${m}-${d}T${h}:${min}`;
+  }
+  // Match DD/MM/YYYY HH:mm
+  const idMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[\s](\d{2}):(\d{2})/);
+  if (idMatch) {
+    const [_, d, m, y, h, min] = idMatch;
+    const padD = d.padStart(2, '0');
+    const padM = m.padStart(2, '0');
+    return `${y}-${padM}-${padD}T${h}:${min}`;
+  }
+  return null;
+};
+
+const formatValueToInputText = (isoVal: string): string => {
+  if (!isoVal) return '';
+  const d = new Date(isoVal);
+  if (isNaN(d.getTime())) return isoVal;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}`;
+};
 
 export const CustomGlassDatePicker: React.FC<CustomGlassDatePickerProps> = ({
   value,
@@ -16,6 +47,7 @@ export const CustomGlassDatePicker: React.FC<CustomGlassDatePickerProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [inputText, setInputText] = useState(formatValueToInputText(value));
 
   // Parsing tanggal aktif atau default hari ini
   const initialDate = value ? new Date(value) : new Date();
@@ -31,8 +63,9 @@ export const CustomGlassDatePicker: React.FC<CustomGlassDatePickerProps> = ({
     value && !isNaN(initialDate.getTime()) ? String(initialDate.getMinutes()).padStart(2, '0') : '00'
   );
 
-  // Sync internal states when value prop changes externally (e.g. Preset buttons click)
+  // Sync internal states when value prop changes externally (e.g. Preset buttons click or typing)
   useEffect(() => {
+    setInputText(formatValueToInputText(value));
     if (value) {
       const d = new Date(value);
       if (!isNaN(d.getTime())) {
@@ -82,27 +115,18 @@ export const CustomGlassDatePicker: React.FC<CustomGlassDatePickerProps> = ({
     emitChange(selectedDay, hours, minutes);
   };
 
-  const formatDisplayValue = () => {
-    if (!value) return 'Tentukan tenggat waktu...';
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return 'Tentukan tenggat waktu...';
-    return new Intl.DateTimeFormat('id-ID', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(d);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setInputText(raw);
+    const parsedISO = parseInputToISO(raw);
+    if (parsedISO) {
+      onChange(parsedISO);
+    }
   };
-
-  const triggerBgClasses = theme === 'dark'
-    ? 'bg-neutral-950 border-white/10 hover:bg-neutral-900 text-white'
-    : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 text-zinc-900';
 
   return (
     <div className="relative w-full font-sans text-xs" ref={containerRef}>
-      {/* TRIGGER BUTTON (PRESET & INPUT FIELD) */}
+      {/* TRIGGER FIELD (MANUAL TYPING TEXT INPUT + CALENDAR TOGGLE ICON) */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <label className={`block text-[10px] font-semibold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
@@ -111,24 +135,38 @@ export const CustomGlassDatePicker: React.FC<CustomGlassDatePickerProps> = ({
           {presetButtons}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer text-xs font-medium ${triggerBgClasses}`}
-        >
-          <div className="flex items-center gap-2 truncate">
-            <Calendar className={`w-3.5 h-3.5 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}/>
-            <span className={value ? (theme === 'dark' ? 'text-white font-semibold' : 'text-zinc-900 font-semibold') : 'text-zinc-400'}>
-              {formatDisplayValue()}
-            </span>
-          </div>
-          <Clock className="w-3.5 h-3.5 text-zinc-400"/>
-        </button>
+        <div className="relative flex items-center w-full">
+          <input
+            type="text"
+            value={inputText}
+            onChange={handleInputChange}
+            placeholder="YYYY-MM-DD HH:mm (Misal: 2026-08-25 17:00)"
+            className={`w-full p-2.5 pr-10 rounded-xl border font-sans text-xs font-medium transition-all focus:outline-hidden ${
+              theme === 'dark'
+                ? 'bg-neutral-950 border-white/10 text-white placeholder-zinc-500 focus:border-white/30'
+                : 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder-zinc-400 focus:border-zinc-400'
+            }`}
+          />
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className={`absolute right-2 p-1 rounded-lg transition-all cursor-pointer ${
+              isOpen
+                ? 'bg-white/20 text-white'
+                : theme === 'dark'
+                  ? 'text-zinc-400 hover:text-white hover:bg-white/10'
+                  : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200'
+            }`}
+            title="Buka/Tutup Kalender Visual"
+          >
+            <Calendar className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      {/* FLOATING DARK FROSTED GLASS CALENDAR POPOVER */}
+      {/* FLOATING SIDE POPOVER (MELAYANG DI SEBELAH KANAN / FLOATING SIDE) */}
       {isOpen && (
-        <div className="absolute left-0 sm:right-0 mt-2 w-72 rounded-2xl border border-white/15 bg-zinc-950/95 backdrop-blur-2xl p-4 shadow-2xl z-50 text-white space-y-3.5 font-sans">
+        <div className="absolute z-50 left-0 sm:left-full sm:ml-3 top-0 w-72 rounded-2xl border border-white/20 bg-zinc-950/95 backdrop-blur-2xl p-4 shadow-2xl text-white space-y-3.5 font-sans animate-in fade-in zoom-in-95 duration-150">
           {/* Header Bulan & Navigasi */}
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-white">
