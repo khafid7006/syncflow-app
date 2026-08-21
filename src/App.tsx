@@ -343,6 +343,94 @@ export const App: React.FC = () => {
     }
   };
 
+  // 1. SAFE DATE HELPER (MENCEGAH WHITE SCREEN ERROR)
+  const safeGetDate = (dateStr?: string | null): Date | null => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const safeCalculateDaysLeft = (targetDate?: string | null): number => {
+    const d = safeGetDate(targetDate);
+    if (!d) return 0;
+    const diff = d.getTime() - new Date().getTime();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  // 2. FULL CRUD SPRINT HANDLERS
+  const handleSelectSprint = (sprint: any) => {
+    if (!sprint) return;
+    setSelectedSprintId(sprint.id);
+  };
+
+  const handleOpenEditSprint = (sprint: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!sprint) return;
+    setEditingSprintId(sprint.id);
+    setSprintGoalInput(sprint.goal_title || '');
+    setSprintBriefNotes(sprint.brief_notes || '');
+    setSprintDocUrl(sprint.document_url || '');
+    setSprintDocName(sprint.document_name || '');
+    setSprintStartDate(sprint.start_date || new Date().toISOString().split('T')[0]);
+    setSprintEndDate(sprint.end_date || '');
+    setIsSprintDrawerOpen(true);
+  };
+
+  const handleOpenCreateSprint = () => {
+    setEditingSprintId(null);
+    setSprintGoalInput('');
+    setSprintBriefNotes('');
+    setSprintDocUrl('');
+    setSprintDocName('');
+    setSprintStartDate(new Date().toISOString().split('T')[0]);
+    setSprintEndDate('');
+    setIsSprintDrawerOpen(true);
+  };
+
+  const handleDeleteSprint = async (sprintId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm("Apakah Anda yakin ingin menghapus sprint ini? Tugas yang terkait akan dipindahkan ke backlog.")) return;
+
+    try {
+      const { error } = await supabase.from('sprints').delete().eq('id', sprintId);
+      if (error) throw error;
+
+      showToast("✓ Sprint berhasil dihapus.");
+      
+      const remaining = sprintsList.filter(s => s.id !== sprintId);
+      setSprintsList(remaining);
+      if (selectedSprintId === sprintId) {
+        setSelectedSprintId(remaining.length > 0 ? remaining[0].id : 'all');
+      }
+    } catch (err: any) {
+      showToast(`Gagal menghapus sprint: ${err.message || err}`);
+    }
+  };
+
+  const handleToggleSprintStatus = async (sprintId: string, newStatus: 'draft' | 'active' | 'completed') => {
+    try {
+      if (newStatus === 'active' && currentWorkspace?.id) {
+        await supabase
+          .from('sprints')
+          .update({ status: 'draft' })
+          .eq('workspace_id', currentWorkspace.id)
+          .eq('status', 'active');
+      }
+
+      const { error } = await supabase
+        .from('sprints')
+        .update({ status: newStatus, is_locked: newStatus === 'active' })
+        .eq('id', sprintId);
+
+      if (error) throw error;
+
+      showToast(`✓ Status sprint diubah menjadi ${newStatus.toUpperCase()}`);
+      if (currentWorkspace?.id) fetchAllSprints(currentWorkspace.id);
+    } catch (err: any) {
+      showToast(`Gagal update status: ${err.message || err}`);
+    }
+  };
+
   // Metrik DoD & Progress Sprint
   const activeTasksListForSprint = allTasks.length > 0 ? allTasks : memberTasksList;
   const totalDoDCount = activeTasksListForSprint.reduce(
@@ -355,13 +443,6 @@ export const App: React.FC = () => {
   );
   const sprintProgressPct =
     totalDoDCount > 0 ? Math.round((completedDoDCount / totalDoDCount) * 100) : 0;
-
-  // Hitung Sisa Hari Sprint
-  const calculateDaysLeft = (targetDate: string) => {
-    if (!targetDate) return 0;
-    const diff = new Date(targetDate).getTime() - new Date().getTime();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  };
 
   // PROFILE & AVATAR CROPPER STATES
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
@@ -2305,7 +2386,13 @@ export const App: React.FC = () => {
             totalDoDCount={totalDoDCount}
             completedDoDCount={completedDoDCount}
             sprintProgressPct={sprintProgressPct}
-            calculateDaysLeft={calculateDaysLeft}
+            safeGetDate={safeGetDate}
+            calculateDaysLeft={safeCalculateDaysLeft}
+            handleSelectSprint={handleSelectSprint}
+            handleOpenEditSprint={handleOpenEditSprint}
+            handleOpenCreateSprint={handleOpenCreateSprint}
+            handleDeleteSprint={handleDeleteSprint}
+            handleToggleSprintStatus={handleToggleSprintStatus}
             isPlRole={isPlRole}
             activeWorkspaceRole={activeWorkspaceRole}
             sprintStartDate={sprintStartDate}

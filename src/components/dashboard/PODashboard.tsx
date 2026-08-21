@@ -73,7 +73,13 @@ interface PODashboardProps {
   totalDoDCount?: number;
   completedDoDCount?: number;
   sprintProgressPct?: number;
-  calculateDaysLeft?: (targetDate: string) => number;
+  safeGetDate?: (dateStr?: string | null) => Date | null;
+  calculateDaysLeft?: (targetDate?: string | null) => number;
+  handleSelectSprint?: (sprint: any) => void;
+  handleOpenEditSprint?: (sprint: any, e?: React.MouseEvent) => void;
+  handleOpenCreateSprint?: () => void;
+  handleDeleteSprint?: (sprintId: string, e?: React.MouseEvent) => void;
+  handleToggleSprintStatus?: (sprintId: string, newStatus: 'draft' | 'active' | 'completed') => void;
   isPlRole?: boolean;
   activeWorkspaceRole?: string;
   sprintStartDate?: string;
@@ -160,7 +166,13 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   totalDoDCount = 0,
   completedDoDCount = 0,
   sprintProgressPct = 0,
+  safeGetDate = (str) => (str ? new Date(str) : null),
   calculateDaysLeft = () => 0,
+  handleSelectSprint = () => {},
+  handleOpenEditSprint = () => {},
+  handleOpenCreateSprint = () => {},
+  handleDeleteSprint = () => {},
+  handleToggleSprintStatus = () => {},
   isPlRole = false,
   activeWorkspaceRole = 'member',
   sprintStartDate = '',
@@ -330,15 +342,16 @@ export const PODashboard: React.FC<PODashboardProps> = ({
     const isCurrentActiveMonth =
       new Date().getMonth() === month && new Date().getFullYear() === year;
 
-    // Helper posisi persentase horizontal bar Gantt
-    const getBarPosition = (startDateStr: string, endDateStr: string) => {
+    // Helper posisi persentase horizontal bar Gantt yang tahan nilai invalid/null
+    const getBarPosition = (startDateStr?: string | null, endDateStr?: string | null) => {
       if (!startDateStr || !endDateStr) return { left: '0%', width: '100%' };
-      const sDate = new Date(startDateStr);
-      const eDate = new Date(endDateStr);
+      const sDate = safeGetDate(startDateStr);
+      const eDate = safeGetDate(endDateStr);
+      if (!sDate || !eDate) return { left: '0%', width: '100%' };
 
       const startDay = Math.max(1, Math.min(daysInMonth, sDate.getDate()));
       const endDay = Math.max(startDay, Math.min(daysInMonth, eDate.getDate()));
-      const duration = endDay - startDay + 1;
+      const duration = Math.max(1, endDay - startDay + 1);
 
       const leftPct = ((startDay - 1) / daysInMonth) * 100;
       const widthPct = Math.max(3, (duration / daysInMonth) * 100);
@@ -373,12 +386,12 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               </button>
             </div>
 
-            {/* Pill Filter Sprint */}
-            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar font-sans">
+            {/* Pill Filter & Switcher Sprint dengan Tombol Cepat Edit & Hapus */}
+            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar font-sans py-0.5">
               <button
                 type="button"
                 onClick={() => setSelectedSprintId && setSelectedSprintId('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer font-sans ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer font-sans ${
                   selectedSprintId === 'all'
                     ? 'bg-white text-zinc-950 shadow-md font-bold'
                     : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/5'
@@ -386,21 +399,52 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               >
                 Semua Sprint (Overview)
               </button>
-              {sprintsList.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSelectedSprintId && setSelectedSprintId(s.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 font-sans ${
-                    selectedSprintId === s.id
-                      ? 'bg-white text-zinc-950 shadow-md font-bold'
-                      : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/5'
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${s.status === 'active' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                  <span className="truncate max-w-[140px] font-sans">{s.goal_title}</span>
-                </button>
-              ))}
+
+              {sprintsList.map((s) => {
+                const isSelected = selectedSprintId === s.id;
+                return (
+                  <div key={s.id} className="relative group shrink-0 font-sans">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSprint(s)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer font-sans ${
+                        isSelected
+                          ? 'bg-white text-zinc-950 shadow-md font-bold'
+                          : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/5'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${s.status === 'active' ? 'bg-emerald-400' : s.status === 'completed' ? 'bg-zinc-500' : 'bg-amber-400'}`} />
+                      <span className="truncate max-w-[130px] font-sans">{s.goal_title}</span>
+                      
+                      {/* Aksi Cepat Edit & Delete pada Hover Chip */}
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ml-1 pl-1 border-l border-white/20 font-sans">
+                        <span
+                          onClick={(e) => handleOpenEditSprint(s, e)}
+                          className="p-0.5 text-[10px] text-zinc-400 hover:text-white hover:bg-white/10 rounded cursor-pointer"
+                          title="Edit Sprint"
+                        >
+                          ✏️
+                        </span>
+                        <span
+                          onClick={(e) => handleDeleteSprint(s.id, e)}
+                          className="p-0.5 text-[10px] text-rose-400 hover:text-rose-300 hover:bg-white/10 rounded cursor-pointer"
+                          title="Hapus Sprint"
+                        >
+                          🗑️
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={handleOpenCreateSprint}
+                className="px-3 py-1.5 rounded-xl border border-dashed border-white/20 hover:border-white/40 text-xs font-bold text-zinc-300 hover:text-white transition-all shrink-0 cursor-pointer font-sans"
+              >
+                + Tambah Sprint Baru
+              </button>
             </div>
           </div>
 
@@ -422,15 +466,15 @@ export const PODashboard: React.FC<PODashboardProps> = ({
           <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
             <div>
               <h3 className="text-lg font-bold text-white tracking-tight font-sans">
-                Peta Jalan & Distribusi Eksekusi Bulanan
+                Timeline & Roadmap Bulanan
               </h3>
               <p className="text-xs text-zinc-400 font-sans">
-                Visualisasi roadmap sprint dan alokasi beban divisi selama 1 bulan penuh
+                Monitoring jadwal sprint dan alokasi beban divisi selama 1 bulan penuh
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs font-mono text-zinc-400 font-sans">
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Sprint Aktif</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-zinc-600 border border-dashed border-zinc-400" /> Sprint Draft</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Sprint Draft</span>
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-400" /> Alokasi POD</span>
             </div>
           </div>
@@ -439,8 +483,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
           <div className="space-y-4 overflow-x-auto custom-scrollbar pb-2 font-sans">
             {/* Header Tanggal 1 .. 31 */}
             <div className="flex items-center min-w-[800px] text-xs font-mono text-zinc-400 border-b border-white/5 pb-2 font-sans">
-              <div className="w-44 shrink-0 font-bold uppercase tracking-wider text-zinc-300 font-sans">Level / Divisi</div>
-              <div className="flex-1 grid gap-1 relative text-center" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }}>
+              <div className="w-48 shrink-0 font-bold uppercase tracking-wider text-zinc-300 font-sans">Entitas</div>
+              <div className="flex-1 grid gap-1 relative text-center font-sans" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }}>
                 {monthDays.map((day) => (
                   <div
                     key={day}
@@ -459,32 +503,57 @@ export const PODashboard: React.FC<PODashboardProps> = ({
             {/* SECTION 1: SPRINT ROADMAP BARS */}
             <div className="space-y-2.5 min-w-[800px] border-b border-white/5 pb-4 font-sans">
               <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono">
-                Master Sprint Roadmap
+                Sprint Roadmap:
               </div>
               {sprintsList.map((s) => {
                 const pos = getBarPosition(s.start_date, s.end_date);
                 const isActive = s.status === 'active';
 
                 return (
-                  <div key={s.id} className="flex items-center font-sans">
-                    <div className="w-44 shrink-0 pr-3 text-xs font-semibold text-zinc-300 truncate font-sans">
-                      {s.goal_title}
+                  <div key={s.id} className="flex items-center group font-sans">
+                    <div className="w-48 shrink-0 pr-3 flex items-center justify-between font-sans">
+                      <span
+                        onClick={() => handleSelectSprint(s)}
+                        className="text-xs font-semibold text-white truncate cursor-pointer hover:text-emerald-300 transition-colors font-sans"
+                      >
+                        {s.goal_title}
+                      </span>
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 font-sans">
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenEditSprint(s, e)}
+                          className="text-[11px] text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                          title="Edit Sprint"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteSprint(s.id, e)}
+                          className="text-[11px] text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                          title="Hapus Sprint"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
+
                     <div className="flex-1 h-8 rounded-xl bg-neutral-900/60 border border-white/5 relative flex items-center px-1 font-sans">
                       {/* Grid Lines */}
                       <div className="absolute inset-0 grid divide-x divide-white/[0.02]" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }} />
                       
                       {/* Sprint Bar */}
                       <div
-                        className={`absolute h-6 rounded-lg px-3 flex items-center justify-between text-xs font-bold text-white shadow-md transition-all font-sans ${
+                        onClick={() => handleSelectSprint(s)}
+                        className={`absolute h-6 rounded-lg px-3 flex items-center justify-between text-xs font-bold text-white shadow-md transition-all cursor-pointer font-sans ${
                           isActive
                             ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
-                            : 'bg-gradient-to-r from-zinc-800/80 to-zinc-900/80 border border-dashed border-zinc-500/50 text-zinc-300'
+                            : 'bg-gradient-to-r from-amber-500/50 to-zinc-800/80 border border-dashed border-amber-400/40 text-amber-200'
                         }`}
                         style={{ left: pos.left, width: pos.width }}
                       >
                         <span className="truncate font-sans">{s.goal_title}</span>
-                        <span className="font-mono text-[9px] opacity-80 uppercase">{s.status}</span>
+                        <span className="font-mono text-[9px] uppercase opacity-90">{s.status}</span>
                       </div>
                     </div>
                   </div>
@@ -495,7 +564,7 @@ export const PODashboard: React.FC<PODashboardProps> = ({
             {/* SECTION 2: POD / DIVISI ALLOCATION BARS */}
             <div className="space-y-2.5 min-w-[800px] pt-2 font-sans">
               <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono">
-                Distribusi Aktivitas Divisi
+                Aktivitas Divisi POD:
               </div>
               {['Marketing', 'Product Builder', 'BA', 'UI/UX Designer', 'General'].map((pod) => {
                 const podTasks = activeTasksList.filter((t) => (t.pod || 'General') === pod);
@@ -504,8 +573,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
 
                 return (
                   <div key={pod} className="flex items-center font-sans">
-                    <div className="w-44 shrink-0 pr-3 font-sans">
-                      <div className="text-xs font-semibold text-white truncate font-sans">{pod}</div>
+                    <div className="w-48 shrink-0 pr-3 font-sans">
+                      <div className="text-xs font-semibold text-zinc-300 truncate font-sans">{pod}</div>
                       <div className="text-[10px] text-zinc-500 font-mono">{podTasks.length} Tugas</div>
                     </div>
 
@@ -542,8 +611,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               {/* Header Drawer */}
               <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
                 <div>
-                  <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest font-bold">
-                    SPRINT DETAILS & BRIEFING
+                  <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest font-bold font-sans">
+                    SPRINT CONTROL & BRIEFING
                   </span>
                   <h3 className="text-xl font-extrabold text-white mt-1 font-sans">
                     {currentSelectedSprint?.goal_title || 'Atur Sprint Baru'}
@@ -557,6 +626,61 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   ✕
                 </button>
               </div>
+
+              {/* Status Badge & Toggle Actions */}
+              {currentSelectedSprint && (
+                <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] space-y-3 font-sans">
+                  <div className="flex items-center justify-between text-xs font-sans">
+                    <span className="text-zinc-400 font-sans">Status Sprint Saat Ini:</span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                      currentSelectedSprint.status === 'active'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                        : currentSelectedSprint.status === 'completed'
+                        ? 'bg-zinc-500/20 text-zinc-400 border border-zinc-500/40'
+                        : 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
+                    }`}>
+                      {currentSelectedSprint.status}
+                    </span>
+                  </div>
+
+                  {/* Toggle Status Buttons */}
+                  <div className="grid grid-cols-3 gap-2 font-sans pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSprintStatus(currentSelectedSprint.id, 'draft')}
+                      className={`py-1.5 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer font-sans ${
+                        currentSelectedSprint.status === 'draft'
+                          ? 'bg-amber-400 text-zinc-950 border-amber-300 font-bold'
+                          : 'bg-white/5 text-zinc-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      Set Draft
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSprintStatus(currentSelectedSprint.id, 'active')}
+                      className={`py-1.5 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer font-sans ${
+                        currentSelectedSprint.status === 'active'
+                          ? 'bg-emerald-400 text-zinc-950 border-emerald-300 font-bold'
+                          : 'bg-white/5 text-zinc-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      Set Active
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSprintStatus(currentSelectedSprint.id, 'completed')}
+                      className={`py-1.5 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer font-sans ${
+                        currentSelectedSprint.status === 'completed'
+                          ? 'bg-zinc-400 text-zinc-950 border-zinc-300 font-bold'
+                          : 'bg-white/5 text-zinc-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      Set Selesai
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Konten Briefing & Dokumen */}
               <div className="space-y-4 font-sans">
@@ -586,37 +710,29 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   </a>
                 )}
 
-                {/* Action: Rilis Sprint jika masih Draft */}
-                {currentSelectedSprint?.status === 'draft' && (
+                {/* Action Controls */}
+                <div className="space-y-2 pt-2 font-sans">
                   <button
                     type="button"
-                    onClick={() => {
-                      handleSaveSprint('active');
-                      if (setIsSprintDrawerOpen) setIsSprintDrawerOpen(false);
-                    }}
+                    onClick={() => handleOpenEditSprint(currentSelectedSprint)}
                     className="w-full py-3 rounded-2xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-xl cursor-pointer font-sans"
                   >
-                    🚀 Rilis & Aktifkan Sprint Ini ke Tim
+                    ⚙️ Edit / Ubah Rencana Sprint
                   </button>
-                )}
 
-                {/* Tombol Rancang/Edit Sprint Baru */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingSprintId(currentSelectedSprint?.id || null);
-                    setSprintGoalInput(currentSelectedSprint?.goal_title || '');
-                    setSprintBriefNotes(currentSelectedSprint?.brief_notes || '');
-                    setSprintDocUrl(currentSelectedSprint?.document_url || '');
-                    setSprintDocName(currentSelectedSprint?.document_name || '');
-                    setSprintStartDate(currentSelectedSprint?.start_date || new Date().toISOString().split('T')[0]);
-                    setSprintEndDate(currentSelectedSprint?.end_date || '');
-                    if (setIsSprintDrawerOpen) setIsSprintDrawerOpen(false);
-                  }}
-                  className="w-full py-3 rounded-2xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-200 transition-all cursor-pointer font-sans"
-                >
-                  ⚙️ Edit / Ubah Rencana Sprint
-                </button>
+                  {currentSelectedSprint?.id && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        handleDeleteSprint(currentSelectedSprint.id, e);
+                        if (setIsSprintDrawerOpen) setIsSprintDrawerOpen(false);
+                      }}
+                      className="w-full py-2.5 rounded-2xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-xs font-semibold text-rose-300 transition-all cursor-pointer font-sans"
+                    >
+                      🗑️ Hapus Sprint Ini
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
