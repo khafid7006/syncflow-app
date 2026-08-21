@@ -16,6 +16,9 @@ import { NoWorkspaceView } from './components/layout/NoWorkspaceView';
 import { PODashboard } from './components/dashboard/PODashboard';
 import { MemberDashboard } from './components/dashboard/MemberDashboard';
 
+// Import UI Components
+import { CustomGlassSelect } from './components/ui/CustomGlassSelect';
+
 // Import Modal Components
 import { AccessCodeModal } from './components/modals/AccessCodeModal';
 import { CreateWorkspaceModal } from './components/modals/CreateWorkspaceModal';
@@ -205,6 +208,64 @@ export const App: React.FC = () => {
   // MEMBER BLOCKER MODAL STATE
   const [isBlockerModalOpen, setIsBlockerModalOpen] = useState<boolean>(false);
   const [blockerReason, setBlockerReason] = useState<string>('');
+
+  // PROFILE & ACCOUNT SETTINGS MODAL STATES
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [editFullName, setEditFullName] = useState<string>('');
+  const [editAvatarUrl, setEditAvatarUrl] = useState<string>('');
+  const [editPod, setEditPod] = useState<string>('');
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState<boolean>(false);
+
+  // Inisialisasi form profil saat modal dibuka
+  const handleOpenProfileModal = () => {
+    setEditFullName(profile?.full_name || '');
+    setEditAvatarUrl(profile?.avatar_url || '');
+    setEditPod(profile?.pod || 'Marketing');
+    setIsProfileModalOpen(true);
+  };
+
+  // Simpan perubahan profil
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session?.user?.id) return;
+    setIsUpdatingProfile(true);
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: editFullName.trim(),
+          avatar_url: editAvatarUrl.trim() || null,
+          pod: profile?.role === 'po' ? 'Management' : editPod
+        })
+        .eq('id', session.user.id);
+
+      if (error) throw error;
+
+      showToast("✓ Profil berhasil diperbarui!");
+      setIsProfileModalOpen(false);
+      fetchUserData(session.user.id); // Reload profil
+    } catch (err: any) {
+      showToast(`Gagal update profil: ${err.message}`);
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
+  // Hapus akun permanen
+  const handleDeleteAccount = async () => {
+    if (!confirm("⚠️ PERINGATAN: Apakah Anda yakin ingin menghapus akun ini secara permanen? Seluruh riwayat tugas Anda akan dihapus.")) return;
+    try {
+      if (session?.user?.id) {
+        await supabase.from('profiles').delete().eq('id', session.user.id);
+      }
+      await supabase.auth.signOut();
+      localStorage.clear();
+      window.location.reload();
+    } catch (err: any) {
+      showToast(`Gagal menghapus akun: ${err.message}`);
+    }
+  };
 
   // Member DoD Checklist Items
   const [dodItems, setDodItems] = useState<{ id: number; text: string; checked: boolean; is_checked?: boolean }[]>([
@@ -1884,6 +1945,7 @@ export const App: React.FC = () => {
           profile={profile}
           userId={session?.user?.id}
           notificationsList={workspaceActivities}
+          onOpenProfileModal={handleOpenProfileModal}
         />
 
         {/* WORKSPACE CONDITIONAL RENDERING GUARD */}
@@ -1919,6 +1981,8 @@ export const App: React.FC = () => {
             onOpenReportBlockerModal={() => setIsBlockerModalOpen(true)}
             projectLinks={projectLinks}
             renderLinkIcon={renderLinkIcon}
+            profile={profile}
+            onOpenProfileModal={handleOpenProfileModal}
           />
         ) : (
           <PODashboard
@@ -1967,6 +2031,8 @@ export const App: React.FC = () => {
             renderLinkIcon={renderLinkIcon}
             formatDeadline={formatDeadline}
             getDeadlineStatus={getDeadlineStatus}
+            profile={profile}
+            onOpenProfileModal={handleOpenProfileModal}
           />
         )}
 
@@ -2065,6 +2131,133 @@ export const App: React.FC = () => {
         onClose={() => setIsBlockerModalOpen(false)}
         onReportBlockerSubmit={handleReportBlockerSubmit}
       />
+
+      {/* MODAL PENGATURAN PROFIL & AKUN (FROSTED GLASS) */}
+      {isProfileModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 font-sans animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-neutral-900/95 border border-white/15 rounded-3xl p-6 shadow-2xl text-white space-y-5 font-sans animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            {/* Header Modal */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div>
+                <h3 className="font-bold text-base text-white">Pengaturan Profil</h3>
+                <p className="text-[11px] text-zinc-400">Kelola identitas dan preferensi akun Anda</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsProfileModalOpen(false)}
+                className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4"/>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="space-y-4 font-sans">
+              {/* Preview Avatar & Input URL */}
+              <div className="flex items-center gap-4 p-3.5 bg-neutral-950/60 rounded-2xl border border-white/10">
+                {editAvatarUrl ? (
+                  <img
+                    src={editAvatarUrl}
+                    alt="Avatar Preview"
+                    className="w-14 h-14 rounded-2xl object-cover border border-white/20 shrink-0"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center font-bold text-lg text-white uppercase shrink-0">
+                    {editFullName.charAt(0) || 'U'}
+                  </div>
+                )}
+
+                <div className="flex-1 space-y-1">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    Tautan Foto Profil (URL Image)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/avatar.jpg"
+                    value={editAvatarUrl}
+                    onChange={(e) => setEditAvatarUrl(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-neutral-900 px-3 py-1.5 text-xs text-white outline-hidden focus:border-white/30 font-sans"
+                  />
+                </div>
+              </div>
+
+              {/* Input Nama Lengkap */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                  Nama Lengkap
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editFullName}
+                  onChange={(e) => setEditFullName(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-neutral-950 px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans"
+                />
+              </div>
+
+              {/* Pilihan Divisi/POD (Jika Member) */}
+              {profile?.role !== 'po' && (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    Divisi / POD
+                  </label>
+                  <CustomGlassSelect
+                    theme="dark"
+                    value={editPod}
+                    onChange={(val) => setEditPod(val)}
+                    options={[
+                      { value: 'Marketing', label: 'Marketing' },
+                      { value: 'Product Builder', label: 'Product Builder' },
+                      { value: 'BA', label: 'BA (Business Analyst)' },
+                      { value: 'UI/UX Designer', label: 'UI/UX Designer' },
+                      { value: 'QA', label: 'QA' },
+                      { value: 'General', label: 'General' },
+                    ]}
+                  />
+                </div>
+              )}
+
+              {/* Tombol Simpan */}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingProfile}
+                  className="px-5 py-2 rounded-xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isUpdatingProfile ? 'Menyimpan...' : 'Simpan Profil'}
+                </button>
+              </div>
+            </form>
+
+            {/* DANGER ZONE (HAPUS AKUN & LOGOUT) */}
+            <div className="pt-4 border-t border-white/10 flex items-center justify-between font-sans">
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                className="text-[11px] font-semibold text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+              >
+                Hapus Akun Permanen
+              </button>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="text-[11px] font-semibold text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                Keluar (Sign Out)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -27,6 +27,8 @@ interface MemberDashboardProps {
   onOpenReportBlockerModal: () => void;
   projectLinks: ProjectLink[];
   renderLinkIcon: (title: string, iconType?: string) => React.ReactNode;
+  profile?: any;
+  onOpenProfileModal?: () => void;
 }
 
 export const MemberDashboard: React.FC<MemberDashboardProps> = ({
@@ -54,6 +56,8 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   onOpenReportBlockerModal,
   projectLinks,
   renderLinkIcon,
+  profile,
+  onOpenProfileModal,
 }) => {
   // Calculated status flags for active task
   const isCurrentBlocked = activeTask?.status === 'blocked' || activeTask?.is_blocked;
@@ -430,16 +434,42 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
         </div>
 
-        {/* AREA BAWAH KIRI (Header Teks Sapaan Otomatis & Subtitle Dinamis Target) */}
-        <div className="space-y-2 pt-2 font-sans transition-all duration-300 ease-in-out">
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
-            Halo, {userName}
-          </h1>
-          <p className="text-base text-zinc-400 font-sans">
-            {activeTask
-              ? `Target (${currentWorkspace?.name}): ${taskTitle}`
-              : `Workspace: ${currentWorkspace?.name || 'Utama'} • Standby`}
-          </p>
+        {/* BENTO PROFILE GREETING CARD (INTERAKTIF) */}
+        <div
+          onClick={onOpenProfileModal}
+          className="inline-flex items-center gap-4 p-3 pr-6 rounded-3xl border border-white/10 bg-neutral-950/40 hover:bg-neutral-900/60 backdrop-blur-xl transition-all cursor-pointer group shadow-xl font-sans"
+          title="Buka Pengaturan Profil"
+        >
+          {/* AVATAR DENGAN BORDER GLOW */}
+          <div className="relative shrink-0">
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={profile?.full_name || userName || 'User'}
+                className="w-14 h-14 rounded-2xl object-cover border border-white/20 shadow-md group-hover:scale-105 transition-transform"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-white/20 to-white/5 border border-white/20 flex items-center justify-center font-bold text-xl text-white uppercase shadow-md group-hover:scale-105 transition-transform">
+                {(profile?.full_name || userName || 'U').charAt(0)}
+              </div>
+            )}
+            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-neutral-950 shadow-xs" />
+          </div>
+
+          {/* SAPAAN & INFO ROLE */}
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-extrabold text-white tracking-tight leading-none">
+                Halo, {(profile?.full_name || userName || 'Member').split(' ')[0]}
+              </h2>
+              <span className="text-xs text-zinc-500 group-hover:text-zinc-300 transition-colors">⚙️</span>
+            </div>
+            <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1.5 font-medium font-sans">
+              <span>{currentWorkspace?.name || 'Workspace'}</span>
+              <span>•</span>
+              <span className="text-white/70">{profile?.pod || userPod || 'Member'}</span>
+            </p>
+          </div>
         </div>
 
       </div>

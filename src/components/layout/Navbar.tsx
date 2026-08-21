@@ -26,6 +26,7 @@ interface NavbarProps {
   profile: UserProfile | null;
   userId?: string;
   notificationsList?: ActivityLog[];
+  onOpenProfileModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -52,6 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   profile,
   userId,
   notificationsList = [],
+  onOpenProfileModal,
 }) => {
   const [isNotifPopoverOpen, setIsNotifPopoverOpen] = useState<boolean>(false);
   const notifPopoverRef = useRef<HTMLDivElement>(null);
@@ -372,12 +374,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Profil User Dropdown */}
-        <div className="relative" ref={profileDropdownRef}>
+        <div className="relative font-sans" ref={profileDropdownRef}>
           <button
             onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-            className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300 shadow-md font-sans"
+            className="pl-2 pr-4 py-1.5 bg-white/10 hover:bg-white/15 backdrop-blur-2xl border border-white/15 rounded-full text-xs flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300 shadow-md font-sans"
           >
-            <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt={userName} className="w-6 h-6 rounded-full object-cover border border-white/20 shrink-0" />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-white/20 border border-white/20 flex items-center justify-center font-bold text-[10px] text-white shrink-0 uppercase">
+                {userName.charAt(0)}
+              </div>
+            )}
             <span className="text-white font-semibold">{userName} — {userRoleDisplay}</span>
             <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
           </button>
@@ -390,6 +398,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="text-[11px] text-zinc-400 truncate">{userEmail}</div>
                 <div className="text-[10px] text-zinc-400">Role: {userRoleDisplay}</div>
               </div>
+
+              {onOpenProfileModal && (
+                <button
+                  onClick={() => {
+                    onOpenProfileModal();
+                    setIsProfileDropdownOpen(false);
+                  }}
+                  className="w-full p-2.5 text-left text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl flex items-center gap-2 font-medium cursor-pointer transition-colors duration-300"
+                >
+                  <span>⚙️ Pengaturan Profil</span>
+                </button>
+              )}
 
               <button
                 onClick={onSignOut}
