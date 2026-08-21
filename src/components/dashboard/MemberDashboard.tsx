@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Send, AlertTriangle, ExternalLink, Check } from 'lucide-react';
+import { CheckCircle2, Send, AlertTriangle, ExternalLink, Check, Users } from 'lucide-react';
 import { Workspace, MemberTask, ProjectLink } from '../../types';
 
 interface MemberDashboardProps {
@@ -11,6 +11,8 @@ interface MemberDashboardProps {
   taskStatus: 'Dalam Pengerjaan' | 'Sedang Ditinjau PO' | 'Terkendala (Blocker)' | 'Perlu Revisi';
   taskTitle: string;
   userName: string;
+  userPod?: string;
+  teamMembers?: any[];
   getRelativeDeadlineString: (isoString?: string) => { text: string; status: string } | null;
   completedDodCount: number;
   totalDodCount: number;
@@ -35,6 +37,8 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   taskStatus,
   taskTitle,
   userName,
+  userPod,
+  teamMembers = [],
   getRelativeDeadlineString,
   completedDodCount,
   totalDodCount,
@@ -70,7 +74,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
       <div className="lg:col-span-7 flex flex-col justify-between gap-6 transition-all duration-300 ease-in-out">
         
         {/* TOP ROW KIRI: 2 Kartu */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
           
           {/* KARTU KIRI ATAS: TASK STACK SELECTOR & DETAIL BRIEF MEMBER */}
           {memberTasksList.length === 0 ? (
@@ -171,19 +175,26 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                 {/* 2. DETAIL BRIEF TUGAS TERPILIH */}
                 {activeTask && (
                   <div className="space-y-3 pt-3 border-t border-white/10">
-                    <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
+                    <div className="flex items-center justify-between text-xs font-medium text-zinc-400 flex-wrap gap-2">
                       <span className="text-[11px] font-semibold tracking-wider text-white/60 uppercase">Detail Tugas</span>
-                      <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-semibold uppercase transition-colors duration-300 ${
-                        isCurrentRevision
-                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                          : isCurrentBlocked
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                            : isCurrentReview
-                              ? 'bg-white/10 text-white border-white/20'
-                              : 'bg-white/5 text-zinc-400 border-white/10'
-                      }`}>
-                        {taskStatus}
-                      </span>
+                      
+                      {/* BADGE DIVISI / POD TARGET & STATUS TUGAS */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] text-white/80 font-medium">
+                          🎯 Divisi: {activeTask?.profiles?.pod || userPod || 'Umum'}
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-semibold uppercase transition-colors duration-300 ${
+                          isCurrentRevision
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            : isCurrentBlocked
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : isCurrentReview
+                                ? 'bg-white/10 text-white border-white/20'
+                                : 'bg-white/5 text-zinc-400 border-white/10'
+                        }`}>
+                          {taskStatus}
+                        </span>
+                      </div>
                     </div>
 
                     <h2 className="text-base font-bold text-white tracking-tight leading-snug">
@@ -299,8 +310,8 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
             </div>
           )}
 
-          {/* KARTU TENGAH ATAS (FORM PENYERAHAN TUGAS TERPILIH) */}
-          <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
+          {/* KARTU TENGAH ATAS (FORM PENYERAHAN TUGAS TERPILIH - PROPORSIONAL BENTO) */}
+          <div className="rounded-[32px] bg-white text-zinc-950 p-6 shadow-xl flex flex-col justify-between h-full min-h-[380px] hover:scale-[1.01] transition-all duration-300 ease-in-out font-sans">
             <div className="space-y-1">
               <span className="text-xs font-medium text-zinc-500">
                 Penyerahan Tugas
@@ -317,7 +328,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
             </div>
 
             {/* Form Input Clean & Lock / Validation Logic */}
-            <form onSubmit={onSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans">
+            <form onSubmit={onSubmitDeliverable} className="space-y-3 my-auto py-2 font-sans flex flex-col justify-center">
               {!activeTask ? (
                 /* EMPTY STATE INPUT FORM TERKUNCI */
                 <input
@@ -431,11 +442,11 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
       </div>
 
-      {/* GRID KANAN (5 Kolom di Desktop / 1 Kolom di Mobile & Tablet - DYNAMIC PROJECT LINKS MEMBER READ-ONLY) */}
+      {/* GRID KANAN (5 Kolom di Desktop / 1 Kolom di Mobile & Tablet - DYNAMIC PROJECT LINKS & REKAN TIM) */}
       <div className="lg:col-span-5 flex flex-col justify-between gap-6 font-sans transition-all duration-300 ease-in-out">
         
-        {/* KARTU KANAN (Aset Tim Workspace) */}
-        <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans">
+        {/* KARTU KANAN (Aset Tim Workspace & Rekan Tim) */}
+        <div className="rounded-[36px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between flex-1 min-h-[380px] hover:border-white/20 transition-all duration-300 ease-in-out font-sans space-y-4">
           
           <div className="space-y-1">
             <span className="text-xs font-medium text-zinc-400">
@@ -447,9 +458,9 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
           </div>
 
           {/* Dynamic Links List (Read-Only for Member) */}
-          <div className="space-y-3 pt-4 flex-1">
+          <div className="space-y-2 flex-1">
             {projectLinks.length === 0 ? (
-              <p className="text-xs text-zinc-500 text-center py-4">Belum ada tautan tim di workspace ini.</p>
+              <p className="text-xs text-zinc-500 text-center py-2">Belum ada tautan tim di workspace ini.</p>
             ) : (
               projectLinks.map(link => (
                 <a
@@ -457,19 +468,56 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                   href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-300 ease-in-out group/link"
+                  className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-between transition-all duration-300 ease-in-out group/link"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
+                    <div className="w-7 h-7 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-zinc-300">
                       {renderLinkIcon(link.title, link.icon_type)}
                     </div>
-                    <span className="font-semibold text-white truncate max-w-[200px] sm:max-w-[260px]">
+                    <span className="font-semibold text-white truncate max-w-[180px] sm:max-w-[240px]">
                       {link.title}
                     </span>
                   </div>
-                  <ExternalLink className="w-4 h-4 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
+                  <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover/link:text-white transition-colors duration-300 shrink-0" />
                 </a>
               ))
+            )}
+          </div>
+
+          {/* MINI SEKSI: REKAN TIM DI WORKSPACE INI (ISI DEAD SPACE KANAN) */}
+          <div className="pt-3 border-t border-white/10 space-y-2 font-sans">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-white/50 uppercase tracking-wider">
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-white/70" />
+                <span>Rekan Tim Workspace</span>
+              </span>
+              <span className="font-mono text-white/80">{teamMembers.length} Anggota</span>
+            </div>
+
+            {teamMembers.length === 0 ? (
+              <p className="text-[11px] text-zinc-500 italic py-1">Belum ada anggota tim terdaftar di workspace ini.</p>
+            ) : (
+              <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-0.5">
+                {teamMembers.map((m) => {
+                  const initial = (m.full_name || 'M').charAt(0).toUpperCase();
+                  return (
+                    <div key={m.id || m.user_id || m.email} className="p-2.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between text-xs font-sans hover:bg-white/10 transition-colors">
+                      <div className="flex items-center gap-2.5 truncate max-w-[70%]">
+                        <div className="w-6 h-6 rounded-full bg-white/15 border border-white/20 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {initial}
+                        </div>
+                        <div className="truncate">
+                          <span className="font-semibold text-white text-[11px] block truncate">{m.full_name}</span>
+                          <span className="text-[9px] text-white/40 block truncate">{m.email || 'Member Tim'}</span>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[9px] text-white/70 font-medium shrink-0">
+                        {m.pod || 'Umum'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 

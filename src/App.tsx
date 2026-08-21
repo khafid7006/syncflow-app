@@ -1770,6 +1770,8 @@ export const App: React.FC = () => {
             taskStatus={taskStatus}
             taskTitle={taskTitle}
             userName={userName}
+            userPod={profile?.pod || 'Product Builder'}
+            teamMembers={workspaceMembersList.length > 0 ? workspaceMembersList : assigneeList}
             getRelativeDeadlineString={getRelativeDeadlineString}
             completedDodCount={completedDodCount}
             totalDodCount={totalDodCount}
