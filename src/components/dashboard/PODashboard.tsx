@@ -306,64 +306,61 @@ export const PODashboard: React.FC<PODashboardProps> = ({
     return (
       <main className="w-full max-w-7xl mx-auto space-y-6 font-sans animate-in fade-in duration-300">
 
-        {/* SPRINT ROADMAP BAR (ACTIVE VS DRAFT QUEUE) */}
-        <div className="flex items-center justify-between gap-4 pb-2 overflow-x-auto custom-scrollbar font-sans">
-          <div className="flex items-center gap-2 font-sans">
-            {sprintsList.map((s) => {
-              const isActive = s.status === 'active';
-              const isSelected = activeSprint?.id === s.id;
+        {/* ROADMAP SPRINT CHIPS */}
+        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 font-sans">
+          {sprintsList.map((s) => {
+            const isSelected = activeSprint?.id === s.id;
+            const isLiveActive = s.status === 'active';
 
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveSprint(s);
-                    setEditingSprintId(s.id);
-                    setSprintGoalInput(s.goal_title || '');
-                    setSprintBriefNotes(s.brief_notes || '');
-                    setSprintDocUrl(s.document_url || '');
-                    setSprintDocName(s.document_name || '');
-                    setSprintStartDate(s.start_date || '');
-                    setSprintEndDate(s.end_date || '');
-                    setIsEditingSprint(false);
-                  }}
-                  className={`px-4 py-2 rounded-2xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border font-sans ${
-                    isSelected
-                      ? 'bg-white text-zinc-950 border-white shadow-lg font-bold'
-                      : 'bg-neutral-950/60 text-zinc-400 border-white/10 hover:border-white/20 hover:text-white'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-                  <span className="truncate max-w-[160px] font-sans">{s.goal_title}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isActive ? 'bg-emerald-500/20 text-emerald-700' : 'bg-amber-400/20 text-amber-600'}`}>
-                    {isActive ? 'Active' : 'Draft'}
-                  </span>
-                </button>
-              );
-            })}
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  setActiveSprint(s);
+                  setEditingSprintId(s.id);
+                  setSprintGoalInput(s.goal_title || '');
+                  setSprintBriefNotes(s.brief_notes || '');
+                  setSprintDocUrl(s.document_url || '');
+                  setSprintDocName(s.document_name || '');
+                  setSprintStartDate(s.start_date || '');
+                  setSprintEndDate(s.end_date || '');
+                  setIsEditingSprint(false);
+                }}
+                className={`px-4 py-2 rounded-2xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border shrink-0 font-sans ${
+                  isSelected
+                    ? 'bg-white text-zinc-950 border-white shadow-lg'
+                    : 'bg-neutral-950/60 text-zinc-400 border-white/10 hover:border-white/20 hover:text-white'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${isLiveActive ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                <span className="truncate max-w-[160px] font-sans">{s.goal_title}</span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono uppercase ${isLiveActive ? 'bg-emerald-500/20 text-emerald-700' : 'bg-amber-400/20 text-amber-700'}`}>
+                  {s.status}
+                </span>
+              </button>
+            );
+          })}
 
-            {/* Tombol Buat Sprint Baru */}
-            <button
-              type="button"
-              onClick={() => {
-                setEditingSprintId(null);
-                setSprintGoalInput('');
-                setSprintBriefNotes('');
-                setSprintDocUrl('');
-                setSprintDocName('');
-                setSprintStartDate(new Date().toISOString().split('T')[0]);
-                setSprintEndDate('');
-                setIsEditingSprint(true);
-              }}
-              className="px-3.5 py-2 rounded-2xl border border-dashed border-white/20 hover:border-white/40 text-xs font-bold text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer font-sans"
-            >
-              <span>+ Rancang Sprint Berikutnya</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingSprintId(null);
+              setSprintGoalInput('');
+              setSprintBriefNotes('');
+              setSprintDocUrl('');
+              setSprintDocName('');
+              setSprintStartDate(new Date().toISOString().split('T')[0]);
+              setSprintEndDate('');
+              setIsEditingSprint(true);
+            }}
+            className="px-3.5 py-2 rounded-2xl border border-dashed border-white/20 hover:border-white/40 text-xs font-bold text-zinc-400 hover:text-white transition-colors shrink-0 cursor-pointer font-sans"
+          >
+            + Rancang Sprint Berikutnya
+          </button>
         </div>
 
-        {/* JIKA SEDANG MODE EDIT / SETUP SPRINT BARU */}
+        {/* JIKA MODE EDIT SPRINT */}
         {isEditingSprint ? (
           <div className="p-6 rounded-[32px] border border-white/10 bg-neutral-950/80 backdrop-blur-2xl shadow-2xl space-y-5 font-sans">
             <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
@@ -386,7 +383,7 @@ export const PODashboard: React.FC<PODashboardProps> = ({
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start font-sans">
-              {/* Kolom Kiri: Input Judul, Briefing & Upload File */}
+              {/* Kolom Kiri */}
               <div className="lg:col-span-6 space-y-4 font-sans">
                 <div className="space-y-1.5 font-sans">
                   <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
@@ -415,7 +412,7 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   />
                 </div>
 
-                {/* Upload Lampiran Dokumen Panduan / File Brief */}
+                {/* Upload Lampiran */}
                 <div className="space-y-1.5 font-sans">
                   <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
                     Lampiran Dokumen Panduan (PDF/DOCX/Gambar Maks. 5MB)
@@ -449,7 +446,7 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                 </div>
               </div>
 
-              {/* Kolom Kanan: Kalender Range & Forecasting Simulator */}
+              {/* Kolom Kanan */}
               <div className="lg:col-span-6 space-y-4 font-sans">
                 <CustomGlassRangeCalendar
                   startDate={sprintStartDate}
@@ -460,7 +457,6 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   }}
                 />
 
-                {/* Tombol Aksi Draft vs Rilis */}
                 <div className="flex items-center justify-end gap-3 pt-2 font-sans">
                   <button
                     type="button"
@@ -485,14 +481,14 @@ export const PODashboard: React.FC<PODashboardProps> = ({
         ) : (
           /* JIKA SPRINT SEDANG BERJALAN (EXECUTIVE MONITORING VIEW) */
           <>
-            {/* TOP ROW: 3 BENTO METRICS RINGKAS & ELEGAN */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-sans">
-              {/* Goal Card */}
-              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/60 backdrop-blur-2xl flex flex-col justify-between shadow-xl space-y-3 font-sans">
+            {/* BARIS 1 (ATAS): 3 KARTU METRIK RINGKAS (GRID 3 KOLOM) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full font-sans">
+              {/* Kartu 1: Mandat Goal */}
+              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-xl flex flex-col justify-between min-h-[140px] font-sans">
                 <div className="flex items-center justify-between font-sans">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-1.5 font-sans">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    Active Sprint Mandate
+                    Sprint Mandate
                   </span>
                   <button
                     type="button"
@@ -511,7 +507,7 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                     ⚙️ Ubah
                   </button>
                 </div>
-                <h2 className="text-xl font-extrabold text-white tracking-tight leading-snug font-sans">
+                <h2 className="text-xl font-extrabold text-white tracking-tight line-clamp-2 my-2 font-sans">
                   {activeSprint?.goal_title || 'Belum Ada Sprint Goal'}
                 </h2>
 
@@ -527,43 +523,43 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   </a>
                 )}
 
-                <div className="flex items-center justify-between text-xs text-zinc-400 font-mono pt-2 border-t border-white/5 font-sans">
+                <div className="flex items-center justify-between text-xs text-zinc-400 font-mono border-t border-white/5 pt-2 font-sans">
                   <span>{activeSprint?.start_date} → {activeSprint?.end_date}</span>
                   <span className="text-white font-bold font-sans">{calculateDaysLeft(activeSprint?.end_date)} Hari Sisa</span>
                 </div>
               </div>
 
-              {/* Velocity Card */}
-              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/60 backdrop-blur-2xl flex flex-col justify-between shadow-xl space-y-3 font-sans">
+              {/* Kartu 2: Velocity */}
+              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-xl flex flex-col justify-between min-h-[140px] font-sans">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">Sprint Velocity</span>
                 <div className="font-sans">
                   <div className="text-3xl font-extrabold text-white tracking-tight font-sans">{sprintProgressPct}%</div>
-                  <p className="text-xs text-zinc-400 mt-1 font-sans">{completedDoDCount} dari {totalDoDCount} DoD Selesai</p>
+                  <p className="text-xs text-zinc-400 mt-0.5 font-sans">{completedDoDCount} dari {totalDoDCount} DoD Selesai</p>
                 </div>
                 <div className="w-full h-2 bg-neutral-900 rounded-full overflow-hidden p-0.5 border border-white/5">
                   <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-500" style={{ width: `${sprintProgressPct}%` }} />
                 </div>
               </div>
 
-              {/* Forecast Health Card */}
-              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/60 backdrop-blur-2xl flex flex-col justify-between shadow-xl space-y-3 font-sans">
+              {/* Kartu 3: Health Forecasting */}
+              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-xl flex flex-col justify-between min-h-[140px] font-sans">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">Status Prediksi ETA</span>
                 <div className="font-sans">
-                  <div className={`text-xl font-extrabold tracking-tight font-sans ${forecastingResult.status === 'delay_risk' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  <div className={`text-lg font-extrabold tracking-tight font-sans ${forecastingResult.status === 'delay_risk' ? 'text-rose-400' : 'text-emerald-400'}`}>
                     {forecastingResult.status === 'delay_risk' ? '⚠️ Delay Risk' : '⚡ On Track'}
                   </div>
-                  <p className="text-xs text-zinc-400 mt-1 leading-snug font-sans">{forecastingResult.text}</p>
+                  <p className="text-xs text-zinc-400 mt-0.5 leading-snug line-clamp-2 font-sans">{forecastingResult.text}</p>
                 </div>
-                <span className="text-[10px] text-zinc-500 font-mono">{allTasks.length} Tugas Terdistribusi di Lapangan</span>
-                      {/* BOTTOM ROW: FULL-WIDTH SPRINT GANTT MATRIX TABLE */}
-            <div className="p-6 rounded-[32px] border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-2xl space-y-6 font-sans">
-              {/* Header & Legend */}
+                <span className="text-[10px] text-zinc-500 font-mono">{allTasks.length} Tugas Terdistribusi</span>
+              </div>
+            </div>
+
+            {/* BARIS 2 (BAWAH): GANTT CHART RADAR FULL-WIDTH (LEBAR 100%) */}
+            <div className="w-full p-6 rounded-[32px] border border-white/10 bg-neutral-950/80 backdrop-blur-2xl shadow-2xl space-y-6 font-sans">
               <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
                 <div>
                   <div className="flex items-center gap-2 font-sans">
-                    <h3 className="text-lg font-bold text-white tracking-tight font-sans">
-                      Timeline & Velocity Radar POD (Sprint Gantt)
-                    </h3>
+                    <h3 className="text-lg font-bold text-white tracking-tight font-sans">Timeline & Velocity Radar POD (Sprint Gantt)</h3>
                     {activeSprint?.status === 'draft' && (
                       <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 font-sans">
                         Simulasi Proyeksi Draft
@@ -576,8 +572,6 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                       : 'Monitoring distribusi beban kerja per divisi secara realtime'}
                   </p>
                 </div>
-
-                {/* Legend Status */}
                 <div className="flex items-center gap-4 text-xs font-mono text-zinc-400 font-sans">
                   <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-500" /> Aktif</span>
                   <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Selesai</span>
@@ -586,72 +580,60 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                 </div>
               </div>
 
-              {/* GANTT MATRIX TABLE */}
-              <div className="space-y-4 font-sans">
-                <div className="grid grid-cols-12 gap-2 text-xs font-mono text-zinc-400 pb-2 border-b border-white/5 font-sans">
-                  <div className="col-span-3 font-bold uppercase tracking-wider text-zinc-300">Divisi / POD</div>
-                  <div className="col-span-9 grid grid-cols-7 gap-2 text-center text-[11px]">
+              {/* GANTT TABLE DENGAN PROPORSI LEBAR */}
+              <div className="space-y-3 w-full font-sans">
+                {/* Header Kolom */}
+                <div className="flex items-center text-xs font-mono text-zinc-400 pb-2 border-b border-white/5 font-sans">
+                  <div className="w-48 shrink-0 font-bold uppercase tracking-wider text-zinc-300">Divisi / POD</div>
+                  <div className="flex-1 grid grid-cols-7 gap-2 text-center text-[11px]">
                     <div>Hari 1</div><div>Hari 2</div><div>Hari 3</div><div>Hari 4</div><div>Hari 5</div><div>Hari 6</div><div>Hari 7</div>
                   </div>
                 </div>
 
-                {/* Render Baris Gantt Tiap Divisi */}
-                {combinedGanttData.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-zinc-500 font-mono">
-                    Project Leader belum mendistribusikan tugas ke divisi manapun.
-                  </div>
-                ) : (
-                  combinedGanttData.map((item) => (
-                    <div key={item.pod} className="grid grid-cols-12 gap-2 items-center text-xs py-2 font-sans">
-                      <div className="col-span-3 pr-2 font-sans">
-                        <div className="font-semibold text-white text-sm flex items-center gap-1.5 font-sans">
-                          <span className={`w-1.5 h-1.5 rounded-full ${
-                            item.isDraft ? 'bg-zinc-500 border border-zinc-300' : (item.blockedTasks > 0 ? 'bg-rose-400' : 'bg-emerald-400')
-                          }`} />
-                          {item.pod}
-                        </div>
-                        <div className="text-[11px] text-zinc-500 font-mono">{item.forecastLabel}</div>
+                {/* Rows Tiap Divisi */}
+                {combinedGanttData.map((item) => (
+                  <div key={item.pod} className="flex items-center py-2 border-b border-white/[0.02] font-sans">
+                    <div className="w-48 shrink-0 pr-4 font-sans">
+                      <div className="font-semibold text-white text-sm truncate flex items-center gap-2 font-sans">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${
+                          item.isDraft ? 'bg-zinc-500' : (item.blockedTasks > 0 ? 'bg-rose-400' : 'bg-emerald-400')
+                        }`} />
+                        <span className="truncate">{item.pod}</span>
                       </div>
-
-                      <div className="col-span-9 h-10 rounded-2xl bg-neutral-900/60 border border-white/5 relative flex items-center px-2 font-sans">
-                        {/* Grid Background */}
-                        <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/[0.03] pointer-events-none" />
-
-                        {/* GANTT BAR: DRAFT PROYEKSI (ABU-ABU DASHED) VS ACTIVE LIVE (NEON GLOW) */}
-                        {item.isDraft ? (
-                          /* DRAFT GHOST FORECAST BAR */
-                          <div
-                            className="relative h-6 rounded-xl px-3 flex items-center justify-between text-xs font-bold text-zinc-300 border border-dashed border-zinc-500/50 bg-gradient-to-r from-zinc-800/80 via-zinc-800/50 to-zinc-900/80 shadow-inner font-sans"
-                            style={{ width: '75%' }}
-                          >
-                            <span className="truncate flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
-                              <span>◌ Est. Beban:</span>
-                              <span className="text-white font-semibold">{item.totalTasks} Tugas</span>
-                            </span>
-                            <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-wider">Simulasi Draft</span>
-                          </div>
-                        ) : (
-                          /* ACTIVE LIVE GANTT BAR */
-                          <div
-                            className={`relative h-6 rounded-xl px-3 flex items-center justify-between text-xs font-bold text-white shadow-lg transition-all duration-500 font-sans ${
-                              item.blockedTasks > 0
-                                ? 'bg-gradient-to-r from-rose-500/80 to-amber-500/80 border border-rose-400/30'
-                                : item.progress === 100
-                                ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/30'
-                                : 'bg-gradient-to-r from-sky-500/80 via-indigo-500/80 to-purple-500/80 border border-sky-400/30'
-                            }`}
-                            style={{ width: `${Math.max(20, item.progress)}%` }}
-                          >
-                            <span className="truncate">{item.totalTasks} Tugas</span>
-                            <span className="font-mono text-[10px] opacity-90">{item.progress}%</span>
-                          </div>
-                        )}
-                      </div>
+                      <div className="text-[11px] text-zinc-500 font-mono">{item.forecastLabel}</div>
                     </div>
-                  ))
-                )}
+
+                    {/* Bar Track yang Melebar Penuh */}
+                    <div className="flex-1 h-9 rounded-xl bg-neutral-900/80 border border-white/5 relative flex items-center px-2 font-sans">
+                      <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/[0.04] pointer-events-none" />
+
+                      {item.isDraft ? (
+                        <div
+                          className="relative h-6 rounded-lg px-3 flex items-center justify-between text-xs font-bold text-zinc-300 border border-dashed border-zinc-500/50 bg-gradient-to-r from-zinc-800/80 to-zinc-900/80 shadow-inner font-sans"
+                          style={{ width: '70%' }}
+                        >
+                          <span className="font-mono text-[10px] text-zinc-400">◌ Est: {item.totalTasks} Tugas</span>
+                          <span className="font-mono text-[9px] text-zinc-500 uppercase">Simulasi Draft</span>
+                        </div>
+                      ) : (
+                        <div
+                          className={`relative h-6 rounded-lg px-3 flex items-center justify-between text-xs font-bold text-white shadow-lg transition-all duration-500 font-sans ${
+                            item.blockedTasks > 0
+                              ? 'bg-gradient-to-r from-rose-500/80 to-amber-500/80 border border-rose-400/30'
+                              : item.progress === 100
+                              ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/30'
+                              : 'bg-gradient-to-r from-sky-500/80 to-indigo-500/80 border border-sky-400/30'
+                          }`}
+                          style={{ width: `${Math.max(20, item.progress)}%` }}
+                        >
+                          <span className="truncate font-medium">{item.totalTasks} Tugas</span>
+                          <span className="font-mono text-[10px]">{item.progress}%</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>      </div>
             </div>
           </>
         )}
