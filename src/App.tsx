@@ -1882,6 +1882,7 @@ export const App: React.FC = () => {
           userEmail={session?.user?.email}
           onSignOut={handleSignOut}
           profile={profile}
+          userId={session?.user?.id}
           notificationsList={workspaceActivities}
         />
 

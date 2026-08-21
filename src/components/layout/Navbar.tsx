@@ -24,6 +24,7 @@ interface NavbarProps {
   userEmail?: string;
   onSignOut: () => void;
   profile: UserProfile | null;
+  userId?: string;
   notificationsList?: ActivityLog[];
 }
 
@@ -49,15 +50,72 @@ export const Navbar: React.FC<NavbarProps> = ({
   userEmail,
   onSignOut,
   profile,
+  userId,
   notificationsList = [],
 }) => {
   const [isNotifPopoverOpen, setIsNotifPopoverOpen] = useState<boolean>(false);
-  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(notificationsList.length);
   const notifPopoverRef = useRef<HTMLDivElement>(null);
 
+  const activeUserId = userId || profile?.id || 'guest';
+  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>(() => {
+    if (!activeUserId) return [];
+    try {
+      const saved = localStorage.getItem(`dismissed_notifs_${activeUserId}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Reload dismissed ids when activeUserId changes
   useEffect(() => {
-    setUnreadNotifCount(notificationsList.length);
-  }, [notificationsList.length]);
+    if (activeUserId) {
+      try {
+        const saved = localStorage.getItem(`dismissed_notifs_${activeUserId}`);
+        if (saved) {
+          setDismissedNotifIds(JSON.parse(saved));
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [activeUserId]);
+
+  // Filter daftar notifikasi yang tampil (kecualikan yang sudah di-dismiss)
+  const activeNotifications = notificationsList.filter(
+    (notif) => !dismissedNotifIds.includes(notif.id)
+  );
+
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(activeNotifications.length);
+
+  useEffect(() => {
+    setUnreadNotifCount(activeNotifications.length);
+  }, [activeNotifications.length]);
+
+  // Simpan perubahan ke localStorage saat ada yang dihapus single
+  const handleDismissSingleNotif = (notifId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDismissedNotifIds((prev) => {
+      const next = [...prev, notifId];
+      if (activeUserId) {
+        localStorage.setItem(`dismissed_notifs_${activeUserId}`, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  // Hapus seluruh notifikasi sekaligus
+  const handleClearAllNotifications = () => {
+    const allCurrentIds = notificationsList.map((n) => n.id);
+    setDismissedNotifIds((prev) => {
+      const merged = Array.from(new Set([...prev, ...allCurrentIds]));
+      if (activeUserId) {
+        localStorage.setItem(`dismissed_notifs_${activeUserId}`, JSON.stringify(merged));
+      }
+      return merged;
+    });
+    setUnreadNotifCount(0);
+  };
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -206,35 +264,50 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* FLOATING FROSTED GLASS NOTIFICATION POPOVER */}
           {isNotifPopoverOpen && (
             <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-3xl border border-white/15 bg-neutral-950/95 backdrop-blur-2xl shadow-2xl z-50 overflow-hidden font-sans animate-in fade-in zoom-in-95 duration-150">
-              {/* Header & Minimal Tabs */}
-              <div className="p-4 pb-3 border-b border-white/10 space-y-3 font-sans">
+              {/* Header Popover */}
+              <div className="p-4 pb-2 border-b border-white/10 space-y-2.5 font-sans">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-sm text-white tracking-tight">Notifikasi</h4>
-                  <button
-                    type="button"
-                    onClick={handleMarkAllAsRead}
-                    className="text-[11px] font-medium text-zinc-400 hover:text-white transition-colors cursor-pointer"
-                  >
-                    Tandai sudah dibaca
-                  </button>
-                </div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm text-white tracking-tight">Notifikasi</h4>
+                    {activeNotifications.length > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-zinc-400 text-[10px] font-mono">
+                        {activeNotifications.length}
+                      </span>
+                    )}
+                  </div>
 
-                {/* Minimal Tab Filter */}
-                <div className="flex items-center gap-2 text-xs">
-                  <button className="px-2.5 py-1 rounded-lg bg-white text-zinc-950 font-semibold text-[11px]">
-                    Semua {notificationsList.length > 0 && <span className="ml-1 opacity-70">{notificationsList.length}</span>}
-                  </button>
+                  <div className="flex items-center gap-2.5 text-[11px] font-sans">
+                    {activeNotifications.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleMarkAllAsRead}
+                          className="text-zinc-400 hover:text-white transition-colors cursor-pointer font-medium"
+                        >
+                          Baca Semua
+                        </button>
+                        <span className="text-zinc-600">•</span>
+                        <button
+                          type="button"
+                          onClick={handleClearAllNotifications}
+                          className="text-rose-400/80 hover:text-rose-300 transition-colors cursor-pointer font-medium"
+                        >
+                          Hapus Semua
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* Flat Clean Row List (Minimalist Dribbble Style) */}
               <div className="space-y-0 divide-y divide-white/5 max-h-80 overflow-y-auto custom-scrollbar font-sans">
-                {notificationsList.length === 0 ? (
+                {activeNotifications.length === 0 ? (
                   <div className="py-8 text-center text-xs text-zinc-500 font-sans">
                     Tidak ada notifikasi aktivitas baru.
                   </div>
                 ) : (
-                  notificationsList.map((notif, idx) => {
+                  activeNotifications.map((notif, idx) => {
                     const isUnread = unreadNotifCount > 0 && idx < unreadNotifCount;
 
                     // Status Dot Color
@@ -247,7 +320,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     return (
                       <div
                         key={notif.id || idx}
-                        className={`p-3.5 flex items-start gap-3 transition-colors text-xs font-sans ${
+                        className={`group p-3.5 flex items-start gap-3 transition-colors text-xs font-sans relative ${
                           isUnread ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'
                         }`}
                       >
@@ -260,7 +333,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </div>
 
                         {/* NATURAL TEXT DESCRIPTION */}
-                        <div className="flex-1 min-w-0 pr-1 font-sans">
+                        <div className="flex-1 min-w-0 pr-6 font-sans">
                           <p className="text-zinc-300 text-xs leading-snug">
                             <span className="font-semibold text-white">{notif.user_name}</span>{' '}
                             {notif.action_type === 'submit' && 'menyerahkan hasil tugas'}
@@ -280,10 +353,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                           </div>
                         </div>
 
-                        {/* UNREAD INDICATOR */}
-                        {isUnread && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0 mt-2" />
-                        )}
+                        {/* TOMBOL HAPUS SINGLE (MUNCUL KETIKA BARIS DI-HOVER) */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleDismissSingleNotif(notif.id, e)}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-white/5 transition-all cursor-pointer absolute right-3 top-3.5"
+                          title="Hapus notifikasi ini"
+                        >
+                          <X className="w-3.5 h-3.5"/>
+                        </button>
                       </div>
                     );
                   })
