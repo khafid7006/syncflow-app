@@ -200,7 +200,69 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   const isUserPL = isPlRole || activeWorkspaceRole === 'pl';
   const isUserPO = !isUserPL;
 
-  // 1. Gabungkan data visual Gantt untuk Active vs Draft (Ghost Forecasting vs Live Active)
+  // 1. RESTRUKTURISASI DATA GANTT (PARENT-CHILD GROUPING)
+  const monthlyGanttTree = React.useMemo(() => {
+    const currentMonth = currentMonthDate || new Date();
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // Helper kalkulasi koordinat bar horizontal
+    const calcBarCoordinates = (startStr?: string | null, endStr?: string | null) => {
+      if (!startStr || !endStr) return { left: '0%', width: '100%', startDay: 1, endDay: daysInMonth };
+      const sDate = safeGetDate(startStr);
+      const eDate = safeGetDate(endStr);
+      if (!sDate || !eDate) return { left: '0%', width: '100%', startDay: 1, endDay: daysInMonth };
+
+      const startDay = Math.max(1, Math.min(daysInMonth, sDate.getDate()));
+      const endDay = Math.max(startDay, Math.min(daysInMonth, eDate.getDate()));
+      const span = Math.max(1, endDay - startDay + 1);
+
+      return {
+        left: `${((startDay - 1) / daysInMonth) * 100}%`,
+        width: `${Math.max(3, (span / daysInMonth) * 100)}%`,
+        startDay,
+        endDay
+      };
+    };
+
+    // Filter sprint yang tampil (semua atau yang dipilih)
+    const targetSprints = selectedSprintId === 'all'
+      ? (sprintsList || [])
+      : (sprintsList || []).filter((s) => s.id === selectedSprintId);
+
+    const tasksList = allTasks || [];
+
+    return targetSprints.map((sprint) => {
+      const sprintCoord = calcBarCoordinates(sprint.start_date, sprint.end_date);
+      
+      // Ambil tugas yang terikat dengan sprint ini
+      const sprintTasks = tasksList.filter((t) => t.sprint_id === sprint.id);
+
+      const childTasks = sprintTasks.map((task) => {
+        const taskStart = task.created_at || sprint.start_date;
+        const taskEnd = task.due_date || task.deadline || sprint.end_date;
+        const taskCoord = calcBarCoordinates(taskStart, taskEnd);
+        const isDone = task.status === 'done';
+        const isBlocked = task.status === 'blocked' || task.is_blocked;
+
+        return {
+          ...task,
+          coord: taskCoord,
+          isDone,
+          isBlocked
+        };
+      });
+
+      return {
+        ...sprint,
+        coord: sprintCoord,
+        childTasks
+      };
+    });
+  }, [currentMonthDate, selectedSprintId, sprintsList, allTasks, safeGetDate]);
+
+  // 2. Gabungkan data visual Gantt untuk Active vs Draft (Ghost Forecasting vs Live Active)
   const combinedGanttData = React.useMemo(() => {
     const targetSprint = currentSelectedSprint || activeSprint;
     const isViewingDraft = targetSprint?.status === 'draft';
@@ -500,107 +562,108 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               </div>
             </div>
 
-            {/* SECTION 1: SPRINT ROADMAP BARS */}
-            <div className="space-y-2.5 min-w-[800px] border-b border-white/5 pb-4 font-sans">
-              <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono">
-                Sprint Roadmap:
+            {/* RENDER TREE TIAP SPRINT (PARENT-CHILD HIERARCHY) */}
+            {monthlyGanttTree.length === 0 ? (
+              <div className="py-12 text-center text-xs text-zinc-500 font-mono">
+                Belum ada sprint yang dibuat pada bulan ini.
               </div>
-              {sprintsList.map((s) => {
-                const pos = getBarPosition(s.start_date, s.end_date);
-                const isActive = s.status === 'active';
-
-                return (
-                  <div key={s.id} className="flex items-center group font-sans">
-                    <div className="w-48 shrink-0 pr-3 flex items-center justify-between font-sans">
+            ) : (
+              monthlyGanttTree.map((sprint) => (
+                <div key={sprint.id} className="space-y-2 border-b border-white/5 pb-4 font-sans">
+                  
+                  {/* INDUK SPRINT (PARENT ROW) */}
+                  <div className="flex items-center group py-1 font-sans">
+                    <div className="w-56 shrink-0 pr-3 flex items-center justify-between font-sans">
                       <span
-                        onClick={() => handleSelectSprint(s)}
-                        className="text-xs font-semibold text-white truncate cursor-pointer hover:text-emerald-300 transition-colors font-sans"
+                        onClick={() => handleSelectSprint(sprint)}
+                        className="text-xs font-bold text-white truncate flex items-center gap-1.5 cursor-pointer hover:text-emerald-300 transition-colors font-sans"
                       >
-                        {s.goal_title}
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${sprint.status === 'active' ? 'bg-emerald-400' : sprint.status === 'completed' ? 'bg-zinc-500' : 'bg-amber-400'}`} />
+                        <span className="truncate">{sprint.goal_title}</span>
                       </span>
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 font-sans">
-                        <button
-                          type="button"
-                          onClick={(e) => handleOpenEditSprint(s, e)}
-                          className="text-[11px] text-zinc-400 hover:text-white transition-colors cursor-pointer"
-                          title="Edit Sprint"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteSprint(s.id, e)}
-                          className="text-[11px] text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
-                          title="Hapus Sprint"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 h-8 rounded-xl bg-neutral-900/60 border border-white/5 relative flex items-center px-1 font-sans">
-                      {/* Grid Lines */}
-                      <div className="absolute inset-0 grid divide-x divide-white/[0.02]" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }} />
-                      
-                      {/* Sprint Bar */}
-                      <div
-                        onClick={() => handleSelectSprint(s)}
-                        className={`absolute h-6 rounded-lg px-3 flex items-center justify-between text-xs font-bold text-white shadow-md transition-all cursor-pointer font-sans ${
-                          isActive
-                            ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
-                            : 'bg-gradient-to-r from-amber-500/50 to-zinc-800/80 border border-dashed border-amber-400/40 text-amber-200'
-                        }`}
-                        style={{ left: pos.left, width: pos.width }}
-                      >
-                        <span className="truncate font-sans">{s.goal_title}</span>
-                        <span className="font-mono text-[9px] uppercase opacity-90">{s.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* SECTION 2: POD / DIVISI ALLOCATION BARS */}
-            <div className="space-y-2.5 min-w-[800px] pt-2 font-sans">
-              <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono">
-                Aktivitas Divisi POD:
-              </div>
-              {['Marketing', 'Product Builder', 'BA', 'UI/UX Designer', 'General'].map((pod) => {
-                const podTasks = activeTasksList.filter((t) => (t.pod || 'General') === pod);
-                const hasBlocker = podTasks.some((t) => t.status === 'blocked' || t.is_blocked);
-                const isDone = podTasks.length > 0 && podTasks.every((t) => t.status === 'done');
-
-                return (
-                  <div key={pod} className="flex items-center font-sans">
-                    <div className="w-48 shrink-0 pr-3 font-sans">
-                      <div className="text-xs font-semibold text-zinc-300 truncate font-sans">{pod}</div>
-                      <div className="text-[10px] text-zinc-500 font-mono">{podTasks.length} Tugas</div>
-                    </div>
-
-                    <div className="flex-1 h-8 rounded-xl bg-neutral-900/60 border border-white/5 relative flex items-center px-1 font-sans">
-                      <div className="absolute inset-0 grid divide-x divide-white/[0.02]" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }} />
-                      
-                      {podTasks.length > 0 && (
-                        <div
-                          className={`absolute h-5 rounded-lg px-2.5 flex items-center justify-between text-[10px] font-bold text-white shadow-md font-sans ${
-                            hasBlocker
-                              ? 'bg-rose-500/80 border border-rose-400'
-                              : isDone
-                              ? 'bg-emerald-500/80 border border-emerald-400'
-                              : 'bg-sky-500/80 border border-sky-400'
-                          }`}
-                          style={{ left: '5%', width: '50%' }}
-                        >
-                          <span>{podTasks.length} Tugas Aktif</span>
-                          <span>{hasBlocker ? '🚨 Blocker' : isDone ? '✓ Selesai' : 'Jalan'}</span>
+                      <div className="flex items-center gap-1.5 shrink-0 font-sans">
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded uppercase bg-white/5 text-zinc-400">
+                          {sprint.status}
+                        </span>
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 font-sans">
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenEditSprint(sprint, e)}
+                            className="text-[10px] text-zinc-400 hover:text-white cursor-pointer"
+                            title="Edit Sprint"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSprint(sprint.id, e)}
+                            className="text-[10px] text-rose-400 hover:text-rose-300 cursor-pointer"
+                            title="Hapus Sprint"
+                          >
+                            🗑️
+                          </button>
                         </div>
-                      )}
+                      </div>
+                    </div>
+
+                    {/* Balok Induk Sprint */}
+                    <div className="flex-1 h-7 rounded-xl bg-neutral-900/60 border border-white/5 relative flex items-center px-1 font-sans">
+                      <div className="absolute inset-0 grid divide-x divide-white/[0.02]" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }} />
+                      
+                      <div
+                        onClick={() => handleSelectSprint(sprint)}
+                        className={`absolute h-5 rounded-lg px-2.5 flex items-center justify-between text-[10px] font-bold text-white shadow-md transition-all cursor-pointer font-sans ${
+                          sprint.status === 'active'
+                            ? 'bg-gradient-to-r from-emerald-500/90 to-teal-500/90 border border-emerald-400/50 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+                            : 'bg-zinc-800/90 border border-dashed border-zinc-500 text-zinc-300'
+                        }`}
+                        style={{ left: sprint.coord.left, width: sprint.coord.width }}
+                      >
+                        <span className="truncate font-sans">Mandat: {sprint.goal_title}</span>
+                        <span className="font-mono text-[9px] opacity-80 font-sans">{sprint.coord.startDay} - {sprint.coord.endDay}</span>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+
+                  {/* ANAK TUGAS DI DALAM SPRINT INI (CHILD ROWS) */}
+                  {sprint.childTasks.length === 0 ? (
+                    <div className="flex items-center text-[11px] text-zinc-500 font-mono pl-6 py-1">
+                      ↳ Belum ada tugas yang di-assign oleh Project Leader.
+                    </div>
+                  ) : (
+                    sprint.childTasks.map((task: any) => (
+                      <div key={task.id} className="flex items-center py-1 pl-4 font-sans">
+                        <div className="w-52 shrink-0 pr-3 truncate flex items-center gap-1.5 text-xs text-zinc-300 font-sans">
+                          <span className="text-zinc-600 font-mono">↳</span>
+                          <span className="truncate font-sans">{task.title}</span>
+                          <span className="text-[9px] px-1 rounded bg-white/5 text-zinc-400 font-mono shrink-0">{task.pod || 'General'}</span>
+                        </div>
+
+                        {/* Balok Tugas Anak */}
+                        <div className="flex-1 h-6 rounded-lg bg-neutral-900/30 border border-white/[0.03] relative flex items-center px-1 font-sans">
+                          <div className="absolute inset-0 grid divide-x divide-white/[0.015]" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }} />
+                          
+                          <div
+                            className={`absolute h-4 rounded-md px-2 flex items-center justify-between text-[9px] font-semibold text-white shadow-sm font-sans ${
+                              task.isBlocked
+                                ? 'bg-rose-500/80 border border-rose-400 text-rose-100'
+                                : task.isDone
+                                ? 'bg-emerald-500/80 border border-emerald-400 text-emerald-100'
+                                : 'bg-sky-500/80 border border-sky-400 text-sky-100'
+                            }`}
+                            style={{ left: task.coord.left, width: task.coord.width }}
+                          >
+                            <span className="truncate font-sans">{task.title}</span>
+                            <span className="font-mono text-[8px] opacity-80 shrink-0 font-sans">{task.isBlocked ? '🚨' : task.isDone ? '✓' : 'Jalan'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                </div>
+              ))
+            )}
           </div>
         </div>
 
