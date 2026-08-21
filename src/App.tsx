@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { 
   UserProfile, Workspace, WorkspaceMemberDetail, 
-  MemberTask, ProjectLink 
+  MemberTask, ProjectLink, ActivityLog 
 } from './types';
 
 // Import Layout Components
@@ -251,6 +251,71 @@ export const App: React.FC = () => {
       setNewAssignDueDate(formatted);
     }
   };
+
+  // Format daftar aktivitas dari data tasks yang ada di workspace
+  const generateWorkspaceActivities = (tasks: MemberTask[]): ActivityLog[] => {
+    const activities: ActivityLog[] = [];
+
+    tasks.forEach((t) => {
+      const name = t.profiles?.full_name || 'Member';
+      const pod = t.profiles?.pod || 'Umum';
+
+      // 1. Aktivitas Selesai (ACC PO)
+      if (t.status === 'done') {
+        activities.push({
+          id: `done-${t.id || t.title}`,
+          user_name: name,
+          pod,
+          action_type: 'done',
+          task_title: t.title,
+          timestamp: t.created_at || new Date().toISOString()
+        });
+      }
+
+      // 2. Aktivitas Submit Hasil (Sedang Ditinjau)
+      if (['review', 'in_review', 'UNDER_REVIEW'].includes(t.status) || t.submitted_at) {
+        activities.push({
+          id: `submit-${t.id || t.title}`,
+          user_name: name,
+          pod,
+          action_type: 'submit',
+          task_title: t.title,
+          timestamp: t.submitted_at || t.created_at || new Date().toISOString()
+        });
+      }
+
+      // 3. Aktivitas Blocker
+      if (t.status === 'blocked' || t.is_blocked) {
+        activities.push({
+          id: `blocked-${t.id || t.title}`,
+          user_name: name,
+          pod,
+          action_type: 'blocked',
+          task_title: t.title,
+          timestamp: t.created_at || new Date().toISOString()
+        });
+      }
+
+      // 4. Aktivitas Revisi
+      if (t.status === 'in_progress' && t.revision_note) {
+        activities.push({
+          id: `rev-${t.id || t.title}`,
+          user_name: name,
+          pod,
+          action_type: 'revision',
+          task_title: t.title,
+          timestamp: t.created_at || new Date().toISOString()
+        });
+      }
+    });
+
+    // Urutkan aktivitas dari yang paling baru
+    return activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
+  };
+
+  const workspaceActivities = React.useMemo(() => {
+    return generateWorkspaceActivities(allTasks);
+  }, [allTasks]);
 
   const fetchPublicWorkspaces = async () => {
     setIsPublicWorkspacesLoading(true);
@@ -1856,6 +1921,7 @@ export const App: React.FC = () => {
           <PODashboard
             currentWorkspace={currentWorkspace}
             allTasks={allTasks}
+            activities={workspaceActivities}
             filteredMasterTasks={filteredMasterTasks}
             poTaskFeedFilter={poTaskFeedFilter}
             setPoTaskFeedFilter={setPoTaskFeedFilter}

@@ -3,13 +3,14 @@ import {
   Activity, Sparkles, Edit3, AlertTriangle, RotateCcw, Clock, ExternalLink, 
   CheckCircle, Plus, Check, Send, UserPlus, Maximize2, Minimize2 
 } from 'lucide-react';
-import { Workspace, MemberTask, ProjectLink } from '../../types';
+import { Workspace, MemberTask, ProjectLink, ActivityLog } from '../../types';
 import { CustomGlassSelect, GlassSelectOption } from '../ui/CustomGlassSelect';
 import { CustomGlassDatePicker } from '../ui/CustomGlassDatePicker';
 
 interface PODashboardProps {
   currentWorkspace: Workspace | null;
   allTasks: MemberTask[];
+  activities?: ActivityLog[];
   filteredMasterTasks: MemberTask[];
   poTaskFeedFilter: 'active' | 'done';
   setPoTaskFeedFilter: (filter: 'active' | 'done') => void;
@@ -61,6 +62,7 @@ interface PODashboardProps {
 export const PODashboard: React.FC<PODashboardProps> = ({
   currentWorkspace,
   allTasks,
+  activities = [],
   filteredMasterTasks,
   poTaskFeedFilter,
   setPoTaskFeedFilter,
@@ -109,6 +111,9 @@ export const PODashboard: React.FC<PODashboardProps> = ({
 
   // Zen Focus Mode State for PO Task Drafting
   const [isPoFocusMode, setIsPoFocusMode] = React.useState<boolean>(false);
+
+  // Tab State for Right Column Live Pulse Widget
+  const [rightWidgetTab, setRightWidgetTab] = React.useState<'activity' | 'members'>('activity');
 
   // Auto-expand Blocker atau Review task saat list berubah
   React.useEffect(() => {
@@ -850,41 +855,98 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               )}
             </div>
 
-            {/* WIDGET: ANGGOTA AKTIF WORKSPACE (MENGISI RUANG KOSONG KOLOM 3) */}
-            <div className="space-y-2 pt-3 border-t border-white/10 font-sans">
-              <div className="flex items-center justify-between text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-                <span>Anggota Tim Workspace</span>
-                <span className="font-mono text-white/80">{assigneeList.length} Orang</span>
+            {/* WIDGET LIVE TEAM PULSE (2 TAB: AKTIVITAS TIM VS DAFTAR ANGGOTA) */}
+            <div className="space-y-2.5 pt-3 border-t border-white/10 font-sans">
+              {/* Tab Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 p-0.5 bg-neutral-950 border border-white/10 rounded-xl text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setRightWidgetTab('activity')}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                      rightWidgetTab === 'activity'
+                        ? 'bg-white text-zinc-950 shadow-xs font-bold'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    ⚡ Aktivitas ({activities.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightWidgetTab('members')}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                      rightWidgetTab === 'members'
+                        ? 'bg-white text-zinc-950 shadow-xs font-bold'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    👥 Anggota ({assigneeList.length})
+                  </button>
+                </div>
+
+                <span className="flex items-center gap-1 text-[9px] text-emerald-400 font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"/> Live
+                </span>
               </div>
 
-              {assigneeList.length === 0 ? (
-                <p className="text-xs text-zinc-500 text-center py-2">Belum ada anggota terdaftar.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-0.5">
-                  {assigneeList.map((m) => {
-                    const initial = (m.full_name || 'A').charAt(0).toUpperCase();
-                    const isPO = m.role === 'po';
-                    const isPL = m.role === 'pl';
-                    return (
-                      <div key={m.id || m.email} className="p-2 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between text-xs hover:bg-white/10 transition-colors">
-                        <div className="flex items-center gap-2 truncate max-w-[70%]">
-                          <div className="w-5 h-5 rounded-full bg-white/15 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
-                            {initial}
+              {/* TAB 1: LIST AKTIVITAS REALTIME (PSYCHOLOGICAL FEED) */}
+              {rightWidgetTab === 'activity' ? (
+                <div className="space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar pr-0.5 font-sans">
+                  {activities.length === 0 ? (
+                    <div className="p-4 text-center text-[11px] text-zinc-500 bg-white/[0.02] border border-white/5 rounded-xl font-sans">
+                      Belum ada aktivitas tugas terbaru di workspace ini.
+                    </div>
+                  ) : (
+                    activities.map((act) => (
+                      <div
+                        key={act.id}
+                        className="p-2.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-all flex items-start gap-2.5 text-xs font-sans"
+                      >
+                        <span className="text-sm shrink-0 mt-0.5">
+                          {act.action_type === 'done' ? '✅' :
+                           act.action_type === 'submit' ? '🚀' :
+                           act.action_type === 'blocked' ? '🚨' :
+                           act.action_type === 'revision' ? '⚠️' : '📌'}
+                        </span>
+
+                        <div className="truncate flex-1 font-sans">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold text-white text-[11px] truncate">{act.user_name}</span>
+                            <span className="text-[9px] text-white/40">{act.pod}</span>
                           </div>
-                          <div className="truncate">
-                            <span className="font-semibold text-white text-[11px] block truncate">{m.full_name}</span>
-                            <span className="text-[9px] text-white/40 block truncate">{m.pod || 'General'}</span>
-                          </div>
+                          <p className="text-[10px] text-zinc-400 truncate mt-0.5">
+                            {act.action_type === 'done' && `Tugas "${act.task_title}" telah di-ACC`}
+                            {act.action_type === 'submit' && `Menyerahkan hasil tugas "${act.task_title}"`}
+                            {act.action_type === 'blocked' && `Mengalami kendala di "${act.task_title}"`}
+                            {act.action_type === 'revision' && `Menerima catatan revisi di "${act.task_title}"`}
+                          </p>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase shrink-0 ${
-                          isPO ? 'bg-white/20 text-white border border-white/30' :
-                          isPL ? 'bg-white/15 text-zinc-200' : 'bg-white/5 text-zinc-400'
-                        }`}>
-                          {isPO ? 'PO' : isPL ? 'PL' : 'Member'}
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                /* TAB 2: DAFTAR ANGGOTA WORKSPACE */
+                <div className="space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar pr-0.5 font-sans">
+                  {assigneeList.length === 0 ? (
+                    <div className="p-4 text-center text-[11px] text-zinc-500 bg-white/[0.02] border border-white/5 rounded-xl font-sans">
+                      Belum ada anggota terdaftar.
+                    </div>
+                  ) : (
+                    assigneeList.map((m) => (
+                      <div key={m.id || m.email} className="p-2 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs font-sans hover:bg-white/[0.05] transition-all">
+                        <div className="flex items-center gap-2 truncate">
+                          <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[9px] font-bold text-white uppercase shrink-0">
+                            {m.full_name.charAt(0)}
+                          </div>
+                          <span className="font-medium text-white text-xs truncate">{m.full_name}</span>
+                        </div>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/60 uppercase font-mono">
+                          {m.pod || 'Umum'}
                         </span>
                       </div>
-                    );
-                  })}
+                    ))
+                  )}
                 </div>
               )}
             </div>

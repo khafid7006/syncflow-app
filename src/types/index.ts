@@ -215,3 +215,12 @@ export interface ProjectLink {
   icon_type?: string;
   created_at?: string;
 }
+
+export interface ActivityLog {
+  id: string;
+  user_name: string;
+  pod: string;
+  action_type: 'submit' | 'done' | 'blocked' | 'revision' | 'assigned';
+  task_title: string;
+  timestamp: string;
+}
