@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Workspace, MemberTask, ProjectLink } from '../../types';
 import { CustomGlassSelect, GlassSelectOption } from '../ui/CustomGlassSelect';
+import { CustomGlassDatePicker } from '../ui/CustomGlassDatePicker';
 
 interface PODashboardProps {
   currentWorkspace: Workspace | null;
@@ -620,11 +621,11 @@ export const PODashboard: React.FC<PODashboardProps> = ({
             </div>
 
             {/* INPUT DEADLINE DI FORM PO DENGAN PRESET TENGGAT WAKTU CEPAT */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="block text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
-                  Tenggat Waktu (Deadline)
-                </label>
+            <CustomGlassDatePicker
+              theme="light"
+              value={newAssignDueDate}
+              onChange={setNewAssignDueDate}
+              presetButtons={
                 <div className="flex items-center gap-1 font-sans">
                   <button
                     type="button"
@@ -648,14 +649,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                     3 Hari
                   </button>
                 </div>
-              </div>
-              <input
-                type="datetime-local"
-                value={newAssignDueDate}
-                onChange={e => setNewAssignDueDate(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 transition-colors duration-300 font-sans [color-scheme:light]"
-              />
-            </div>
+              }
+            />
 
             {/* TOGGLE PILIHAN PRIORITAS TUGAS */}
             <div className="space-y-1">

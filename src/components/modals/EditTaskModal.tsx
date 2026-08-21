@@ -1,6 +1,7 @@
 import React from 'react';
 import { Edit3, X, Plus, Trash2 } from 'lucide-react';
 import { MemberTask } from '../../types';
+import { CustomGlassDatePicker } from '../ui/CustomGlassDatePicker';
 
 interface EditTaskModalProps {
   isOpen: boolean;
@@ -98,9 +99,11 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({
           </div>
 
           {/* Edit Tenggat Waktu (Deadline) + Presets */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Tenggat Waktu (Deadline)</label>
+          <CustomGlassDatePicker
+            theme="dark"
+            value={editDueDate}
+            onChange={setEditDueDate}
+            presetButtons={
               <div className="flex items-center gap-1 font-sans">
                 <button
                   type="button"
@@ -124,14 +127,8 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({
                   3 Hari
                 </button>
               </div>
-            </div>
-            <input
-              type="datetime-local"
-              value={editDueDate}
-              onChange={e => setEditDueDate(e.target.value)}
-              className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-xs text-white focus:outline-hidden focus:border-white/30 font-sans [color-scheme:dark]"
-            />
-          </div>
+            }
+          />
 
           {/* Edit Checklist DoD */}
           <div className="space-y-1.5 pt-1">
