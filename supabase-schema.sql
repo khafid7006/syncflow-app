@@ -126,26 +126,35 @@ CREATE INDEX idx_users_role ON users(role);
 -- ============================================================================
 -- 3. SPRINTS TABLE
 -- ============================================================================
-CREATE TABLE sprints (
-  id VARCHAR(64) PRIMARY KEY,
-  name VARCHAR(128) NOT NULL,
-  goal TEXT,
+CREATE TABLE IF NOT EXISTS public.sprints (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  goal_title TEXT NOT NULL,
+  brief_notes TEXT,
+  document_url TEXT,
+  document_name TEXT,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
-  is_active BOOLEAN NOT NULL DEFAULT FALSE,
+  status TEXT NOT NULL DEFAULT 'draft', -- 'draft' | 'active' | 'completed'
+  target_task_count INT DEFAULT 0,
+  target_dod_count INT DEFAULT 0,
+  is_locked BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================================
 -- 4. TASKS TABLE (MASTER MONITORING FEED)
 -- ============================================================================
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS public.tasks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  sprint_id UUID REFERENCES public.sprints(id) ON DELETE CASCADE,
   title VARCHAR(256) NOT NULL,
   description TEXT,
   assignee_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   status VARCHAR(64) NOT NULL DEFAULT 'in_progress',
-  priority task_priority_enum NOT NULL DEFAULT 'MEDIUM',
+  priority VARCHAR(32) NOT NULL DEFAULT 'normal',
+  pod TEXT DEFAULT 'Product Builder',
   blocker_category blocker_category_enum,
   blocker_reason TEXT,
   deliverable_url TEXT,
@@ -159,8 +168,9 @@ CREATE TABLE tasks (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_sprint ON tasks(sprint_id);
 
 -- ============================================================================
 -- 5. TASK DODS (DEFINITION OF DONE CHECKLIST)

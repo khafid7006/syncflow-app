@@ -70,14 +70,21 @@ export interface Team {
 
 export interface Sprint {
   id: string;
-  team_id: string;
-  title: string;
+  workspace_id?: string;
+  team_id?: string;
+  title?: string;
+  goal_title?: string;
+  goal?: string;
+  brief_notes?: string;
+  meeting_notes?: string;
+  document_url?: string;
+  document_name?: string;
   start_date: string;
   end_date: string;
-  goal: string;
-  meeting_notes: string;
-  document_url?: string;
   status: SprintStatus;
+  target_task_count?: number;
+  target_dod_count?: number;
+  is_locked?: boolean;
   created_at?: string;
 }
 
@@ -185,10 +192,13 @@ export interface WorkspaceMemberDetail {
 export interface MemberTask {
   id?: string;
   workspace_id?: string;
+  sprint_id?: string;
   assignee_id?: string;
   title: string;
   description?: string;
   status: string;
+  priority?: 'normal' | 'urgent' | TaskPriority | string;
+  pod?: string;
   deliverable_link?: string;
   deliverable_url?: string;
   blocker_reason?: string;
@@ -197,7 +207,7 @@ export interface MemberTask {
   resolution_note?: string;
   due_date?: string;
   submitted_at?: string;
-  checklist?: { id: number; text: string; checked: boolean; is_checked?: boolean }[];
+  checklist?: { id: number; text: string; checked?: boolean; is_checked?: boolean }[];
   created_at?: string;
   profiles?: {
     id?: string;

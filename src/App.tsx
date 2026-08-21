@@ -215,6 +215,9 @@ export const App: React.FC = () => {
   // LIGHT AGILE MULTI-SPRINT STATES & HANDLERS
   const [sprintsList, setSprintsList] = useState<any[]>([]);
   const [activeSprint, setActiveSprint] = useState<any>(null);
+  const [selectedSprintId, setSelectedSprintId] = useState<string>('all');
+  const [isSprintDrawerOpen, setIsSprintDrawerOpen] = useState<boolean>(false);
+  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date());
   const [editingSprintId, setEditingSprintId] = useState<string | null>(null);
 
   // Form State
@@ -1796,10 +1799,12 @@ export const App: React.FC = () => {
       }));
 
     const dueDateIso = newAssignDueDate ? new Date(newAssignDueDate).toISOString() : null;
+    const targetSprintId = selectedSprintId === 'all' ? (activeSprint?.id || null) : selectedSprintId;
 
     // 2. Buat batch rows untuk di-insert sekaligus
     const taskRows = targetUserIds.map(userId => ({
       workspace_id: currentWorkspace.id,
+      sprint_id: targetSprintId,
       assignee_id: userId,
       title: newAssignTaskTitle.trim(),
       description: newAssignDescription.trim() || null,
@@ -1954,8 +1959,20 @@ export const App: React.FC = () => {
     }
   };
 
+  // Sprint yang sedang aktif dipilih
+  const currentSelectedSprint = React.useMemo(() => {
+    if (selectedSprintId === 'all') return activeSprint || sprintsList[0] || null;
+    return sprintsList.find((s) => s.id === selectedSprintId) || null;
+  }, [selectedSprintId, sprintsList, activeSprint]);
+
+  // Filter tugas per sprint untuk Gantt bulanan
+  const filteredTasksForGantt = React.useMemo(() => {
+    if (selectedSprintId === 'all') return allTasks;
+    return allTasks.filter((t) => t.sprint_id === selectedSprintId);
+  }, [allTasks, selectedSprintId]);
+
   // Filter tasks for PO Task Feed (Active vs Done)
-  const filteredMasterTasks = allTasks.filter(t => {
+  const filteredMasterTasks = filteredTasksForGantt.filter(t => {
     if (poTaskFeedFilter === 'done') {
       return t.status === 'done';
     }
@@ -2276,6 +2293,14 @@ export const App: React.FC = () => {
             profile={profile}
             onOpenProfileModal={handleOpenProfileModal}
             activeSprint={activeSprint}
+            selectedSprintId={selectedSprintId}
+            setSelectedSprintId={setSelectedSprintId}
+            isSprintDrawerOpen={isSprintDrawerOpen}
+            setIsSprintDrawerOpen={setIsSprintDrawerOpen}
+            currentMonthDate={currentMonthDate}
+            setCurrentMonthDate={setCurrentMonthDate}
+            currentSelectedSprint={currentSelectedSprint}
+            filteredTasksForGantt={filteredTasksForGantt}
             onOpenSprintModal={() => setIsSprintModalOpen(true)}
             totalDoDCount={totalDoDCount}
             completedDoDCount={completedDoDCount}

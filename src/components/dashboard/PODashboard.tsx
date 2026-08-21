@@ -61,6 +61,14 @@ interface PODashboardProps {
   profile?: any;
   onOpenProfileModal?: () => void;
   activeSprint?: any;
+  selectedSprintId?: string;
+  setSelectedSprintId?: (id: string) => void;
+  isSprintDrawerOpen?: boolean;
+  setIsSprintDrawerOpen?: (open: boolean) => void;
+  currentMonthDate?: Date;
+  setCurrentMonthDate?: (date: Date) => void;
+  currentSelectedSprint?: any;
+  filteredTasksForGantt?: MemberTask[];
   onOpenSprintModal?: () => void;
   totalDoDCount?: number;
   completedDoDCount?: number;
@@ -140,6 +148,14 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   profile,
   onOpenProfileModal,
   activeSprint,
+  selectedSprintId = 'all',
+  setSelectedSprintId = () => {},
+  isSprintDrawerOpen = false,
+  setIsSprintDrawerOpen = () => {},
+  currentMonthDate,
+  setCurrentMonthDate = () => {},
+  currentSelectedSprint = null,
+  filteredTasksForGantt = [],
   onOpenSprintModal,
   totalDoDCount = 0,
   completedDoDCount = 0,
@@ -174,13 +190,14 @@ export const PODashboard: React.FC<PODashboardProps> = ({
 
   // 1. Gabungkan data visual Gantt untuk Active vs Draft (Ghost Forecasting vs Live Active)
   const combinedGanttData = React.useMemo(() => {
-    const isViewingDraft = activeSprint?.status === 'draft';
+    const targetSprint = selectedSprint || activeSprint;
+    const isViewingDraft = targetSprint?.status === 'draft';
     const pods = ['Marketing', 'Product Builder', 'BA', 'UI/UX Designer', 'General'];
     const memberCount = Math.max(1, assigneeList.length);
 
     // Jika sedang membuka sprint DRAFT: Buat proyeksi visual forecasting
     if (isViewingDraft) {
-      const estimatedSprintDays = Math.max(1, calculateDaysLeft(activeSprint.end_date));
+      const estimatedSprintDays = Math.max(1, calculateDaysLeft(targetSprint?.end_date));
       const projectedDoDPerPod = Math.round((estimatedSprintDays * memberCount * 1.5) / pods.length);
 
       return pods.map((pod) => ({
@@ -195,9 +212,14 @@ export const PODashboard: React.FC<PODashboardProps> = ({
       }));
     }
 
+    // Filter tugas khusus untuk sprint terpilih
+    const sprintTasks = targetSprint?.id
+      ? allTasks.filter((t) => !t.sprint_id || t.sprint_id === targetSprint.id)
+      : allTasks;
+
     // Jika SPRINT AKTIF: Gunakan data live pengerjaan tim
     return pods.map((pod) => {
-      const podTaskList = allTasks.filter((t) => (t.pod || 'General') === pod);
+      const podTaskList = sprintTasks.filter((t) => (t.pod || 'General') === pod);
       const doneTasks = podTaskList.filter((t) => t.status === 'done').length;
       const blockedTasks = podTaskList.filter((t) => t.status === 'blocked' || t.is_blocked).length;
       const progress = podTaskList.length > 0 ? Math.round((doneTasks / podTaskList.length) * 100) : 0;
@@ -211,12 +233,13 @@ export const PODashboard: React.FC<PODashboardProps> = ({
         progress,
         forecastLabel: `${doneTasks}/${podTaskList.length} Tugas Selesai (${progress}%)`
       };
-    }).filter((p) => p.totalTasks > 0 || !activeSprint);
-  }, [activeSprint, allTasks, assigneeList.length, calculateDaysLeft]);
+    }).filter((p) => p.totalTasks > 0 || !targetSprint);
+  }, [selectedSprint, activeSprint, allTasks, assigneeList.length, calculateDaysLeft]);
 
   // 2. Kalkulasi Smart Velocity Forecasting ETA
   const forecastingResult = React.useMemo(() => {
-    if (!activeSprint || allTasks.length === 0) {
+    const targetSprint = selectedSprint || activeSprint;
+    if (!targetSprint || allTasks.length === 0) {
       return { status: 'standby', text: 'Menunggu PL membagikan tugas ke anggota tim...', etaDate: '-' };
     }
 
@@ -225,7 +248,7 @@ export const PODashboard: React.FC<PODashboardProps> = ({
     // Asumsi 1 member menyelesaikan ~1.5 DoD poin per hari kerja
     const estimatedDaysNeeded = Math.max(1, Math.ceil(remainingDoD / (activeMembersCount * 1.5)));
 
-    const sprintDaysLeft = calculateDaysLeft(activeSprint.end_date);
+    const sprintDaysLeft = calculateDaysLeft(targetSprint.end_date);
     const isDelayRisk = estimatedDaysNeeded > sprintDaysLeft;
 
     return {
@@ -234,9 +257,9 @@ export const PODashboard: React.FC<PODashboardProps> = ({
       daysLeft: sprintDaysLeft,
       text: isDelayRisk
         ? `⚠️ Potensi Delay: Beban sisa ${remainingDoD} DoD butuh ~${estimatedDaysNeeded} hari, sisa sprint ${sprintDaysLeft} hari.`
-        : `🟢 Optimal: Diprediksi selesai dalam ~${estimatedDaysNeeded} hari (Tepat Waktu).`
+        : `🟢 Tepat Waktu: Diprediksi selesai dalam ~${estimatedDaysNeeded} hari kerja.`
     };
-  }, [activeSprint, allTasks, totalDoDCount, completedDoDCount, assigneeList.length, calculateDaysLeft]);
+  }, [selectedSprint, activeSprint, allTasks, totalDoDCount, completedDoDCount, assigneeList.length, calculateDaysLeft]);
 
   // Set ID tugas yang sedang dibuka detailnya (default: hanya tugas dengan Blocker atau Review yang otomatis terbuka)
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(new Set());
@@ -293,349 +316,310 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   }, [activeSprint]);
 
   if (isUserPO) {
-    const calculateSprintDays = () => {
-      if (!sprintStartDate || !sprintEndDate) return 0;
-      const diff = new Date(sprintEndDate).getTime() - new Date(sprintStartDate).getTime();
-      return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1);
-    };
+    const activeTasksList = filteredTasksForGantt || allTasks;
+    const currentMonth = currentMonthDate || new Date();
 
-    const sprintDays = calculateSprintDays();
-    const memberCount = Math.max(1, assigneeList.length);
-    const maxSafeDoDCapacity = sprintDays * memberCount * 2;
+    // 2. LOGIKA GRID KALENDER BULANAN (MONTHLY GANTT ENGINE)
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // Array hari 1..31 untuk header kolom
+    const monthDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const todayDate = new Date().getDate();
+    const isCurrentActiveMonth =
+      new Date().getMonth() === month && new Date().getFullYear() === year;
+
+    // Helper posisi persentase horizontal bar Gantt
+    const getBarPosition = (startDateStr: string, endDateStr: string) => {
+      if (!startDateStr || !endDateStr) return { left: '0%', width: '100%' };
+      const sDate = new Date(startDateStr);
+      const eDate = new Date(endDateStr);
+
+      const startDay = Math.max(1, Math.min(daysInMonth, sDate.getDate()));
+      const endDay = Math.max(startDay, Math.min(daysInMonth, eDate.getDate()));
+      const duration = endDay - startDay + 1;
+
+      const leftPct = ((startDay - 1) / daysInMonth) * 100;
+      const widthPct = Math.max(3, (duration / daysInMonth) * 100);
+
+      return { left: `${leftPct}%`, width: `${widthPct}%` };
+    };
 
     return (
       <main className="w-full max-w-7xl mx-auto space-y-6 font-sans animate-in fade-in duration-300">
-
-        {/* ROADMAP SPRINT CHIPS */}
-        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 font-sans">
-          {sprintsList.map((s) => {
-            const isSelected = activeSprint?.id === s.id;
-            const isLiveActive = s.status === 'active';
-
-            return (
+        
+        {/* TOP CONTROL BAR: BULAN NAVIGATOR & SPRINT SELECTOR */}
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-3xl border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-xl font-sans">
+          {/* Navigasi Bulan */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1 bg-neutral-900 border border-white/10 rounded-xl p-1 font-sans">
               <button
-                key={s.id}
                 type="button"
-                onClick={() => {
-                  setActiveSprint(s);
-                  setEditingSprintId(s.id);
-                  setSprintGoalInput(s.goal_title || '');
-                  setSprintBriefNotes(s.brief_notes || '');
-                  setSprintDocUrl(s.document_url || '');
-                  setSprintDocName(s.document_name || '');
-                  setSprintStartDate(s.start_date || '');
-                  setSprintEndDate(s.end_date || '');
-                  setIsEditingSprint(false);
-                }}
-                className={`px-4 py-2 rounded-2xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border shrink-0 font-sans ${
-                  isSelected
-                    ? 'bg-white text-zinc-950 border-white shadow-lg'
-                    : 'bg-neutral-950/60 text-zinc-400 border-white/10 hover:border-white/20 hover:text-white'
+                onClick={() => setCurrentMonthDate && setCurrentMonthDate(new Date(year, month - 1, 1))}
+                className="px-2.5 py-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 text-xs transition-colors cursor-pointer font-sans"
+              >
+                ‹
+              </button>
+              <span className="px-3 text-xs font-bold text-white font-mono">
+                {currentMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentMonthDate && setCurrentMonthDate(new Date(year, month + 1, 1))}
+                className="px-2.5 py-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 text-xs transition-colors cursor-pointer font-sans"
+              >
+                ›
+              </button>
+            </div>
+
+            {/* Pill Filter Sprint */}
+            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar font-sans">
+              <button
+                type="button"
+                onClick={() => setSelectedSprintId && setSelectedSprintId('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer font-sans ${
+                  selectedSprintId === 'all'
+                    ? 'bg-white text-zinc-950 shadow-md font-bold'
+                    : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/5'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${isLiveActive ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-                <span className="truncate max-w-[160px] font-sans">{s.goal_title}</span>
-                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono uppercase ${isLiveActive ? 'bg-emerald-500/20 text-emerald-700' : 'bg-amber-400/20 text-amber-700'}`}>
-                  {s.status}
-                </span>
+                Semua Sprint (Overview)
               </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={() => {
-              setEditingSprintId(null);
-              setSprintGoalInput('');
-              setSprintBriefNotes('');
-              setSprintDocUrl('');
-              setSprintDocName('');
-              setSprintStartDate(new Date().toISOString().split('T')[0]);
-              setSprintEndDate('');
-              setIsEditingSprint(true);
-            }}
-            className="px-3.5 py-2 rounded-2xl border border-dashed border-white/20 hover:border-white/40 text-xs font-bold text-zinc-400 hover:text-white transition-colors shrink-0 cursor-pointer font-sans"
-          >
-            + Rancang Sprint Berikutnya
-          </button>
-        </div>
-
-        {/* JIKA MODE EDIT SPRINT */}
-        {isEditingSprint ? (
-          <div className="p-6 rounded-[32px] border border-white/10 bg-neutral-950/80 backdrop-blur-2xl shadow-2xl space-y-5 font-sans">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
-              <div>
-                <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-1.5 font-sans">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Sprint Planner & Briefing Architecture
-                </span>
-                <h3 className="text-lg font-extrabold text-white tracking-tight mt-0.5 font-sans">
-                  {editingSprintId ? 'Edit Rencana Sprint' : 'Rancang Sprint Baru'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditingSprint(false)}
-                className="px-3.5 py-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 transition-all cursor-pointer font-sans"
-              >
-                Tutup
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start font-sans">
-              {/* Kolom Kiri */}
-              <div className="lg:col-span-6 space-y-4 font-sans">
-                <div className="space-y-1.5 font-sans">
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
-                    Nama / Goal Utama Sprint
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: Sprint 2 - Scale Konten & Finalize UI Kit"
-                    value={sprintGoalInput}
-                    onChange={(e) => setSprintGoalInput(e.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans"
-                  />
-                </div>
-
-                <div className="space-y-1.5 font-sans">
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
-                    Catatan Briefing & Kriteria Output
-                  </label>
-                  <textarea
-                    rows={3}
-                    placeholder="Tuliskan arahan strategis, ekspektasi kualitas, atau batasan scope kerja untuk PL..."
-                    value={sprintBriefNotes}
-                    onChange={(e) => setSprintBriefNotes(e.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-neutral-900 p-3.5 text-xs text-white outline-hidden focus:border-white/30 resize-none font-sans"
-                  />
-                </div>
-
-                {/* Upload Lampiran */}
-                <div className="space-y-1.5 font-sans">
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">
-                    Lampiran Dokumen Panduan (PDF/DOCX/Gambar Maks. 5MB)
-                  </label>
-                  <div className="flex items-center gap-3 p-3 rounded-2xl border border-white/10 bg-neutral-900/60 font-sans">
-                    <input
-                      type="file"
-                      id="sprint-doc-file"
-                      onChange={handleSprintDocUpload}
-                      className="hidden"
-                    />
-                    <label
-                      htmlFor="sprint-doc-file"
-                      className="px-3 py-1.5 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition-all cursor-pointer font-sans"
-                    >
-                      {isUploadingDoc ? 'Mengunggah...' : '📎 Pilih File'}
-                    </label>
-                    <span className="text-xs text-zinc-400 truncate flex-1 font-mono">
-                      {sprintDocName || 'Belum ada dokumen dilampirkan'}
-                    </span>
-                    {sprintDocUrl && (
-                      <button
-                        type="button"
-                        onClick={() => { setSprintDocUrl(''); setSprintDocName(''); }}
-                        className="text-rose-400 text-xs hover:underline cursor-pointer font-sans"
-                      >
-                        Hapus
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Kolom Kanan */}
-              <div className="lg:col-span-6 space-y-4 font-sans">
-                <CustomGlassRangeCalendar
-                  startDate={sprintStartDate}
-                  endDate={sprintEndDate}
-                  onChange={(start, end) => {
-                    setSprintStartDate(start);
-                    setSprintEndDate(end);
-                  }}
-                />
-
-                <div className="flex items-center justify-end gap-3 pt-2 font-sans">
-                  <button
-                    type="button"
-                    disabled={isSavingSprint || !sprintEndDate}
-                    onClick={() => { handleSaveSprint('draft'); setIsEditingSprint(false); }}
-                    className="px-5 py-2.5 rounded-2xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-200 transition-all cursor-pointer disabled:opacity-40 font-sans"
-                  >
-                    💾 Simpan sebagai Draft
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSavingSprint || !sprintEndDate}
-                    onClick={() => { handleSaveSprint('active'); setIsEditingSprint(false); }}
-                    className="px-6 py-2.5 rounded-2xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-xl cursor-pointer disabled:opacity-40 font-sans"
-                  >
-                    🚀 Rilis & Aktifkan Sprint ke Tim
-                  </button>
-                </div>
-              </div>
+              {sprintsList.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSelectedSprintId && setSelectedSprintId(s.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 font-sans ${
+                    selectedSprintId === s.id
+                      ? 'bg-white text-zinc-950 shadow-md font-bold'
+                      : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/5'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${s.status === 'active' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  <span className="truncate max-w-[140px] font-sans">{s.goal_title}</span>
+                </button>
+              ))}
             </div>
           </div>
-        ) : (
-          /* JIKA SPRINT SEDANG BERJALAN (EXECUTIVE MONITORING VIEW) */
-          <>
-            {/* BARIS 1 (ATAS): 3 KARTU METRIK RINGKAS (GRID 3 KOLOM) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full font-sans">
-              {/* Kartu 1: Mandat Goal */}
-              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-xl flex flex-col justify-between min-h-[140px] font-sans">
-                <div className="flex items-center justify-between font-sans">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-1.5 font-sans">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    Sprint Mandate
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingSprintId(activeSprint?.id || null);
-                      setSprintGoalInput(activeSprint?.goal_title || '');
-                      setSprintBriefNotes(activeSprint?.brief_notes || '');
-                      setSprintDocUrl(activeSprint?.document_url || '');
-                      setSprintDocName(activeSprint?.document_name || '');
-                      setSprintStartDate(activeSprint?.start_date || '');
-                      setSprintEndDate(activeSprint?.end_date || '');
-                      setIsEditingSprint(true);
-                    }}
-                    className="px-2.5 py-1 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-[11px] font-semibold text-zinc-300 transition-colors cursor-pointer font-sans"
-                  >
-                    ⚙️ Ubah
-                  </button>
-                </div>
-                <h2 className="text-xl font-extrabold text-white tracking-tight line-clamp-2 my-2 font-sans">
-                  {activeSprint?.goal_title || 'Belum Ada Sprint Goal'}
-                </h2>
 
-                {activeSprint?.document_url && (
-                  <a
-                    href={activeSprint.document_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 font-mono truncate font-sans"
-                  >
-                    <span>📄 Unduh Brief PO:</span>
-                    <span className="underline font-bold font-sans">{activeSprint.document_name || 'Dokumen Sprint'}</span>
-                  </a>
-                )}
+          {/* Tombol Pratinjau & Buat Sprint */}
+          <div className="flex items-center gap-2 font-sans">
+            <button
+              type="button"
+              onClick={() => setIsSprintDrawerOpen && setIsSprintDrawerOpen(true)}
+              className="px-4 py-2 rounded-xl border border-white/15 bg-white/10 hover:bg-white/20 text-xs font-bold text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-md font-sans"
+            >
+              <span>🔍 Pratinjau & Atur Sprint</span>
+            </button>
+          </div>
+        </div>
 
-                <div className="flex items-center justify-between text-xs text-zinc-400 font-mono border-t border-white/5 pt-2 font-sans">
-                  <span>{activeSprint?.start_date} → {activeSprint?.end_date}</span>
-                  <span className="text-white font-bold font-sans">{calculateDaysLeft(activeSprint?.end_date)} Hari Sisa</span>
-                </div>
-              </div>
-
-              {/* Kartu 2: Velocity */}
-              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-xl flex flex-col justify-between min-h-[140px] font-sans">
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">Sprint Velocity</span>
-                <div className="font-sans">
-                  <div className="text-3xl font-extrabold text-white tracking-tight font-sans">{sprintProgressPct}%</div>
-                  <p className="text-xs text-zinc-400 mt-0.5 font-sans">{completedDoDCount} dari {totalDoDCount} DoD Selesai</p>
-                </div>
-                <div className="w-full h-2 bg-neutral-900 rounded-full overflow-hidden p-0.5 border border-white/5">
-                  <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-500" style={{ width: `${sprintProgressPct}%` }} />
-                </div>
-              </div>
-
-              {/* Kartu 3: Health Forecasting */}
-              <div className="p-5 rounded-3xl border border-white/10 bg-neutral-950/70 backdrop-blur-2xl shadow-xl flex flex-col justify-between min-h-[140px] font-sans">
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-sans">Status Prediksi ETA</span>
-                <div className="font-sans">
-                  <div className={`text-lg font-extrabold tracking-tight font-sans ${forecastingResult.status === 'delay_risk' ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {forecastingResult.status === 'delay_risk' ? '⚠️ Delay Risk' : '⚡ On Track'}
-                  </div>
-                  <p className="text-xs text-zinc-400 mt-0.5 leading-snug line-clamp-2 font-sans">{forecastingResult.text}</p>
-                </div>
-                <span className="text-[10px] text-zinc-500 font-mono">{allTasks.length} Tugas Terdistribusi</span>
-              </div>
+        {/* FULL-WIDTH MONTHLY GANTT RADAR STAGE */}
+        <div className="w-full p-6 rounded-[32px] border border-white/10 bg-neutral-950/80 backdrop-blur-2xl shadow-2xl space-y-6 overflow-hidden font-sans">
+          {/* Gantt Header & Legends */}
+          <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
+            <div>
+              <h3 className="text-lg font-bold text-white tracking-tight font-sans">
+                Peta Jalan & Distribusi Eksekusi Bulanan
+              </h3>
+              <p className="text-xs text-zinc-400 font-sans">
+                Visualisasi roadmap sprint dan alokasi beban divisi selama 1 bulan penuh
+              </p>
             </div>
+            <div className="flex items-center gap-4 text-xs font-mono text-zinc-400 font-sans">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Sprint Aktif</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-zinc-600 border border-dashed border-zinc-400" /> Sprint Draft</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-400" /> Alokasi POD</span>
+            </div>
+          </div>
 
-            {/* BARIS 2 (BAWAH): GANTT CHART RADAR FULL-WIDTH (LEBAR 100%) */}
-            <div className="w-full p-6 rounded-[32px] border border-white/10 bg-neutral-950/80 backdrop-blur-2xl shadow-2xl space-y-6 font-sans">
-              <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
-                <div>
-                  <div className="flex items-center gap-2 font-sans">
-                    <h3 className="text-lg font-bold text-white tracking-tight font-sans">Timeline & Velocity Radar POD (Sprint Gantt)</h3>
-                    {activeSprint?.status === 'draft' && (
-                      <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 font-sans">
-                        Simulasi Proyeksi Draft
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-zinc-400 font-sans">
-                    {activeSprint?.status === 'draft'
-                      ? 'Menampilkan simulasi distribusi kapasitas masa depan sebelum sprint dirilis ke PL'
-                      : 'Monitoring distribusi beban kerja per divisi secara realtime'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4 text-xs font-mono text-zinc-400 font-sans">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-500" /> Aktif</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Selesai</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Blocker</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-zinc-600 border border-zinc-400 border-dashed" /> Proyeksi Draft</span>
-                </div>
-              </div>
-
-              {/* GANTT TABLE DENGAN PROPORSI LEBAR */}
-              <div className="space-y-3 w-full font-sans">
-                {/* Header Kolom */}
-                <div className="flex items-center text-xs font-mono text-zinc-400 pb-2 border-b border-white/5 font-sans">
-                  <div className="w-48 shrink-0 font-bold uppercase tracking-wider text-zinc-300">Divisi / POD</div>
-                  <div className="flex-1 grid grid-cols-7 gap-2 text-center text-[11px]">
-                    <div>Hari 1</div><div>Hari 2</div><div>Hari 3</div><div>Hari 4</div><div>Hari 5</div><div>Hari 6</div><div>Hari 7</div>
-                  </div>
-                </div>
-
-                {/* Rows Tiap Divisi */}
-                {combinedGanttData.map((item) => (
-                  <div key={item.pod} className="flex items-center py-2 border-b border-white/[0.02] font-sans">
-                    <div className="w-48 shrink-0 pr-4 font-sans">
-                      <div className="font-semibold text-white text-sm truncate flex items-center gap-2 font-sans">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${
-                          item.isDraft ? 'bg-zinc-500' : (item.blockedTasks > 0 ? 'bg-rose-400' : 'bg-emerald-400')
-                        }`} />
-                        <span className="truncate">{item.pod}</span>
-                      </div>
-                      <div className="text-[11px] text-zinc-500 font-mono">{item.forecastLabel}</div>
-                    </div>
-
-                    {/* Bar Track yang Melebar Penuh */}
-                    <div className="flex-1 h-9 rounded-xl bg-neutral-900/80 border border-white/5 relative flex items-center px-2 font-sans">
-                      <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/[0.04] pointer-events-none" />
-
-                      {item.isDraft ? (
-                        <div
-                          className="relative h-6 rounded-lg px-3 flex items-center justify-between text-xs font-bold text-zinc-300 border border-dashed border-zinc-500/50 bg-gradient-to-r from-zinc-800/80 to-zinc-900/80 shadow-inner font-sans"
-                          style={{ width: '70%' }}
-                        >
-                          <span className="font-mono text-[10px] text-zinc-400">◌ Est: {item.totalTasks} Tugas</span>
-                          <span className="font-mono text-[9px] text-zinc-500 uppercase">Simulasi Draft</span>
-                        </div>
-                      ) : (
-                        <div
-                          className={`relative h-6 rounded-lg px-3 flex items-center justify-between text-xs font-bold text-white shadow-lg transition-all duration-500 font-sans ${
-                            item.blockedTasks > 0
-                              ? 'bg-gradient-to-r from-rose-500/80 to-amber-500/80 border border-rose-400/30'
-                              : item.progress === 100
-                              ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/30'
-                              : 'bg-gradient-to-r from-sky-500/80 to-indigo-500/80 border border-sky-400/30'
-                          }`}
-                          style={{ width: `${Math.max(20, item.progress)}%` }}
-                        >
-                          <span className="truncate font-medium">{item.totalTasks} Tugas</span>
-                          <span className="font-mono text-[10px]">{item.progress}%</span>
-                        </div>
-                      )}
-                    </div>
+          {/* GANTT MATRIX 30/31 DAYS GRID */}
+          <div className="space-y-4 overflow-x-auto custom-scrollbar pb-2 font-sans">
+            {/* Header Tanggal 1 .. 31 */}
+            <div className="flex items-center min-w-[800px] text-xs font-mono text-zinc-400 border-b border-white/5 pb-2 font-sans">
+              <div className="w-44 shrink-0 font-bold uppercase tracking-wider text-zinc-300 font-sans">Level / Divisi</div>
+              <div className="flex-1 grid gap-1 relative text-center" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }}>
+                {monthDays.map((day) => (
+                  <div
+                    key={day}
+                    className={`py-1 rounded text-[10px] ${
+                      isCurrentActiveMonth && day === todayDate
+                        ? 'bg-white/20 text-white font-extrabold ring-1 ring-white/40'
+                        : 'text-zinc-500'
+                    }`}
+                  >
+                    {day}
                   </div>
                 ))}
               </div>
             </div>
-          </>
+
+            {/* SECTION 1: SPRINT ROADMAP BARS */}
+            <div className="space-y-2.5 min-w-[800px] border-b border-white/5 pb-4 font-sans">
+              <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono">
+                Master Sprint Roadmap
+              </div>
+              {sprintsList.map((s) => {
+                const pos = getBarPosition(s.start_date, s.end_date);
+                const isActive = s.status === 'active';
+
+                return (
+                  <div key={s.id} className="flex items-center font-sans">
+                    <div className="w-44 shrink-0 pr-3 text-xs font-semibold text-zinc-300 truncate font-sans">
+                      {s.goal_title}
+                    </div>
+                    <div className="flex-1 h-8 rounded-xl bg-neutral-900/60 border border-white/5 relative flex items-center px-1 font-sans">
+                      {/* Grid Lines */}
+                      <div className="absolute inset-0 grid divide-x divide-white/[0.02]" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }} />
+                      
+                      {/* Sprint Bar */}
+                      <div
+                        className={`absolute h-6 rounded-lg px-3 flex items-center justify-between text-xs font-bold text-white shadow-md transition-all font-sans ${
+                          isActive
+                            ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 border border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+                            : 'bg-gradient-to-r from-zinc-800/80 to-zinc-900/80 border border-dashed border-zinc-500/50 text-zinc-300'
+                        }`}
+                        style={{ left: pos.left, width: pos.width }}
+                      >
+                        <span className="truncate font-sans">{s.goal_title}</span>
+                        <span className="font-mono text-[9px] opacity-80 uppercase">{s.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* SECTION 2: POD / DIVISI ALLOCATION BARS */}
+            <div className="space-y-2.5 min-w-[800px] pt-2 font-sans">
+              <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono">
+                Distribusi Aktivitas Divisi
+              </div>
+              {['Marketing', 'Product Builder', 'BA', 'UI/UX Designer', 'General'].map((pod) => {
+                const podTasks = activeTasksList.filter((t) => (t.pod || 'General') === pod);
+                const hasBlocker = podTasks.some((t) => t.status === 'blocked' || t.is_blocked);
+                const isDone = podTasks.length > 0 && podTasks.every((t) => t.status === 'done');
+
+                return (
+                  <div key={pod} className="flex items-center font-sans">
+                    <div className="w-44 shrink-0 pr-3 font-sans">
+                      <div className="text-xs font-semibold text-white truncate font-sans">{pod}</div>
+                      <div className="text-[10px] text-zinc-500 font-mono">{podTasks.length} Tugas</div>
+                    </div>
+
+                    <div className="flex-1 h-8 rounded-xl bg-neutral-900/60 border border-white/5 relative flex items-center px-1 font-sans">
+                      <div className="absolute inset-0 grid divide-x divide-white/[0.02]" style={{ gridTemplateColumns: `repeat(${daysInMonth}, minmax(0, 1fr))` }} />
+                      
+                      {podTasks.length > 0 && (
+                        <div
+                          className={`absolute h-5 rounded-lg px-2.5 flex items-center justify-between text-[10px] font-bold text-white shadow-md font-sans ${
+                            hasBlocker
+                              ? 'bg-rose-500/80 border border-rose-400'
+                              : isDone
+                              ? 'bg-emerald-500/80 border border-emerald-400'
+                              : 'bg-sky-500/80 border border-sky-400'
+                          }`}
+                          style={{ left: '5%', width: '50%' }}
+                        >
+                          <span>{podTasks.length} Tugas Aktif</span>
+                          <span>{hasBlocker ? '🚨 Blocker' : isDone ? '✓ Selesai' : 'Jalan'}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. DRAWER PRATINJAU & PENGATURAN SPRINT (SLIDE-OVER) */}
+        {isSprintDrawerOpen && (
+          <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-md flex justify-end animate-in fade-in duration-200 font-sans">
+            <div className="w-full max-w-xl bg-neutral-950 border-l border-white/10 h-full p-6 overflow-y-auto space-y-6 shadow-2xl text-white font-sans">
+              {/* Header Drawer */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 font-sans">
+                <div>
+                  <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest font-bold">
+                    SPRINT DETAILS & BRIEFING
+                  </span>
+                  <h3 className="text-xl font-extrabold text-white mt-1 font-sans">
+                    {currentSelectedSprint?.goal_title || 'Atur Sprint Baru'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSprintDrawerOpen && setIsSprintDrawerOpen(false)}
+                  className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer font-sans"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Konten Briefing & Dokumen */}
+              <div className="space-y-4 font-sans">
+                <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] space-y-2 font-sans">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase font-sans">Catatan Briefing PO:</span>
+                  <p className="text-xs text-zinc-300 leading-relaxed font-sans whitespace-pre-line">
+                    {currentSelectedSprint?.brief_notes || 'Tidak ada catatan briefing tertulis.'}
+                  </p>
+                </div>
+
+                {currentSelectedSprint?.start_date && currentSelectedSprint?.end_date && (
+                  <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] flex items-center justify-between text-xs text-zinc-300 font-sans">
+                    <span>Rentang Tanggal Sprint:</span>
+                    <span className="font-mono text-white font-bold">{currentSelectedSprint.start_date} → {currentSelectedSprint.end_date}</span>
+                  </div>
+                )}
+
+                {currentSelectedSprint?.document_url && (
+                  <a
+                    href={currentSelectedSprint.document_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between p-3.5 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-semibold text-white transition-all font-sans"
+                  >
+                    <span>📎 {currentSelectedSprint.document_name || 'Lihat Dokumen Briefing'}</span>
+                    <span className="text-[10px] font-mono text-zinc-400 font-sans">Unduh ↗</span>
+                  </a>
+                )}
+
+                {/* Action: Rilis Sprint jika masih Draft */}
+                {currentSelectedSprint?.status === 'draft' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSaveSprint('active');
+                      if (setIsSprintDrawerOpen) setIsSprintDrawerOpen(false);
+                    }}
+                    className="w-full py-3 rounded-2xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-xl cursor-pointer font-sans"
+                  >
+                    🚀 Rilis & Aktifkan Sprint Ini ke Tim
+                  </button>
+                )}
+
+                {/* Tombol Rancang/Edit Sprint Baru */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSprintId(currentSelectedSprint?.id || null);
+                    setSprintGoalInput(currentSelectedSprint?.goal_title || '');
+                    setSprintBriefNotes(currentSelectedSprint?.brief_notes || '');
+                    setSprintDocUrl(currentSelectedSprint?.document_url || '');
+                    setSprintDocName(currentSelectedSprint?.document_name || '');
+                    setSprintStartDate(currentSelectedSprint?.start_date || new Date().toISOString().split('T')[0]);
+                    setSprintEndDate(currentSelectedSprint?.end_date || '');
+                    if (setIsSprintDrawerOpen) setIsSprintDrawerOpen(false);
+                  }}
+                  className="w-full py-3 rounded-2xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-200 transition-all cursor-pointer font-sans"
+                >
+                  ⚙️ Edit / Ubah Rencana Sprint
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     );

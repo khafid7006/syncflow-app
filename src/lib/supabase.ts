@@ -54,12 +54,17 @@ export interface DatabaseSchema {
       sprints: {
         Row: {
           id: string;
-          team_id: string;
-          name: string;
-          sprint_goal: string | null;
+          workspace_id: string;
+          goal_title: string;
+          brief_notes: string | null;
+          document_url: string | null;
+          document_name: string | null;
           start_date: string;
           end_date: string;
-          is_active: boolean;
+          status: 'draft' | 'active' | 'completed';
+          target_task_count: number | null;
+          target_dod_count: number | null;
+          is_locked: boolean | null;
           created_at: string;
         };
         Insert: Omit<DatabaseSchema['public']['Tables']['sprints']['Row'], 'created_at'>;
@@ -68,15 +73,22 @@ export interface DatabaseSchema {
       tasks: {
         Row: {
           id: string;
-          task_code: string;
-          team_id: string;
-          sprint_id: string;
+          workspace_id: string;
+          sprint_id: string | null;
           assignee_id: string | null;
           title: string;
           description: string | null;
           deliverable_link: string | null;
-          status: 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'POD_REVIEW' | 'TEAM_REVIEW' | 'DONE';
-          priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+          deliverable_url: string | null;
+          status: string;
+          priority: string;
+          pod: string | null;
+          checklist: any;
+          is_blocked: boolean;
+          blocker_reason: string | null;
+          revision_note: string | null;
+          due_date: string | null;
+          submitted_at: string | null;
           created_at: string;
         };
         Insert: Omit<DatabaseSchema['public']['Tables']['tasks']['Row'], 'created_at'>;
