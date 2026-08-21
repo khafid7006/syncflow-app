@@ -21,6 +21,10 @@ interface PODashboardProps {
   // Bagi Tugas Baru Form Props
   selectedAssigneeId: string;
   setSelectedAssigneeId: (id: string) => void;
+  assignTargetType: 'individual' | 'pod' | 'all';
+  setAssignTargetType: (type: 'individual' | 'pod' | 'all') => void;
+  selectedTargetPod: string;
+  setSelectedTargetPod: (pod: string) => void;
   isLoadingAssignees: boolean;
   assigneeList: any[];
   taskTitleInputRef: React.RefObject<HTMLInputElement | null>;
@@ -66,6 +70,10 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   onOpenRevisionModal,
   selectedAssigneeId,
   setSelectedAssigneeId,
+  assignTargetType,
+  setAssignTargetType,
+  selectedTargetPod,
+  setSelectedTargetPod,
   isLoadingAssignees,
   assigneeList,
   taskTitleInputRef,
@@ -468,28 +476,97 @@ export const PODashboard: React.FC<PODashboardProps> = ({
           </div>
 
           <form onSubmit={onCreateNewTask} className="space-y-3.5 my-auto py-2 font-sans">
-            {/* Dropdown Select Member */}
-            <div className="space-y-1">
-              <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
-              <select
-                value={selectedAssigneeId}
-                onChange={(e) => setSelectedAssigneeId(e.target.value)}
-                disabled={isLoadingAssignees || assigneeList.length === 0}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-900 outline-hidden transition-all focus:border-zinc-400 focus:bg-white disabled:opacity-50 font-sans cursor-pointer"
-              >
-                {isLoadingAssignees ? (
-                  <option value="">Memuat daftar tim...</option>
-                ) : assigneeList.length === 0 ? (
-                  <option value="">Belum ada anggota tim terdaftar...</option>
-                ) : (
-                  assigneeList.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.full_name} — {member.pod} ({member.role.toUpperCase()})
-                    </option>
-                  ))
-                )}
-              </select>
+            {/* 1. TOGGLE MODE PENUGASAN */}
+            <div className="space-y-1.5 font-sans">
+              <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                Target Penerima Tugas
+              </label>
+              <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-100 rounded-xl text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setAssignTargetType('individual')}
+                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                    assignTargetType === 'individual'
+                      ? 'bg-zinc-950 text-white shadow-xs'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  👤 Individu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssignTargetType('pod')}
+                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                    assignTargetType === 'pod'
+                      ? 'bg-zinc-950 text-white shadow-xs'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  👥 1 Divisi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssignTargetType('all')}
+                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                    assignTargetType === 'all'
+                      ? 'bg-zinc-950 text-white shadow-xs'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  🌐 Semua Tim
+                </button>
+              </div>
             </div>
+
+            {/* 2. DYNAMIC INPUT SELECTOR BERDASARKAN MODE TARGET */}
+            {assignTargetType === 'individual' ? (
+              <div className="space-y-1 font-sans">
+                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
+                <select
+                  value={selectedAssigneeId}
+                  onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                  disabled={isLoadingAssignees || assigneeList.length === 0}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-900 outline-hidden transition-all focus:border-zinc-400 focus:bg-white disabled:opacity-50 cursor-pointer font-sans"
+                >
+                  {isLoadingAssignees ? (
+                    <option value="">Memuat daftar tim...</option>
+                  ) : assigneeList.length === 0 ? (
+                    <option value="">Belum ada anggota tim terdaftar...</option>
+                  ) : (
+                    assigneeList.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.full_name} — {member.pod} ({member.role.toUpperCase()})
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            ) : assignTargetType === 'pod' ? (
+              <div className="space-y-1 font-sans">
+                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                  Pilih Divisi / POD Target
+                </label>
+                <select
+                  value={selectedTargetPod}
+                  onChange={(e) => setSelectedTargetPod(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-900 outline-hidden focus:border-zinc-400 focus:bg-white cursor-pointer font-sans"
+                >
+                  <option value="Marketing">Marketing</option>
+                  <option value="Product Builder">Product Builder</option>
+                  <option value="BA">BA (Business Analyst)</option>
+                  <option value="UI/UX Designer">UI/UX Designer</option>
+                  <option value="QA">QA</option>
+                  <option value="General">General</option>
+                </select>
+                <p className="text-[10px] text-zinc-500 font-sans">
+                  Tugas akan otomatis dikirimkan ke seluruh anggota di divisi ini.
+                </p>
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-xl bg-zinc-100 border border-zinc-200 text-xs text-zinc-700 font-medium font-sans">
+                📢 Tugas ini akan ditugaskan serentak ke seluruh ({assigneeList.length}) anggota di workspace ini.
+              </div>
+            )}
 
             {/* Task Title Input with Ref for Auto-Focus */}
             <div className="space-y-1">

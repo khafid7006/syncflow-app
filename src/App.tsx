@@ -179,6 +179,8 @@ export const App: React.FC = () => {
   const [newAssignDescription, setNewAssignDescription] = useState<string>('');
   const [newAssignDueDate, setNewAssignDueDate] = useState<string>('');
   const [newAssignPriority, setNewAssignPriority] = useState<'normal' | 'urgent'>('normal');
+  const [assignTargetType, setAssignTargetType] = useState<'individual' | 'pod' | 'all'>('individual');
+  const [assignTargetPod, setAssignTargetPod] = useState<string>('Marketing');
   const [dodPoints, setDodPoints] = useState<string[]>(['', '', '']);
   const [isTaskSubmitSuccess, setIsTaskSubmitSuccess] = useState<boolean>(false);
 
@@ -1375,18 +1377,38 @@ export const App: React.FC = () => {
     }
   };
 
-  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (PO KIRIM TUGAS BARU)
+  // 3. MUTASI INSERT WAJIB INJECT WORKSPACE_ID (PO KIRIM TUGAS BARU - MULTI ASSIGN & POD BROADCAST)
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAssignTaskTitle.trim() || !currentWorkspace?.id) return;
 
-    const targetAssigneeId = selectedAssigneeId || assigneeList[0]?.id;
-    if (!targetAssigneeId) {
-      showToast("Pilih anggota tim penerima tugas terlebih dahulu.");
-      return;
-    }
+    // 1. Tentukan target user IDs berdasarkan mode target
+    let targetUserIds: string[] = [];
 
-    const assigneeName = assigneeList.find(m => m.id === targetAssigneeId)?.full_name || 'Member';
+    if (assignTargetType === 'individual') {
+      const targetId = selectedAssigneeId || assigneeList[0]?.id;
+      if (!targetId) {
+        showToast("Pilih anggota tim penerima tugas.");
+        return;
+      }
+      targetUserIds = [targetId];
+    } else if (assignTargetType === 'pod') {
+      // Filter seluruh member yang ada di POD terpilih
+      targetUserIds = assigneeList
+        .filter(m => (m.pod || '').toLowerCase() === assignTargetPod.toLowerCase())
+        .map(m => m.id);
+
+      if (targetUserIds.length === 0) {
+        showToast(`Belum ada anggota di divisi ${assignTargetPod}.`);
+        return;
+      }
+    } else if (assignTargetType === 'all') {
+      targetUserIds = assigneeList.map(m => m.id);
+      if (targetUserIds.length === 0) {
+        showToast("Belum ada anggota di workspace ini.");
+        return;
+      }
+    }
 
     const checklistItems = dodPoints
       .filter(p => p.trim().length > 0)
@@ -1399,38 +1421,46 @@ export const App: React.FC = () => {
 
     const dueDateIso = newAssignDueDate ? new Date(newAssignDueDate).toISOString() : null;
 
+    // 2. Buat batch rows untuk di-insert sekaligus
+    const taskRows = targetUserIds.map(userId => ({
+      workspace_id: currentWorkspace.id,
+      assignee_id: userId,
+      title: newAssignTaskTitle.trim(),
+      description: newAssignDescription.trim() || null,
+      due_date: dueDateIso,
+      priority: newAssignPriority,
+      checklist: checklistItems,
+      status: 'in_progress',
+    }));
+
     try {
       const { error } = await supabase
         .from('tasks')
-        .insert({
-          workspace_id: currentWorkspace.id,
-          assignee_id: targetAssigneeId,
-          title: newAssignTaskTitle.trim(),
-          description: newAssignDescription.trim() || null,
-          due_date: dueDateIso,
-          priority: newAssignPriority,
-          checklist: checklistItems,
-          status: 'in_progress',
-        });
+        .insert(taskRows);
 
       if (error) {
         console.error("Create task error:", error.message);
         showToast(`Gagal penugasan: ${error.message}`);
       } else {
-        showToast(`✓ Tugas berhasil dikirim ke ${assigneeName}`);
-        
-        // 1. Reset form state to defaults
+        const targetLabel = 
+          assignTargetType === 'individual' ? (assigneeList.find(m => m.id === targetUserIds[0])?.full_name || 'Member') :
+          assignTargetType === 'pod' ? `Divisi ${assignTargetPod} (${targetUserIds.length} orang)` :
+          `Seluruh Tim (${targetUserIds.length} orang)`;
+
+        showToast(`✓ Tugas berhasil dikirim ke ${targetLabel}`);
+
+        // Reset form state to defaults
         setNewAssignTaskTitle('');
         setNewAssignDescription('');
         setNewAssignDueDate('');
         setNewAssignPriority('normal');
         setDodPoints(['', '', '']);
 
-        // 2. Trigger visual submit success animation
+        // Trigger visual submit success animation
         setIsTaskSubmitSuccess(true);
         setTimeout(() => setIsTaskSubmitSuccess(false), 1500);
 
-        // 3. Auto-focus Judul Tugas input
+        // Auto-focus Judul Tugas input
         setTimeout(() => {
           taskTitleInputRef.current?.focus();
         }, 100);
@@ -1438,7 +1468,7 @@ export const App: React.FC = () => {
         fetchPOData(currentWorkspace.id);
       }
     } catch (err: any) {
-      console.error("Create task error:", err);
+      console.error("Gagal broadcast tugas:", err);
       showToast(`Gagal penugasan: ${err.message || err}`);
     }
   };
@@ -1801,6 +1831,10 @@ export const App: React.FC = () => {
             onOpenRevisionModal={handleOpenRevisionModal}
             selectedAssigneeId={selectedAssigneeId}
             setSelectedAssigneeId={setSelectedAssigneeId}
+            assignTargetType={assignTargetType}
+            setAssignTargetType={setAssignTargetType}
+            selectedTargetPod={assignTargetPod}
+            setSelectedTargetPod={setAssignTargetPod}
             isLoadingAssignees={isLoadingAssignees}
             assigneeList={assigneeList}
             taskTitleInputRef={taskTitleInputRef}
