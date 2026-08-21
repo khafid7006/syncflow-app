@@ -305,10 +305,12 @@ export const App: React.FC = () => {
     if (!session?.user?.id) return;
     setIsUpdatingProfile(true);
 
+    const isUserPO = profile?.role === 'po' || profile?.role === 'owner' || activeWorkspaceRole === 'po';
+
     const updatedPayload = {
       full_name: editFullName.trim(),
       avatar_url: editAvatarUrl.trim() || null,
-      pod: profile?.role === 'po' ? 'Management' : editPod
+      pod: isUserPO ? 'Management' : editPod
     };
 
     try {
@@ -2320,9 +2322,24 @@ export const App: React.FC = () => {
                 />
               </div>
 
-              {/* Pilihan Divisi/POD (Jika Member) */}
-              {profile?.role !== 'po' && (
-                <div className="space-y-1">
+              {/* Pilihan Divisi/POD vs Info Akses PO */}
+              {isOwnerOrPo || profile?.role === 'po' || profile?.role === 'owner' ? (
+                <div className="space-y-1.5 font-sans">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    Peran & Tingkat Akses
+                  </label>
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-white/10 bg-white/[0.02]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-white">Project Owner</span>
+                      <span className="text-[10px] text-zinc-500 font-mono">• Lead & Management</span>
+                    </div>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-white/10 text-white/70 font-semibold border border-white/10 uppercase tracking-wider">
+                      Owner Access
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1 font-sans">
                   <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                     Divisi / POD
                   </label>
