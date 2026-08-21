@@ -16,6 +16,9 @@ import { NoWorkspaceView } from './components/layout/NoWorkspaceView';
 import { PODashboard } from './components/dashboard/PODashboard';
 import { MemberDashboard } from './components/dashboard/MemberDashboard';
 
+import Cropper from 'react-easy-crop';
+import { getCroppedImg } from './lib/cropImage';
+
 // Import UI Components
 import { CustomGlassSelect, GlassSelectOption } from './components/ui/CustomGlassSelect';
 
@@ -208,7 +211,12 @@ export const App: React.FC = () => {
   const [isBlockerModalOpen, setIsBlockerModalOpen] = useState<boolean>(false);
   const [blockerReason, setBlockerReason] = useState<string>('');
 
-  // PROFILE & ACCOUNT SETTINGS MODAL STATES
+  // PROFILE & AVATAR CROPPER STATES
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+  const [isCroppingModalOpen, setIsCroppingModalOpen] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
@@ -217,50 +225,67 @@ export const App: React.FC = () => {
   const [editPod, setEditPod] = useState<string>('');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState<boolean>(false);
 
-  // Handle Avatar Upload to Supabase Storage Bucket ('avatars')
-  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !session?.user?.id) return;
+  const onCropComplete = (_: any, pixels: any) => {
+    setCroppedAreaPixels(pixels);
+  };
 
-    // 1. Validasi Ukuran File (Maksimal 500 KB = 500 * 1024 bytes)
-    const MAX_SIZE_BYTES = 500 * 1024;
-    if (file.size > MAX_SIZE_BYTES) {
-      showToast("⚠️ Ukuran foto terlalu besar! Maksimal 500 KB.");
+  // 1. Tangkap file saat dipilih -> Buka Cropper Modal
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 500 * 1024) {
+      showToast("⚠️ Ukuran foto maksimal 500 KB!");
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
-    // 2. Validasi Format Gambar
     if (!file.type.startsWith('image/')) {
       showToast("⚠️ Format file harus berupa gambar (JPG, PNG, WEBP).");
       return;
     }
 
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      setImageToCrop(reader.result as string);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setIsCroppingModalOpen(true);
+    });
+    reader.readAsDataURL(file);
+  };
+
+  // 2. Upload potongan gambar ke Supabase Storage bucket 'avatars'
+  const handleConfirmCropAndUpload = async () => {
+    if (!imageToCrop || !croppedAreaPixels || !session?.user?.id) return;
     setIsUploadingAvatar(true);
 
     try {
-      const fileExt = file.name.split('.').pop() || 'jpg';
-      const filePath = `${session.user.id}/${Date.now()}.${fileExt}`;
+      const croppedBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
+      const filePath = `${session.user.id}/${Date.now()}_avatar.jpg`;
 
-      // 3. Upload file langsung ke bucket 'avatars' Supabase
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, croppedBlob, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
 
       if (uploadError) throw uploadError;
 
-      // 4. Dapatkan Public URL
       const { data: publicUrlData } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
 
       if (publicUrlData?.publicUrl) {
         setEditAvatarUrl(publicUrlData.publicUrl);
-        showToast("✓ Foto berhasil diunggah!");
+        showToast("✓ Foto berhasil disesuaikan dan diunggah!");
+        setIsCroppingModalOpen(false);
+        setImageToCrop(null);
       }
     } catch (err: any) {
-      console.error("Upload error:", err);
-      showToast(`Gagal mengunggah foto: ${err.message || err}`);
+      console.error("Gagal crop/upload avatar:", err);
+      showToast(`Gagal memproses foto: ${err.message || err}`);
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -2351,6 +2376,84 @@ export const App: React.FC = () => {
                 className="text-[11px] font-semibold text-zinc-400 hover:text-white transition-colors cursor-pointer"
               >
                 Keluar (Sign Out)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CROPPER DIALOG */}
+      {isCroppingModalOpen && imageToCrop && (
+        <div className="fixed inset-0 z-[130] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 font-sans animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-neutral-900/95 border border-white/15 rounded-3xl p-5 shadow-2xl text-white space-y-4 font-sans animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div>
+                <h4 className="font-bold text-sm text-white">Sesuaikan Posisi Foto</h4>
+                <p className="text-[10px] text-zinc-400">Geser dan atur perbesaran foto profil Anda</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCroppingModalOpen(false);
+                  setImageToCrop(null);
+                }}
+                className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* AREA CROPPER BULAT */}
+            <div className="relative w-full h-64 bg-neutral-950 rounded-2xl overflow-hidden border border-white/10">
+              <Cropper
+                image={imageToCrop}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onCropComplete={onCropComplete}
+                onZoomChange={setZoom}
+              />
+            </div>
+
+            {/* SLIDER ZOOM */}
+            <div className="space-y-1.5 px-1 font-sans">
+              <div className="flex justify-between text-[11px] text-zinc-400 font-medium">
+                <span>Perbesar</span>
+                <span>{zoom.toFixed(1)}x</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.1}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="w-full accent-white h-1.5 bg-white/10 rounded-lg cursor-pointer"
+              />
+            </div>
+
+            {/* AKSI SIMPAN */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10 font-sans">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCroppingModalOpen(false);
+                  setImageToCrop(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-300 transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isUploadingAvatar}
+                onClick={handleConfirmCropAndUpload}
+                className="px-5 py-2 rounded-xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-md cursor-pointer disabled:opacity-50"
+              >
+                {isUploadingAvatar ? 'Memproses...' : 'Terapkan & Simpan'}
               </button>
             </div>
           </div>
