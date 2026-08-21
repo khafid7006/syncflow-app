@@ -1896,6 +1896,7 @@ export const App: React.FC = () => {
             currentWorkspace={currentWorkspace}
             activeTask={activeTask}
             memberTasksList={memberTasksList}
+            teamNotifications={workspaceActivities}
             selectedTaskId={selectedTaskId}
             onSelectTask={handleSelectTask}
             taskStatus={taskStatus}
