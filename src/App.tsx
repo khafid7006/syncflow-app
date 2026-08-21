@@ -21,6 +21,7 @@ import { getCroppedImg } from './lib/cropImage';
 
 // Import UI Components
 import { CustomGlassSelect, GlassSelectOption } from './components/ui/CustomGlassSelect';
+import { CustomGlassRangeCalendar } from './components/ui/CustomGlassRangeCalendar';
 
 // Import Modal Components
 import { AccessCodeModal } from './components/modals/AccessCodeModal';
@@ -2575,86 +2576,124 @@ export const App: React.FC = () => {
       )}
 
       {/* MODAL FORM BUAT SPRINT OLEH PO */}
-      {isSprintModalOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 font-sans animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-neutral-900/95 border border-white/15 rounded-3xl p-6 shadow-2xl text-white space-y-5 font-sans animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div>
-                <h4 className="font-bold text-base text-white">Target & Koridor Sprint Baru</h4>
-                <p className="text-[11px] text-zinc-400">Tentukan goal sprint makro untuk Project Leader</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSprintModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+      {isSprintModalOpen && (() => {
+        const calculateSprintDays = () => {
+          if (!sprintStartDate || !sprintEndDate) return 0;
+          const diff = new Date(sprintEndDate).getTime() - new Date(sprintStartDate).getTime();
+          return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1);
+        };
 
-            <form onSubmit={handleSaveSprintMandate} className="space-y-4 font-sans">
-              <div className="space-y-1 font-sans">
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                  Nama / Goal Utama Sprint
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Sprint 1 - Rilis 10 Konten + UI Mockup"
-                  value={sprintGoalInput}
-                  onChange={(e) => setSprintGoalInput(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-neutral-950 px-3.5 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans"
-                />
-              </div>
+        const sprintDays = calculateSprintDays();
+        const memberCount = Math.max(1, (workspaceMembersList.length > 0 ? workspaceMembersList : assigneeList).length);
+        // Asumsi: 1 member = 2 DoD poin per hari kerja optimal
+        const maxSafeDoDCapacity = sprintDays * memberCount * 2;
 
-              <div className="grid grid-cols-2 gap-3 font-sans">
-                <div className="space-y-1 font-sans">
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                    Tanggal Mulai
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={sprintStartDate}
-                    onChange={(e) => setSprintStartDate(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-neutral-950 px-3 py-2 text-xs text-white outline-hidden font-sans cursor-pointer"
-                  />
+        return (
+          <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-2xl flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
+            <div className="w-full max-w-2xl bg-neutral-900/95 border border-white/15 rounded-3xl p-6 shadow-2xl text-white space-y-5 font-sans animate-in fade-in zoom-in-95 duration-200">
+              
+              {/* Header Modal */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 font-sans">
+                <div>
+                  <div className="flex items-center gap-2 font-sans">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <h4 className="font-bold text-base text-white">Smart Sprint & Forecasting Engine</h4>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 font-sans">Pilih rentang tanggal & kalkulasikan kapasitas sprint tim</p>
                 </div>
-
-                <div className="space-y-1 font-sans">
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                    Batas Akhir (Deadline Sprint)
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={sprintEndDate}
-                    onChange={(e) => setSprintEndDate(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-neutral-950 px-3 py-2 text-xs text-white outline-hidden font-sans cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10 font-sans">
                 <button
                   type="button"
                   onClick={() => setIsSprintModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
+                  className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
                 >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingSprint}
-                  className="px-5 py-2 rounded-xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-md cursor-pointer disabled:opacity-50 font-sans"
-                >
-                  {isSavingSprint ? 'Mengunci...' : '🔒 Kunci & Rilis ke Leader'}
+                  ✕
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleSaveSprintMandate} className="space-y-5 font-sans">
+                {/* Input Nama Goal */}
+                <div className="space-y-1 font-sans">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    Nama / Mandat Goal Sprint
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Sprint 1: Deliver 10 Konten + Launch Landing Page"
+                    value={sprintGoalInput}
+                    onChange={(e) => setSprintGoalInput(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-neutral-950 px-4 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans"
+                  />
+                </div>
+
+                {/* Dual Panel: Kalender Range & Forecasting Output */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start font-sans">
+                  {/* Panel Kiri: Interactive Range Calendar */}
+                  <div className="space-y-1.5 font-sans">
+                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                      Pilih Rentang Tanggal Sprint
+                    </label>
+                    <CustomGlassRangeCalendar
+                      startDate={sprintStartDate}
+                      endDate={sprintEndDate}
+                      onChange={(start, end) => {
+                        setSprintStartDate(start);
+                        setSprintEndDate(end);
+                      }}
+                    />
+                  </div>
+
+                  {/* Panel Kanan: Smart Velocity & Capacity Simulator */}
+                  <div className="space-y-3 p-4 rounded-2xl border border-white/10 bg-neutral-950/60 flex flex-col justify-between h-full font-sans">
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-400 font-mono uppercase tracking-wider">
+                        ⚡ Realtime Auto-Forecast
+                      </span>
+                      
+                      <div className="mt-3 space-y-2 text-xs font-sans">
+                        <div className="flex justify-between text-zinc-400">
+                          <span>Durasi Sprint:</span>
+                          <span className="text-white font-bold font-mono">{sprintDays > 0 ? `${sprintDays} Hari` : 'Pilih Tanggal'}</span>
+                        </div>
+                        <div className="flex justify-between text-zinc-400">
+                          <span>Anggota Aktif:</span>
+                          <span className="text-white font-bold font-mono">{memberCount} Orang</span>
+                        </div>
+                        <div className="flex justify-between text-zinc-400 border-t border-white/5 pt-2">
+                          <span>Kapasitas Aman (DoD):</span>
+                          <span className="text-emerald-400 font-extrabold font-mono">~{maxSafeDoDCapacity} Poin DoD</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-950/20 text-[11px] text-emerald-300 leading-snug font-sans">
+                      💡 <strong>Rekomendasi PO:</strong> Target {sprintDays} hari dengan {memberCount} anggota ideal menampung maksimal <strong>{maxSafeDoDCapacity} checklist tugas</strong> agar tidak terjadi <em>overcapacity</em> di Project Leader.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10 font-sans">
+                  <button
+                    type="button"
+                    onClick={() => setIsSprintModalOpen(false)}
+                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-300 transition-colors cursor-pointer font-sans"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingSprint || !sprintEndDate}
+                    className="px-5 py-2 rounded-xl bg-white text-zinc-950 text-xs font-bold hover:bg-zinc-200 transition-all shadow-md cursor-pointer disabled:opacity-50 font-sans"
+                  >
+                    {isSavingSprint ? 'Mengunci...' : '🔒 Kunci & Rilis ke Project Leader'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
