@@ -434,41 +434,50 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
         </div>
 
-        {/* BENTO PROFILE GREETING CARD (INTERAKTIF) */}
+        {/* BENTO PROFILE SHOWCASE CARD (CLEAN EDITORIAL GLASS) */}
         <div
           onClick={onOpenProfileModal}
-          className="inline-flex items-center gap-4 p-3 pr-6 rounded-3xl border border-white/10 bg-neutral-950/40 hover:bg-neutral-900/60 backdrop-blur-xl transition-all cursor-pointer group shadow-xl font-sans"
-          title="Buka Pengaturan Profil"
+          className="group relative inline-flex items-center gap-6 p-4 pr-10 rounded-[32px] border border-white/10 bg-neutral-950/40 hover:bg-neutral-900/60 backdrop-blur-2xl transition-all duration-300 cursor-pointer shadow-2xl hover:border-white/20 hover:scale-[1.01] font-sans"
+          title="Klik untuk Pengaturan Profil"
         >
-          {/* AVATAR DENGAN BORDER GLOW */}
-          <div className="relative shrink-0">
+          {/* FOTO PROFIL BENTO DOMINAN (BESAR & SHARP) */}
+          <div className="relative shrink-0 overflow-hidden rounded-2xl w-24 h-24 sm:w-28 sm:h-28 border border-white/15 bg-neutral-900 shadow-inner">
             {profile?.avatar_url ? (
               <img
                 src={profile.avatar_url}
-                alt={profile?.full_name || userName || 'User'}
-                className="w-14 h-14 rounded-2xl object-cover border border-white/20 shadow-md group-hover:scale-105 transition-transform"
+                alt={profile?.full_name || userName || 'Profile'}
+                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
               />
             ) : (
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-white/20 to-white/5 border border-white/20 flex items-center justify-center font-bold text-xl text-white uppercase shadow-md group-hover:scale-105 transition-transform">
-                {(profile?.full_name || userName || 'U').charAt(0)}
+              <div className="w-full h-full bg-gradient-to-br from-white/15 to-white/5 flex items-center justify-center font-bold text-3xl text-white uppercase group-hover:scale-105 transition-transform duration-500">
+                {(profile?.full_name || userName || 'K').charAt(0)}
               </div>
             )}
-            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-neutral-950 shadow-xs" />
+
+            {/* Subtle Glass Highlight Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-60 pointer-events-none" />
           </div>
 
-          {/* SAPAAN & INFO ROLE */}
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-extrabold text-white tracking-tight leading-none">
+          {/* CLEAN TYPOGRAPHY & IDENTITY */}
+          <div className="space-y-1.5 min-w-0 font-sans">
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">
                 Halo, {(profile?.full_name || userName || 'Member').split(' ')[0]}
               </h2>
-              <span className="text-xs text-zinc-500 group-hover:text-zinc-300 transition-colors">⚙️</span>
+              <span className="text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-xs">
+                ⚙️
+              </span>
             </div>
-            <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1.5 font-medium font-sans">
-              <span>{currentWorkspace?.name || 'Workspace'}</span>
-              <span>•</span>
-              <span className="text-white/70">{profile?.pod || userPod || 'Member'}</span>
+
+            <p className="text-xs sm:text-sm font-medium text-zinc-400">
+              {profile?.full_name || userName || 'Member Team'}
             </p>
+
+            <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500 pt-0.5">
+              <span className="text-white/80">{currentWorkspace?.name || 'Workspace'}</span>
+              <span>•</span>
+              <span className="text-zinc-400 capitalize">{profile?.role === 'po' ? 'Project Owner' : (profile?.pod || userPod || 'Member')}</span>
+            </div>
           </div>
         </div>
 
