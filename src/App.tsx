@@ -146,6 +146,8 @@ export const App: React.FC = () => {
   };
 
   // Dashboard Member Task & Workflow states
+  const [memberTasksList, setMemberTasksList] = useState<MemberTask[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<MemberTask | null>(null);
   const [taskTitle, setTaskTitle] = useState<string>('Buat Halaman Pembayaran Aplikasi');
   const [deliverableUrl, setDeliverableUrl] = useState<string>('');
@@ -412,6 +414,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (session?.user && currentWorkspace?.id) {
       // Immediate State Reset untuk mencegah data lama dari workspace lain tampil!
+      setMemberTasksList([]);
+      setSelectedTaskId(null);
       setAllTasks([]);
       setBlockedTasks([]);
       setReviewTasks([]);
@@ -812,58 +816,63 @@ export const App: React.FC = () => {
     }
   };
 
-  // 1. HARD-FILTER FETCH ACTIVE TASK MEMBER (PER WORKSPACE ID)
+  // 1. HARD-FILTER FETCH ACTIVE TASK MEMBER (PER WORKSPACE ID WITH TASK STACK)
   const fetchActiveTask = async (userId: string, wsId?: string) => {
     const targetWsId = wsId || currentWorkspace?.id;
     if (!targetWsId) return;
 
     try {
+      // Ambil SEMUA tugas aktif milik user di workspace ini
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
         .eq('workspace_id', targetWsId)
         .eq('assignee_id', userId)
-        .neq('status', 'done')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .in('status', ['in_progress', 'review', 'blocked'])
+        .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error("Error fetching task:", error.message);
-      }
+      if (error) throw error;
 
-      if (data) {
-        setActiveTask(data);
-        if (data.title) setTaskTitle(data.title);
+      const tasks: MemberTask[] = data || [];
+      setMemberTasksList(tasks);
 
-        const existingLink = data.deliverable_link || data.deliverable_url || '';
+      if (tasks.length > 0) {
+        // Prioritas pilihan:
+        // 1. Task yang sedang aktif dipilih sebelumnya (jika masih ada di list)
+        // 2. Task yang butuh revisi (urgent)
+        // 3. Task pertama di daftar
+        const activeItem = 
+          tasks.find(t => t.id === selectedTaskId) ||
+          tasks.find(t => t.status === 'in_progress' && t.revision_note) ||
+          tasks[0];
 
-        // 1. REVISION MODE (STATUS IN_PROGRESS DENGAN REVISION_NOTE)
-        if (data.status === 'in_progress' && data.revision_note) {
+        setSelectedTaskId(activeItem.id || null);
+        setActiveTask(activeItem);
+        setTaskTitle(activeItem.title || 'Tugas Member');
+        
+        const existingLink = activeItem.deliverable_link || activeItem.deliverable_url || '';
+        
+        // Sinkronisasi status visual
+        if (activeItem.status === 'in_progress' && activeItem.revision_note) {
           setTaskStatus('Perlu Revisi');
           setDeliverableUrl(existingLink);
           setSubmittedUrl(null);
-        } 
-        // 2. IN REVIEW MODE (STATUS REVIEW)
-        else if (data.status === 'review' || data.status === 'in_review' || data.status === 'UNDER_REVIEW') {
+        } else if (['review', 'in_review', 'UNDER_REVIEW'].includes(activeItem.status)) {
           setTaskStatus('Sedang Ditinjau PO');
           setSubmittedUrl(existingLink || 'Link Tugas');
-        } 
-        // 3. BLOCKED MODE (STATUS BLOCKED)
-        else if (data.status === 'blocked' || data.status === 'BLOCKED' || data.is_blocked) {
+        } else if (activeItem.status === 'blocked' || activeItem.is_blocked) {
           setTaskStatus('Terkendala (Blocker)');
           setSubmittedUrl(null);
-          if (data.blocker_reason) setBlockerReason(data.blocker_reason);
-        } 
-        // 4. IN PROGRESS MODE (TANPA REVISION NOTE)
-        else {
+          if (activeItem.blocker_reason) setBlockerReason(activeItem.blocker_reason);
+        } else {
           setTaskStatus('Dalam Pengerjaan');
           setDeliverableUrl(existingLink);
           setSubmittedUrl(null);
         }
 
-        if (data.checklist && Array.isArray(data.checklist) && data.checklist.length > 0) {
-          setDodItems(data.checklist.map((item: any, idx: number) => {
+        // Sinkronisasi DoD Checklist
+        if (activeItem.checklist && Array.isArray(activeItem.checklist) && activeItem.checklist.length > 0) {
+          setDodItems(activeItem.checklist.map((item: any, idx: number) => {
             const checkedVal = item.checked ?? item.is_checked ?? false;
             return {
               id: item.id || idx + 1,
@@ -872,16 +881,58 @@ export const App: React.FC = () => {
               is_checked: checkedVal
             };
           }));
+        } else {
+          setDodItems([]);
         }
       } else {
-        // EMPTY STATE: TIDAK ADA TUGAS AKTIF DI WORKSPACE INI
         setActiveTask(null);
-        setSubmittedUrl(null);
+        setSelectedTaskId(null);
         setDeliverableUrl('');
+        setSubmittedUrl(null);
+        setDodItems([]);
       }
     } catch (err: any) {
-      console.error('Fetch active task error:', err);
+      console.error("Gagal load stack tugas member:", err.message || err);
       setActiveTask(null);
+    }
+  };
+
+  const handleSelectTask = (task: MemberTask) => {
+    setSelectedTaskId(task.id || null);
+    setActiveTask(task);
+    setTaskTitle(task.title || 'Tugas Member');
+    const link = task.deliverable_link || task.deliverable_url || '';
+    
+    const isRevision = task.status === 'in_progress' && task.revision_note;
+    const isReview = ['review', 'in_review', 'UNDER_REVIEW'].includes(task.status);
+    const isBlocked = task.status === 'blocked' || task.is_blocked;
+
+    if (isRevision) {
+      setTaskStatus('Perlu Revisi');
+      setDeliverableUrl(link);
+      setSubmittedUrl(null);
+    } else if (isReview) {
+      setTaskStatus('Sedang Ditinjau PO');
+      setSubmittedUrl(link || 'Link Tugas');
+    } else if (isBlocked) {
+      setTaskStatus('Terkendala (Blocker)');
+      setSubmittedUrl(null);
+      if (task.blocker_reason) setBlockerReason(task.blocker_reason);
+    } else {
+      setTaskStatus('Dalam Pengerjaan');
+      setDeliverableUrl(link);
+      setSubmittedUrl(null);
+    }
+
+    if (task.checklist && Array.isArray(task.checklist)) {
+      setDodItems(task.checklist.map((item: any, idx: number) => ({
+        id: item.id || idx + 1,
+        text: item.text || item.label || '',
+        checked: item.checked ?? item.is_checked ?? false,
+        is_checked: item.checked ?? item.is_checked ?? false
+      })));
+    } else {
+      setDodItems([]);
     }
   };
 
@@ -1691,6 +1742,9 @@ export const App: React.FC = () => {
           <MemberDashboard
             currentWorkspace={currentWorkspace}
             activeTask={activeTask}
+            memberTasksList={memberTasksList}
+            selectedTaskId={selectedTaskId}
+            onSelectTask={handleSelectTask}
             taskStatus={taskStatus}
             taskTitle={taskTitle}
             userName={userName}
