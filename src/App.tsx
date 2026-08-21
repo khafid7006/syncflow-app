@@ -280,23 +280,37 @@ export const App: React.FC = () => {
     if (!session?.user?.id) return;
     setIsUpdatingProfile(true);
 
+    const updatedPayload = {
+      full_name: editFullName.trim(),
+      avatar_url: editAvatarUrl.trim() || null,
+      pod: profile?.role === 'po' ? 'Management' : editPod
+    };
+
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({
-          full_name: editFullName.trim(),
-          avatar_url: editAvatarUrl.trim() || null,
-          pod: profile?.role === 'po' ? 'Management' : editPod
-        })
+        .update(updatedPayload)
         .eq('id', session.user.id);
 
       if (error) throw error;
 
+      // 1. Update state profile secara lokal seketika
+      setProfile((prev: any) => ({
+        ...prev,
+        ...updatedPayload
+      }));
+
+      // 2. Jika ada workspace aktif, refresh juga data tim/assignee
+      if (currentWorkspace?.id) {
+        if (typeof fetchPOData === 'function') fetchPOData(currentWorkspace.id);
+        if (typeof fetchActiveTask === 'function') fetchActiveTask(session.user.id, currentWorkspace.id);
+      }
+
       showToast("✓ Profil berhasil diperbarui!");
       setIsProfileModalOpen(false);
-      fetchUserData(session.user.id); // Reload profil
     } catch (err: any) {
-      showToast(`Gagal update profil: ${err.message}`);
+      console.error("Save profile error:", err);
+      showToast(`Gagal update profil: ${err.message || err}`);
     } finally {
       setIsUpdatingProfile(false);
     }
