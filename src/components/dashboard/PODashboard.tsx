@@ -649,54 +649,79 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               </p>
             </div>
 
-            {/* ================= INTERACTIVE MINI-GANTT TIMELINE ================= */}
+            {/* ================= REAL SPRINT GANTT CHART GRID ================= */}
             <div className="space-y-3 p-4 rounded-2xl border border-white/10 bg-white/[0.02] font-sans">
-              <div className="flex items-center justify-between font-sans">
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                  Timeline Distribusi POD (Gantt Radar)
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    Timeline Distribusi POD (Sprint Gantt)
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 text-[9px] font-mono border border-sky-500/30">
+                    Live Grid
+                  </span>
+                </div>
                 <span className="text-[10px] text-zinc-500 font-mono">
-                  {activeSprint?.start_date?.slice(5)} → {activeSprint?.end_date?.slice(5)}
+                  {activeSprint?.start_date} → {activeSprint?.end_date}
                 </span>
               </div>
 
-              {podGanttData.length === 0 ? (
-                <div className="py-6 text-center text-xs text-zinc-500 font-mono">
-                  PL belum menetapkan tugas ke divisi manapun.
+              {/* RENDER KOMPONEN GANTT */}
+              {activeSprint ? (
+                <div className="space-y-2 font-sans">
+                  {/* Header Grid Hari (H-1 s/d H-7) */}
+                  <div className="flex items-center text-[10px] font-mono text-zinc-400 border-b border-white/10 pb-1.5">
+                    <div className="w-24 shrink-0 font-bold uppercase tracking-wider text-zinc-300">POD</div>
+                    <div className="flex-1 grid grid-cols-7 gap-1 text-center text-zinc-500 text-[9px]">
+                      <div>H-1</div>
+                      <div>H-2</div>
+                      <div>H-3</div>
+                      <div>H-4</div>
+                      <div>H-5</div>
+                      <div>H-6</div>
+                      <div>H-7</div>
+                    </div>
+                  </div>
+
+                  {/* Row Timeline Tiap POD yang Sudah Diberi Tugas oleh PL */}
+                  {podGanttData.length === 0 ? (
+                    <div className="py-5 text-center text-xs text-zinc-500 font-mono">
+                      Belum ada penugasan dari Project Leader.
+                    </div>
+                  ) : (
+                    podGanttData.map((item) => (
+                      <div key={item.pod} className="flex items-center gap-2 text-xs font-sans">
+                        <div className="w-24 shrink-0 truncate font-semibold text-zinc-300 text-[11px] flex items-center gap-1.5">
+                          <span className={`w-1.5 h-1.5 rounded-full ${item.blockedTasks > 0 ? 'bg-rose-500 animate-ping' : item.progress === 100 ? 'bg-emerald-400' : 'bg-sky-400'}`} />
+                          <span className="truncate">{item.pod}</span>
+                        </div>
+
+                        {/* Grid Track */}
+                        <div className="flex-1 h-6 rounded-xl bg-neutral-900/80 border border-white/5 relative flex items-center px-1">
+                          {/* Grid Guides */}
+                          <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/[0.03] pointer-events-none" />
+
+                          {/* Floating Glowing Gantt Bar Pill */}
+                          <div
+                            className={`relative h-4 rounded-lg px-2 flex items-center justify-between text-[9px] font-bold text-white shadow-lg transition-all duration-500 ${
+                              item.blockedTasks > 0
+                                ? 'bg-gradient-to-r from-rose-500 via-rose-600 to-amber-500 border border-rose-400/40 text-rose-100 shadow-[0_0_12px_rgba(244,63,94,0.35)]'
+                                : item.progress === 100
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 border border-emerald-400/40 text-emerald-100 shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                                : 'bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-500 border border-sky-400/40 text-sky-100 shadow-[0_0_12px_rgba(14,165,233,0.35)]'
+                            }`}
+                            style={{ width: `${Math.max(25, item.progress || (item.totalTasks > 0 ? 40 : 15))}%` }}
+                          >
+                            <span className="truncate">{item.totalTasks} Tugas</span>
+                            <span className="font-mono text-[8px] opacity-90">{item.progress}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               ) : (
-                <div className="space-y-2.5 pt-1 font-sans">
-                  {podGanttData.map((item) => (
-                    <div key={item.pod} className="space-y-1 font-sans">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-semibold text-zinc-300 flex items-center gap-1.5 font-sans">
-                          <span>{item.pod}</span>
-                          {item.blockedTasks > 0 && (
-                            <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[9px] font-bold font-mono">
-                              {item.blockedTasks} Blocker
-                            </span>
-                          )}
-                        </span>
-                        <span className="text-zinc-500 font-mono text-[10px]">
-                          {item.doneTasks}/{item.totalTasks} Selesai ({item.progress}%)
-                        </span>
-                      </div>
-
-                      {/* Gantt Bar Horizontal */}
-                      <div className="w-full h-2.5 rounded-full bg-neutral-900 border border-white/10 overflow-hidden p-0.5">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            item.blockedTasks > 0
-                              ? 'bg-gradient-to-r from-rose-500 to-amber-500'
-                              : item.progress === 100
-                              ? 'bg-emerald-400'
-                              : 'bg-gradient-to-r from-sky-400 to-indigo-500'
-                          }`}
-                          style={{ width: `${Math.max(item.progress, 10)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+                <div className="py-6 text-center text-xs text-zinc-500 font-mono">
+                  Kunci Sprint Goal terlebih dahulu untuk mengaktifkan Gantt Radar.
                 </div>
               )}
             </div>
