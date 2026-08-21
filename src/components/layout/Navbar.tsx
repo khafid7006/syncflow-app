@@ -73,59 +73,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     setUnreadNotifCount(0);
   };
 
-  const getNotifStyle = (actionType: 'assigned' | 'submit' | 'done' | 'blocked' | 'revision') => {
-    switch (actionType) {
-      case 'assigned':
-        return {
-          icon: '📌',
-          label: 'Tugas Baru',
-          badgeClass: 'bg-gradient-to-r from-sky-500/20 to-sky-500/5 text-sky-300 border border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.15)]',
-          borderAccent: 'border-sky-500/20 bg-gradient-to-r from-sky-950/20 via-neutral-900/60 to-neutral-900/80',
-          dotColor: 'bg-sky-400'
-        };
-      case 'submit':
-        return {
-          icon: '🚀',
-          label: 'Diserahkan',
-          badgeClass: 'bg-gradient-to-r from-indigo-500/20 to-purple-500/10 text-indigo-300 border border-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.15)]',
-          borderAccent: 'border-indigo-500/20 bg-gradient-to-r from-indigo-950/20 via-neutral-900/60 to-neutral-900/80',
-          dotColor: 'bg-indigo-400'
-        };
-      case 'done':
-        return {
-          icon: '✅',
-          label: 'Di-ACC',
-          badgeClass: 'bg-gradient-to-r from-emerald-500/20 to-teal-500/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.15)]',
-          borderAccent: 'border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-neutral-900/60 to-neutral-900/80',
-          dotColor: 'bg-emerald-400'
-        };
-      case 'blocked':
-        return {
-          icon: '🚨',
-          label: 'Kendala',
-          badgeClass: 'bg-gradient-to-r from-rose-500/25 to-rose-900/20 text-rose-300 border border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.2)]',
-          borderAccent: 'border-rose-500/30 bg-gradient-to-r from-rose-950/30 via-neutral-900/60 to-neutral-900/80',
-          dotColor: 'bg-rose-500'
-        };
-      case 'revision':
-        return {
-          icon: '⚠️',
-          label: 'Revisi',
-          badgeClass: 'bg-gradient-to-r from-amber-500/20 to-orange-500/10 text-amber-300 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]',
-          borderAccent: 'border-amber-500/20 bg-gradient-to-r from-amber-950/20 via-neutral-900/60 to-neutral-900/80',
-          dotColor: 'bg-amber-400'
-        };
-      default:
-        return {
-          icon: '🔔',
-          label: 'Info',
-          badgeClass: 'bg-white/10 text-white border border-white/15',
-          borderAccent: 'border-white/10 bg-neutral-900/80',
-          dotColor: 'bg-white'
-        };
-    }
-  };
-
   return (
     <header className="w-full flex items-center justify-between gap-4 font-sans text-xs">
       {/* Logo Brand: SyncFlow & WORKSPACE SELECTOR DROPDOWN (KIRI ATAS - CONDITIONAL) */}
@@ -258,94 +205,90 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* FLOATING FROSTED GLASS NOTIFICATION POPOVER */}
           {isNotifPopoverOpen && (
-            <div className="absolute right-0 top-full mt-2.5 w-80 sm:w-96 rounded-3xl border border-white/15 bg-neutral-900/95 backdrop-blur-2xl p-4 shadow-2xl z-50 text-white space-y-3 font-sans animate-in fade-in zoom-in-95 duration-150">
-              {/* Header Popover */}
-              <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-white">Notifikasi Aktivitas</span>
-                  {unreadNotifCount > 0 && (
-                    <span className="px-2 py-0.2 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-bold">
-                      {unreadNotifCount} Baru
-                    </span>
-                  )}
+            <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-3xl border border-white/15 bg-neutral-950/95 backdrop-blur-2xl shadow-2xl z-50 overflow-hidden font-sans animate-in fade-in zoom-in-95 duration-150">
+              {/* Header & Minimal Tabs */}
+              <div className="p-4 pb-3 border-b border-white/10 space-y-3 font-sans">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-white tracking-tight">Notifikasi</h4>
+                  <button
+                    type="button"
+                    onClick={handleMarkAllAsRead}
+                    className="text-[11px] font-medium text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Tandai sudah dibaca
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsNotifPopoverOpen(false)}
-                  className="p-1 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5"/>
-                </button>
+
+                {/* Minimal Tab Filter */}
+                <div className="flex items-center gap-2 text-xs">
+                  <button className="px-2.5 py-1 rounded-lg bg-white text-zinc-950 font-semibold text-[11px]">
+                    Semua {notificationsList.length > 0 && <span className="ml-1 opacity-70">{notificationsList.length}</span>}
+                  </button>
+                </div>
               </div>
 
-              {/* List Notifikasi (Scrollable) */}
-              <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1 text-xs font-sans">
+              {/* Flat Clean Row List (Minimalist Dribbble Style) */}
+              <div className="space-y-0 divide-y divide-white/5 max-h-80 overflow-y-auto custom-scrollbar font-sans">
                 {notificationsList.length === 0 ? (
-                  <div className="p-6 text-center text-zinc-500 text-xs">
-                    Belum ada notifikasi baru di workspace ini.
+                  <div className="py-8 text-center text-xs text-zinc-500 font-sans">
+                    Tidak ada notifikasi aktivitas baru.
                   </div>
                 ) : (
                   notificationsList.map((notif, idx) => {
-                    const style = getNotifStyle(notif.action_type);
                     const isUnread = unreadNotifCount > 0 && idx < unreadNotifCount;
+
+                    // Status Dot Color
+                    const dotColor = 
+                      notif.action_type === 'blocked' ? 'bg-rose-500' :
+                      notif.action_type === 'revision' ? 'bg-amber-400' :
+                      notif.action_type === 'done' ? 'bg-emerald-400' :
+                      notif.action_type === 'submit' ? 'bg-indigo-400' : 'bg-sky-400';
 
                     return (
                       <div
                         key={notif.id || idx}
-                        className={`p-3 rounded-2xl border transition-all flex items-start gap-3 relative font-sans ${style.borderAccent} hover:scale-[1.01]`}
+                        className={`p-3.5 flex items-start gap-3 transition-colors text-xs font-sans ${
+                          isUnread ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'
+                        }`}
                       >
-                        {/* Icon Badge */}
-                        <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-xs">
-                          {style.icon}
-                        </div>
-
-                        {/* Info Text */}
-                        <div className="flex-1 truncate font-sans">
-                          <div className="flex items-center justify-between gap-1">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className="font-semibold text-white text-xs truncate">{notif.user_name}</span>
-                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${style.badgeClass}`}>
-                                {style.label}
-                              </span>
-                            </div>
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-white/5 text-white/50 border border-white/5 shrink-0 uppercase font-mono">
-                              {notif.pod}
-                            </span>
+                        {/* AVATAR DENGAN STATUS DOT MENEMPEL */}
+                        <div className="relative shrink-0 mt-0.5">
+                          <div className="w-8 h-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center font-bold text-xs text-white uppercase">
+                            {notif.user_name.charAt(0)}
                           </div>
-                          <p className="text-[11px] text-zinc-300 truncate mt-1 leading-snug">
-                            {notif.action_type === 'done' && `Tugas "${notif.task_title}" telah di-ACC`}
-                            {notif.action_type === 'submit' && `Menyerahkan tugas "${notif.task_title}"`}
-                            {notif.action_type === 'blocked' && `Melaporkan kendala di "${notif.task_title}"`}
-                            {notif.action_type === 'revision' && `Menerima catatan revisi di "${notif.task_title}"`}
-                            {notif.action_type === 'assigned' && `Tugas baru "${notif.task_title}"`}
-                          </p>
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-neutral-950 ${dotColor}`} />
                         </div>
 
-                        {/* Unread Indicator Dot */}
+                        {/* NATURAL TEXT DESCRIPTION */}
+                        <div className="flex-1 min-w-0 pr-1 font-sans">
+                          <p className="text-zinc-300 text-xs leading-snug">
+                            <span className="font-semibold text-white">{notif.user_name}</span>{' '}
+                            {notif.action_type === 'submit' && 'menyerahkan hasil tugas'}
+                            {notif.action_type === 'done' && 'telah menyelesaikan tugas'}
+                            {notif.action_type === 'blocked' && 'melaporkan kendala di'}
+                            {notif.action_type === 'revision' && 'menerima catatan revisi di'}
+                            {notif.action_type === 'assigned' && 'menerima penugasan baru'}{' '}
+                            <span className="font-medium text-white underline decoration-white/20 underline-offset-2">
+                              "{notif.task_title}"
+                            </span>
+                          </p>
+
+                          <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 mt-1 font-mono">
+                            <span>{notif.pod}</span>
+                            <span>•</span>
+                            <span>Baru saja</span>
+                          </div>
+                        </div>
+
+                        {/* UNREAD INDICATOR */}
                         {isUnread && (
-                          <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 shadow-xs ${style.dotColor}`} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0 mt-2" />
                         )}
                       </div>
                     );
                   })
                 )}
               </div>
-
-              {/* Footer Popover */}
-              {notificationsList.length > 0 && (
-                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] font-sans">
-                  <button
-                    type="button"
-                    onClick={handleMarkAllAsRead}
-                    className="text-zinc-400 hover:text-white cursor-pointer font-medium"
-                  >
-                    ✓ Tandai sudah dibaca
-                  </button>
-                  <span className="text-zinc-500 text-[10px]">
-                    {notificationsList.length} Total Riwayat
-                  </span>
-                </div>
-              )}
             </div>
           )}
         </div>
