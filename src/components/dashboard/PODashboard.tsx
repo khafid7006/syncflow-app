@@ -170,7 +170,16 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                   const formattedDate = t.created_at ? new Date(t.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
                   return (
-                    <div key={t.id} className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3 text-xs font-sans hover:border-white/20 transition-all duration-300 ease-in-out">
+                    <div
+                      key={t.id}
+                      className={`p-4 rounded-2xl border space-y-3 text-xs font-sans transition-all duration-300 ease-in-out ${
+                        isBlocked
+                          ? 'border-rose-500/40 bg-gradient-to-b from-rose-950/20 to-neutral-900/90 shadow-[0_0_20px_rgba(244,63,94,0.1)]'
+                          : isReview
+                            ? 'border-white/20 bg-white/[0.03]'
+                            : 'bg-neutral-900/80 border-white/10 hover:border-white/20'
+                      }`}
+                    >
                       {/* Member Header & Edit Button */}
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-white text-xs">{t.profiles?.full_name || 'Member Tim'}</span>

@@ -49,6 +49,20 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   projectLinks,
   renderLinkIcon,
 }) => {
+  // Calculated status flags for active task
+  const isCurrentBlocked = activeTask?.status === 'blocked' || activeTask?.is_blocked;
+  const isCurrentRevision = activeTask?.status === 'in_progress' && Boolean(activeTask?.revision_note);
+  const isCurrentReview = ['review', 'in_review', 'UNDER_REVIEW'].includes(activeTask?.status || '');
+
+  // Dynamic ambient glow & gradient for main active task card
+  const cardBgClass = isCurrentBlocked
+    ? 'border-rose-500/30 bg-gradient-to-b from-rose-950/25 via-zinc-950/80 to-zinc-950/90 shadow-[0_0_35px_rgba(244,63,94,0.15)]'
+    : isCurrentRevision
+      ? 'border-amber-500/30 bg-gradient-to-b from-amber-950/25 via-zinc-950/80 to-zinc-950/90 shadow-[0_0_35px_rgba(245,158,11,0.15)]'
+      : isCurrentReview
+        ? 'border-white/15 bg-zinc-950/80'
+        : 'border-white/10 bg-white/5';
+
   return (
     <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 my-auto font-sans transition-all duration-300 ease-in-out">
       
@@ -88,8 +102,8 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
               </div>
             </div>
           ) : (
-            /* KARTU TASK STACK SELECTOR & DETAIL BRIEF */
-            <div className="rounded-[32px] bg-white/5 backdrop-blur-2xl border border-white/10 p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out space-y-3 font-sans">
+            /* KARTU TASK STACK SELECTOR & DETAIL BRIEF DENGAN DYNAMIC AMBIENT GLOW */
+            <div className={`rounded-[32px] backdrop-blur-2xl border p-6 shadow-xl flex flex-col justify-between min-h-[280px] hover:border-white/20 transition-all duration-300 ease-in-out space-y-3 font-sans ${cardBgClass}`}>
               <div>
                 {/* 1. TASK STACK SELECTOR */}
                 <div className="space-y-2 mb-4">
@@ -101,19 +115,35 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                   <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-0.5">
                     {memberTasksList.map((task) => {
                       const isSelected = task.id === activeTask?.id;
-                      const isRevision = task.status === 'in_progress' && task.revision_note;
+                      const isRevision = task.status === 'in_progress' && Boolean(task.revision_note);
                       const isReview = ['review', 'in_review', 'UNDER_REVIEW'].includes(task.status);
                       const isBlocked = task.status === 'blocked' || task.is_blocked;
+
+                      const stackItemBgClass = isSelected
+                        ? isBlocked
+                          ? 'bg-rose-900/40 border-rose-500/50 text-white shadow-md'
+                          : isRevision
+                            ? 'bg-amber-900/40 border-amber-500/50 text-white shadow-md'
+                            : 'bg-white/15 border-white/40 text-white shadow-md'
+                        : isBlocked
+                          ? 'bg-rose-950/20 border-rose-500/30 text-rose-200 hover:bg-rose-950/30'
+                          : isRevision
+                            ? 'bg-amber-950/20 border-amber-500/30 text-amber-200 hover:bg-amber-950/30'
+                            : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white';
+
+                      const badgeClass = isRevision
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : isReview
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : isBlocked
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            : 'bg-white/10 text-white/80';
 
                       return (
                         <div
                           key={task.id}
                           onClick={() => onSelectTask(task)}
-                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between text-xs font-sans ${
-                            isSelected
-                              ? 'bg-white/15 border-white/40 text-white shadow-md'
-                              : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
-                          }`}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between text-xs font-sans ${stackItemBgClass}`}
                         >
                           <div className="truncate max-w-[170px] sm:max-w-[210px]">
                             <div className="flex items-center gap-1.5 truncate">
@@ -129,12 +159,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                             </span>
                           </div>
 
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${
-                            isRevision ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
-                            isReview ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
-                            isBlocked ? 'bg-red-950 text-red-300 border border-red-800' :
-                            'bg-white/10 text-white/80'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${badgeClass}`}>
                             {isRevision ? 'Revisi' : isReview ? 'Review' : isBlocked ? 'Kendala' : 'Aktif'}
                           </span>
                         </div>
@@ -148,12 +173,12 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                   <div className="space-y-3 pt-3 border-t border-white/10">
                     <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
                       <span className="text-[11px] font-semibold tracking-wider text-white/60 uppercase">Detail Tugas</span>
-                      <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-medium transition-colors duration-300 ${
-                        taskStatus === 'Perlu Revisi'
-                          ? 'bg-neutral-800 text-zinc-200 border-white/30'
-                          : taskStatus === 'Terkendala (Blocker)'
-                            ? 'bg-neutral-800 text-zinc-300 border-white/20'
-                            : taskStatus === 'Sedang Ditinjau PO'
+                      <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-semibold uppercase transition-colors duration-300 ${
+                        isCurrentRevision
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : isCurrentBlocked
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                            : isCurrentReview
                               ? 'bg-white/10 text-white border-white/20'
                               : 'bg-white/5 text-zinc-400 border-white/10'
                       }`}>
@@ -195,11 +220,11 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
                     {/* PO Feedback Action Cards in Member Dashboard */}
                     {activeTask?.revision_note && (
-                      <div className="p-3 bg-neutral-900 border border-white/20 rounded-2xl text-xs text-zinc-200 font-sans space-y-1">
-                        <div className="font-semibold text-white text-[11px] flex items-center gap-1">
+                      <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-2xl text-xs text-amber-200 font-sans space-y-1">
+                        <div className="font-semibold text-amber-300 text-[11px] flex items-center gap-1">
                           <span>⚠️ Catatan Revisi PO:</span>
                         </div>
-                        <p className="text-zinc-300 text-[11px] leading-relaxed">
+                        <p className="text-amber-100 text-[11px] leading-relaxed">
                           {activeTask.revision_note}
                         </p>
                       </div>
@@ -283,9 +308,11 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
               <h3 className="text-base font-bold text-zinc-950 tracking-tight">
                 {!activeTask
                   ? 'Kirim Hasil Tugas'
-                  : taskStatus === 'Perlu Revisi'
+                  : isCurrentRevision
                     ? 'Kirim Hasil Revisi'
-                    : 'Kirim Hasil Tugas'}
+                    : isCurrentBlocked
+                      ? 'Kendala Aktif'
+                      : 'Kirim Hasil Tugas'}
               </h3>
             </div>
 
@@ -299,7 +326,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                   placeholder="Menunggu tugas aktif..."
                   className="w-full px-4 py-2.5 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs text-zinc-400 placeholder-zinc-400 cursor-not-allowed font-sans"
                 />
-              ) : taskStatus === 'Sedang Ditinjau PO' ? (
+              ) : isCurrentReview ? (
                 <div className="space-y-2">
                   <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-2xl text-xs space-y-1 font-sans">
                     <div className="font-semibold text-zinc-700 text-[11px]">Deliverable Terkirim:</div>
@@ -311,11 +338,21 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                     Tugas ini sedang ditinjau PO. Anda bisa memilih tugas lain di daftar sebelah kiri untuk mulai mengerjakannya.
                   </p>
                 </div>
+              ) : isCurrentBlocked ? (
+                <div className="space-y-2">
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs space-y-1 font-sans text-rose-950">
+                    <div className="font-semibold text-rose-800 text-[11px] flex items-center gap-1">
+                      <span>🚨 Status Task: Terkendala (Blocker)</span>
+                    </div>
+                    <p className="text-rose-700 text-[11px] leading-relaxed">
+                      {activeTask.blocker_reason || 'Kendala telah dilaporkan ke PO. Menunggu solusi arahan.'}
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <input
                   type="text"
                   required
-                  disabled={taskStatus === 'Sedang Ditinjau PO'}
                   placeholder="Link tugas..."
                   value={deliverableUrl}
                   onChange={e => setDeliverableUrl(e.target.value)}
@@ -325,27 +362,33 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
               <button
                 type="submit"
-                disabled={!activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted}
-                className={`w-full py-2.5 font-medium text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
-                  !activeTask || taskStatus === 'Sedang Ditinjau PO' || !isAllDoDCompleted
-                    ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-                    : 'bg-zinc-950 hover:bg-zinc-800 text-white cursor-pointer'
+                disabled={!activeTask || isCurrentReview || isCurrentBlocked || !isAllDoDCompleted}
+                className={`w-full py-2.5 text-xs rounded-full shadow-md flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${
+                  !activeTask || isCurrentReview || !isAllDoDCompleted
+                    ? isCurrentBlocked
+                      ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white font-bold shadow-[0_0_20px_rgba(244,63,94,0.3)] cursor-not-allowed opacity-90'
+                      : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                    : isCurrentRevision
+                      ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-950 hover:from-amber-300 hover:to-amber-400 font-bold shadow-[0_0_20px_rgba(245,158,11,0.3)] cursor-pointer'
+                      : 'bg-zinc-950 hover:bg-zinc-800 text-white font-medium cursor-pointer shadow-md'
                 }`}
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>
                   {!activeTask
                     ? 'Belum Ada Tugas'
-                    : taskStatus === 'Sedang Ditinjau PO'
+                    : isCurrentReview
                       ? 'Sedang Ditinjau PO'
-                      : taskStatus === 'Perlu Revisi'
-                        ? 'Kirim Hasil Revisi'
-                        : 'Kirim Hasil Tugas'}
+                      : isCurrentBlocked
+                        ? '🚨 Kendala Aktif (Menunggu Arahan PO)'
+                        : isCurrentRevision
+                          ? '🚀 Kirim Hasil Revisi'
+                          : 'Kirim Hasil Tugas'}
                 </span>
               </button>
 
               {/* Helper text jika DoD belum lengkap */}
-              {activeTask && taskStatus !== 'Sedang Ditinjau PO' && !isAllDoDCompleted && (
+              {activeTask && !isCurrentReview && !isCurrentBlocked && !isAllDoDCompleted && (
                 <p className="text-[10px] text-zinc-500 text-center font-sans font-medium pt-0.5">
                   Selesaikan semua checklist ({completedDodCount}/{totalDodCount}) untuk menyerahkan tugas.
                 </p>
@@ -358,14 +401,16 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                 type="button"
                 onClick={onOpenReportBlockerModal}
                 disabled={!activeTask}
-                className={`w-full py-2 border text-xs rounded-full transition-colors duration-300 flex items-center justify-center gap-1.5 ${
+                className={`w-full py-2 border text-xs rounded-full transition-all duration-300 flex items-center justify-center gap-1.5 ${
                   !activeTask
                     ? 'border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed'
-                    : 'border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium cursor-pointer'
+                    : isCurrentBlocked
+                      ? 'border-rose-500/40 bg-rose-950/40 text-rose-300 font-bold shadow-[0_0_15px_rgba(244,63,94,0.2)] hover:bg-rose-900/50 cursor-pointer'
+                      : 'border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-medium cursor-pointer'
                 }`}
               >
-                <AlertTriangle className={`w-3.5 h-3.5 ${!activeTask ? 'text-zinc-400' : 'text-zinc-600'}`} />
-                <span>🚨 Laporkan Kendala</span>
+                <AlertTriangle className={`w-3.5 h-3.5 ${!activeTask ? 'text-zinc-400' : isCurrentBlocked ? 'text-rose-400' : 'text-zinc-600'}`} />
+                <span>{isCurrentBlocked ? '🚨 Kendala Aktif (Update Detail)' : '🚨 Laporkan Kendala'}</span>
               </button>
             </div>
           </div>
