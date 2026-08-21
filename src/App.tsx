@@ -178,6 +178,7 @@ export const App: React.FC = () => {
   const [newAssignTaskTitle, setNewAssignTaskTitle] = useState<string>('');
   const [newAssignDescription, setNewAssignDescription] = useState<string>('');
   const [newAssignDueDate, setNewAssignDueDate] = useState<string>('');
+  const [newAssignPriority, setNewAssignPriority] = useState<'normal' | 'urgent'>('normal');
   const [dodPoints, setDodPoints] = useState<string[]>(['', '', '']);
   const [isTaskSubmitSuccess, setIsTaskSubmitSuccess] = useState<boolean>(false);
 
@@ -833,8 +834,27 @@ export const App: React.FC = () => {
 
       if (error) throw error;
 
-      const tasks: MemberTask[] = data || [];
-      setMemberTasksList(tasks);
+      const rawTasks: MemberTask[] = data || [];
+
+      // Smart sorting:
+      // 1. Tugas revisi selalu prioritas tertinggi
+      // 2. Urgent di atas normal
+      // 3. Terbaru lebih dulu
+      const sortedTasks = rawTasks.sort((a: any, b: any) => {
+        const aIsRev = a.status === 'in_progress' && a.revision_note;
+        const bIsRev = b.status === 'in_progress' && b.revision_note;
+        if (aIsRev && !bIsRev) return -1;
+        if (!aIsRev && bIsRev) return 1;
+
+        const aIsUrgent = a.priority === 'urgent' || a.priority === 'URGENT' || a.priority === 'HIGH' || a.priority === 'CRITICAL';
+        const bIsUrgent = b.priority === 'urgent' || b.priority === 'URGENT' || b.priority === 'HIGH' || b.priority === 'CRITICAL';
+        if (aIsUrgent && !bIsUrgent) return -1;
+        if (!aIsUrgent && bIsUrgent) return 1;
+
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      });
+
+      setMemberTasksList(sortedTasks);
 
       if (tasks.length > 0) {
         // Prioritas pilihan:
@@ -1388,6 +1408,7 @@ export const App: React.FC = () => {
           title: newAssignTaskTitle.trim(),
           description: newAssignDescription.trim() || null,
           due_date: dueDateIso,
+          priority: newAssignPriority,
           checklist: checklistItems,
           status: 'in_progress',
         });
@@ -1402,6 +1423,7 @@ export const App: React.FC = () => {
         setNewAssignTaskTitle('');
         setNewAssignDescription('');
         setNewAssignDueDate('');
+        setNewAssignPriority('normal');
         setDodPoints(['', '', '']);
 
         // 2. Trigger visual submit success animation
@@ -1786,6 +1808,8 @@ export const App: React.FC = () => {
             setNewAssignDescription={setNewAssignDescription}
             newAssignDueDate={newAssignDueDate}
             setNewAssignDueDate={setNewAssignDueDate}
+            newAssignPriority={newAssignPriority}
+            setNewAssignPriority={setNewAssignPriority}
             dodPoints={dodPoints}
             onApplyDeadlinePreset={handleApplyDeadlinePreset}
             onAddDodPoint={handleAddDodPoint}

@@ -116,7 +116,14 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                           }`}
                         >
                           <div className="truncate max-w-[170px] sm:max-w-[210px]">
-                            <span className="font-semibold block truncate text-xs">{task.title}</span>
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="font-semibold block truncate text-xs">{task.title}</span>
+                              {(task.priority === 'urgent' || task.priority === 'URGENT' || task.priority === 'HIGH' || task.priority === 'CRITICAL') && (
+                                <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-bold tracking-wider uppercase shrink-0">
+                                  🔥 Urgent
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[10px] text-white/40 block mt-0.5">
                               {task.checklist?.length || 0} Poin Checklist DoD
                             </span>

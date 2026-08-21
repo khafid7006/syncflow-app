@@ -30,6 +30,8 @@ interface PODashboardProps {
   setNewAssignDescription: (desc: string) => void;
   newAssignDueDate: string;
   setNewAssignDueDate: (date: string) => void;
+  newAssignPriority: 'normal' | 'urgent';
+  setNewAssignPriority: (priority: 'normal' | 'urgent') => void;
   dodPoints: string[];
   onApplyDeadlinePreset: (daysOffset: number, targetForm: 'create' | 'edit') => void;
   onAddDodPoint: () => void;
@@ -73,6 +75,8 @@ export const PODashboard: React.FC<PODashboardProps> = ({
   setNewAssignDescription,
   newAssignDueDate,
   setNewAssignDueDate,
+  newAssignPriority,
+  setNewAssignPriority,
   dodPoints,
   onApplyDeadlinePreset,
   onAddDodPoint,
@@ -465,6 +469,37 @@ export const PODashboard: React.FC<PODashboardProps> = ({
                 onChange={e => setNewAssignDueDate(e.target.value)}
                 className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 transition-colors duration-300 font-sans [color-scheme:light]"
               />
+            </div>
+
+            {/* TOGGLE PILIHAN PRIORITAS TUGAS */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                Prioritas Tugas
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewAssignPriority('normal')}
+                  className={`py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                    newAssignPriority === 'normal'
+                      ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
+                      : 'bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200'
+                  }`}
+                >
+                  📌 Normal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewAssignPriority('urgent')}
+                  className={`py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                    newAssignPriority === 'urgent'
+                      ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
+                      : 'bg-zinc-100 text-zinc-500 border-zinc-200 hover:bg-zinc-200'
+                  }`}
+                >
+                  🔥 Urgent
+                </button>
+              </div>
             </div>
 
             {/* DYNAMIC DOD CHECKLIST LIST (MAX 10 POINTS) */}
