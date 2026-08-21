@@ -23,6 +23,7 @@ import { ManageMembersModal } from './components/modals/ManageMembersModal';
 import { ManageLinksModal } from './components/modals/ManageLinksModal';
 import { EditTaskModal } from './components/modals/EditTaskModal';
 import { ResolveBlockerModal } from './components/modals/ResolveBlockerModal';
+import { CustomGlassSelect, GlassSelectOption } from './components/ui/CustomGlassSelect';
 import { RevisionModal } from './components/modals/RevisionModal';
 import { ReportBlockerModal } from './components/modals/ReportBlockerModal';
 
@@ -1680,27 +1681,30 @@ export const App: React.FC = () => {
                 ) : (
                   <div className="space-y-1">
                     <label className="block text-zinc-400 font-medium text-xs">Pod / Divisi *</label>
-                    <select
+                    <CustomGlassSelect
+                      theme="dark"
                       value={pod}
-                      onChange={e => setPod(e.target.value as any)}
-                      className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans text-xs cursor-pointer"
-                    >
-                      <option value="Product Builder">Product Builder</option>
-                      <option value="BA">Business Analyst</option>
-                      <option value="UI/UX Designer">UI/UX Designer</option>
-                      <option value="QA">QA & Testing</option>
-                      <option value="Marketing">Marketing</option>
-                      <option value="General">General</option>
-                    </select>
+                      onChange={val => setPod(val as any)}
+                      options={[
+                        { value: 'Product Builder', label: 'Product Builder' },
+                        { value: 'BA', label: 'Business Analyst' },
+                        { value: 'UI/UX Designer', label: 'UI/UX Designer' },
+                        { value: 'QA', label: 'QA & Testing' },
+                        { value: 'Marketing', label: 'Marketing' },
+                        { value: 'General', label: 'General' },
+                      ]}
+                      placeholder="Pilih Pod..."
+                    />
                   </div>
                 )}
 
                 <div className="space-y-1">
                   <label className="block text-zinc-400 font-medium text-xs">Peran *</label>
-                  <select
+                  <CustomGlassSelect
+                    theme="dark"
                     value={authRole}
-                    onChange={e => {
-                      const selectedRole = e.target.value as 'member' | 'owner';
+                    onChange={val => {
+                      const selectedRole = val as 'member' | 'owner';
                       setAuthRole(selectedRole);
                       if (selectedRole === 'owner') {
                         setPod('Management' as any);
@@ -1708,11 +1712,12 @@ export const App: React.FC = () => {
                         setPod('Product Builder');
                       }
                     }}
-                    className="w-full p-2.5 bg-neutral-950 border border-white/10 rounded-xl text-white focus:outline-hidden focus:border-white/30 font-sans text-xs cursor-pointer"
-                  >
-                    <option value="member">Member</option>
-                    <option value="owner">Project Owner</option>
-                  </select>
+                    options={[
+                      { value: 'member', label: 'Member', badge: 'Member' },
+                      { value: 'owner', label: 'Project Owner', badge: 'PO' },
+                    ]}
+                    placeholder="Pilih Peran..."
+                  />
                 </div>
               </div>
             )}

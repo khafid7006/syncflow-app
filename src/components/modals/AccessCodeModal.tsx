@@ -1,6 +1,7 @@
 import React from 'react';
 import { Lock, X } from 'lucide-react';
 import { Workspace } from '../../types';
+import { CustomGlassSelect, GlassSelectOption } from '../ui/CustomGlassSelect';
 
 interface AccessCodeModalProps {
   isOpen: boolean;
@@ -13,6 +14,15 @@ interface AccessCodeModalProps {
   onClose: () => void;
   onVerifyAndJoin: (e: React.FormEvent) => void;
 }
+
+const podOptions: GlassSelectOption[] = [
+  { value: 'Product Builder', label: 'Product Builder' },
+  { value: 'Marketing', label: 'Marketing' },
+  { value: 'UI/UX Designer', label: 'UI/UX Designer' },
+  { value: 'BA', label: 'BA (Business Analyst)' },
+  { value: 'QA', label: 'QA & Testing' },
+  { value: 'General', label: 'General' },
+];
 
 export const AccessCodeModal: React.FC<AccessCodeModalProps> = ({
   isOpen,
@@ -70,17 +80,14 @@ export const AccessCodeModal: React.FC<AccessCodeModalProps> = ({
           {/* Input 2 (Pilih Pod / Divisi) */}
           <div className="space-y-1">
             <label className="block text-[10px] text-zinc-400 font-medium">Pilih Pod / Divisi Anda *</label>
-            <select
-              value={selectedTargetPod}
-              onChange={e => setSelectedTargetPod(e.target.value)}
+            <CustomGlassSelect
+              theme="dark"
               disabled={isVerifyingCode}
-              className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2.5 text-xs text-white outline-hidden focus:border-white/30 font-sans cursor-pointer disabled:opacity-50"
-            >
-              <option value="Product Builder">Product Builder</option>
-              <option value="Marketing">Marketing</option>
-              <option value="UI/UX Designer">UI/UX Designer</option>
-              <option value="General">General</option>
-            </select>
+              value={selectedTargetPod}
+              onChange={setSelectedTargetPod}
+              options={podOptions}
+              placeholder="Pilih Pod / Divisi..."
+            />
           </div>
 
           {/* Action buttons */}

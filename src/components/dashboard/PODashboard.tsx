@@ -4,6 +4,7 @@ import {
   CheckCircle, Plus, Check, Send, UserPlus 
 } from 'lucide-react';
 import { Workspace, MemberTask, ProjectLink } from '../../types';
+import { CustomGlassSelect, GlassSelectOption } from '../ui/CustomGlassSelect';
 
 interface PODashboardProps {
   currentWorkspace: Workspace | null;
@@ -522,62 +523,65 @@ export const PODashboard: React.FC<PODashboardProps> = ({
             {assignTargetType === 'individual' ? (
               <div className="space-y-1 font-sans">
                 <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pilih Anggota Tim</label>
-                <select
-                  value={selectedAssigneeId}
-                  onChange={(e) => setSelectedAssigneeId(e.target.value)}
-                  disabled={isLoadingAssignees || assigneeList.length === 0}
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-900 outline-hidden transition-all focus:border-zinc-400 focus:bg-white disabled:opacity-50 cursor-pointer font-sans"
-                >
-                  {isLoadingAssignees ? (
-                    <option value="">Memuat daftar tim...</option>
-                  ) : assigneeList.length === 0 ? (
-                    <option value="">Belum ada anggota tim terdaftar...</option>
-                  ) : (() => {
-                    const nonPoMembers = assigneeList.filter(m => m.role !== 'po');
-                    const poMembers = assigneeList.filter(m => m.role === 'po');
+                {(() => {
+                  const nonPoMembers = assigneeList.filter(m => m.role !== 'po');
+                  const poMembers = assigneeList.filter(m => m.role === 'po');
 
-                    return (
-                      <>
-                        {nonPoMembers.length > 0 && (
-                          <optgroup label="Anggota Tim & Lead">
-                            {nonPoMembers.map((member) => (
-                              <option key={member.id} value={member.id}>
-                                {member.full_name} — {member.pod} ({member.role.toUpperCase()})
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                        {poMembers.length > 0 && (
-                          <optgroup label="Project Owner (Self Assign)">
-                            {poMembers.map((member) => (
-                              <option key={member.id} value={member.id}>
-                                👤 {member.full_name} (PO)
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </>
-                    );
-                  })()}
-                </select>
+                  const memberOptions: GlassSelectOption[] = [];
+                  if (nonPoMembers.length > 0) {
+                    memberOptions.push({ value: 'hdr-1', label: 'Anggota Tim & Lead', isHeader: true });
+                    nonPoMembers.forEach(m => {
+                      memberOptions.push({
+                        value: m.id,
+                        label: m.full_name,
+                        sublabel: `${m.pod} • ${m.role.toUpperCase()}`,
+                        badge: m.role.toUpperCase()
+                      });
+                    });
+                  }
+                  if (poMembers.length > 0) {
+                    memberOptions.push({ value: 'hdr-2', label: 'Project Owner (Self Assign)', isHeader: true });
+                    poMembers.forEach(m => {
+                      memberOptions.push({
+                        value: m.id,
+                        label: `👤 ${m.full_name}`,
+                        sublabel: `${m.pod} • PO`,
+                        badge: 'PO'
+                      });
+                    });
+                  }
+
+                  return (
+                    <CustomGlassSelect
+                      theme="light"
+                      disabled={isLoadingAssignees || assigneeList.length === 0}
+                      value={selectedAssigneeId}
+                      onChange={setSelectedAssigneeId}
+                      options={memberOptions}
+                      placeholder={isLoadingAssignees ? "Memuat daftar tim..." : "Pilih Anggota Tim..."}
+                    />
+                  );
+                })()}
               </div>
             ) : assignTargetType === 'pod' ? (
               <div className="space-y-1 font-sans">
                 <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
                   Pilih Divisi / POD Target
                 </label>
-                <select
+                <CustomGlassSelect
+                  theme="light"
                   value={selectedTargetPod}
-                  onChange={(e) => setSelectedTargetPod(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-900 outline-hidden focus:border-zinc-400 focus:bg-white cursor-pointer font-sans"
-                >
-                  <option value="Marketing">Marketing</option>
-                  <option value="Product Builder">Product Builder</option>
-                  <option value="BA">BA (Business Analyst)</option>
-                  <option value="UI/UX Designer">UI/UX Designer</option>
-                  <option value="QA">QA</option>
-                  <option value="General">General</option>
-                </select>
+                  onChange={setSelectedTargetPod}
+                  options={[
+                    { value: 'Marketing', label: 'Marketing', badge: 'Divisi' },
+                    { value: 'Product Builder', label: 'Product Builder', badge: 'Divisi' },
+                    { value: 'BA', label: 'BA (Business Analyst)', badge: 'Divisi' },
+                    { value: 'UI/UX Designer', label: 'UI/UX Designer', badge: 'Divisi' },
+                    { value: 'QA', label: 'QA', badge: 'Divisi' },
+                    { value: 'General', label: 'General', badge: 'Divisi' },
+                  ]}
+                  placeholder="Pilih Divisi Target..."
+                />
                 <p className="text-[10px] text-zinc-500 font-sans">
                   Tugas akan otomatis dikirimkan ke seluruh anggota di divisi ini.
                 </p>
