@@ -73,6 +73,59 @@ export const Navbar: React.FC<NavbarProps> = ({
     setUnreadNotifCount(0);
   };
 
+  const getNotifStyle = (actionType: 'assigned' | 'submit' | 'done' | 'blocked' | 'revision') => {
+    switch (actionType) {
+      case 'assigned':
+        return {
+          icon: '📌',
+          label: 'Tugas Baru',
+          badgeClass: 'bg-gradient-to-r from-sky-500/20 to-sky-500/5 text-sky-300 border border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.15)]',
+          borderAccent: 'border-sky-500/20 bg-gradient-to-r from-sky-950/20 via-neutral-900/60 to-neutral-900/80',
+          dotColor: 'bg-sky-400'
+        };
+      case 'submit':
+        return {
+          icon: '🚀',
+          label: 'Diserahkan',
+          badgeClass: 'bg-gradient-to-r from-indigo-500/20 to-purple-500/10 text-indigo-300 border border-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.15)]',
+          borderAccent: 'border-indigo-500/20 bg-gradient-to-r from-indigo-950/20 via-neutral-900/60 to-neutral-900/80',
+          dotColor: 'bg-indigo-400'
+        };
+      case 'done':
+        return {
+          icon: '✅',
+          label: 'Di-ACC',
+          badgeClass: 'bg-gradient-to-r from-emerald-500/20 to-teal-500/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.15)]',
+          borderAccent: 'border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-neutral-900/60 to-neutral-900/80',
+          dotColor: 'bg-emerald-400'
+        };
+      case 'blocked':
+        return {
+          icon: '🚨',
+          label: 'Kendala',
+          badgeClass: 'bg-gradient-to-r from-rose-500/25 to-rose-900/20 text-rose-300 border border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.2)]',
+          borderAccent: 'border-rose-500/30 bg-gradient-to-r from-rose-950/30 via-neutral-900/60 to-neutral-900/80',
+          dotColor: 'bg-rose-500'
+        };
+      case 'revision':
+        return {
+          icon: '⚠️',
+          label: 'Revisi',
+          badgeClass: 'bg-gradient-to-r from-amber-500/20 to-orange-500/10 text-amber-300 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]',
+          borderAccent: 'border-amber-500/20 bg-gradient-to-r from-amber-950/20 via-neutral-900/60 to-neutral-900/80',
+          dotColor: 'bg-amber-400'
+        };
+      default:
+        return {
+          icon: '🔔',
+          label: 'Info',
+          badgeClass: 'bg-white/10 text-white border border-white/15',
+          borderAccent: 'border-white/10 bg-neutral-900/80',
+          dotColor: 'bg-white'
+        };
+    }
+  };
+
   return (
     <header className="w-full flex items-center justify-between gap-4 font-sans text-xs">
       {/* Logo Brand: SyncFlow & WORKSPACE SELECTOR DROPDOWN (KIRI ATAS - CONDITIONAL) */}
@@ -232,38 +285,49 @@ export const Navbar: React.FC<NavbarProps> = ({
                     Belum ada notifikasi baru di workspace ini.
                   </div>
                 ) : (
-                  notificationsList.map((notif, idx) => (
-                    <div
-                      key={notif.id || idx}
-                      className="p-3 rounded-2xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-all flex items-start gap-3 relative font-sans"
-                    >
-                      {/* Avatar Inisial */}
-                      <div className="w-8 h-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center font-bold text-xs text-white shrink-0 uppercase">
-                        {notif.user_name.charAt(0)}
-                      </div>
+                  notificationsList.map((notif, idx) => {
+                    const style = getNotifStyle(notif.action_type);
+                    const isUnread = unreadNotifCount > 0 && idx < unreadNotifCount;
 
-                      {/* Info Text */}
-                      <div className="flex-1 truncate font-sans">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="font-semibold text-white text-xs truncate">{notif.user_name}</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-white/5 text-white/50 border border-white/5 shrink-0 uppercase font-mono">
-                            {notif.pod}
-                          </span>
+                    return (
+                      <div
+                        key={notif.id || idx}
+                        className={`p-3 rounded-2xl border transition-all flex items-start gap-3 relative font-sans ${style.borderAccent} hover:scale-[1.01]`}
+                      >
+                        {/* Icon Badge */}
+                        <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-xs">
+                          {style.icon}
                         </div>
-                        <p className="text-[11px] text-zinc-300 truncate mt-0.5">
-                          {notif.action_type === 'done' && `Tugas "${notif.task_title}" telah di-ACC`}
-                          {notif.action_type === 'submit' && `Menyerahkan tugas "${notif.task_title}"`}
-                          {notif.action_type === 'blocked' && `Melaporkan kendala di "${notif.task_title}"`}
-                          {notif.action_type === 'revision' && `Menerima catatan revisi di "${notif.task_title}"`}
-                        </p>
-                      </div>
 
-                      {/* Unread Indicator Dot */}
-                      {unreadNotifCount > 0 && idx < unreadNotifCount && (
-                        <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 mt-1.5 shadow-xs" />
-                      )}
-                    </div>
-                  ))
+                        {/* Info Text */}
+                        <div className="flex-1 truncate font-sans">
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="font-semibold text-white text-xs truncate">{notif.user_name}</span>
+                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${style.badgeClass}`}>
+                                {style.label}
+                              </span>
+                            </div>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-white/5 text-white/50 border border-white/5 shrink-0 uppercase font-mono">
+                              {notif.pod}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-300 truncate mt-1 leading-snug">
+                            {notif.action_type === 'done' && `Tugas "${notif.task_title}" telah di-ACC`}
+                            {notif.action_type === 'submit' && `Menyerahkan tugas "${notif.task_title}"`}
+                            {notif.action_type === 'blocked' && `Melaporkan kendala di "${notif.task_title}"`}
+                            {notif.action_type === 'revision' && `Menerima catatan revisi di "${notif.task_title}"`}
+                            {notif.action_type === 'assigned' && `Tugas baru "${notif.task_title}"`}
+                          </p>
+                        </div>
+
+                        {/* Unread Indicator Dot */}
+                        {isUnread && (
+                          <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 shadow-xs ${style.dotColor}`} />
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
