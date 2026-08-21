@@ -210,11 +210,62 @@ export const App: React.FC = () => {
   const [blockerReason, setBlockerReason] = useState<string>('');
 
   // PROFILE & ACCOUNT SETTINGS MODAL STATES
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [editFullName, setEditFullName] = useState<string>('');
   const [editAvatarUrl, setEditAvatarUrl] = useState<string>('');
   const [editPod, setEditPod] = useState<string>('');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState<boolean>(false);
+
+  // Handle Avatar Upload to Supabase Storage Bucket ('avatars')
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !session?.user?.id) return;
+
+    // 1. Validasi Ukuran File (Maksimal 500 KB = 500 * 1024 bytes)
+    const MAX_SIZE_BYTES = 500 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      showToast("⚠️ Ukuran foto terlalu besar! Maksimal 500 KB.");
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // 2. Validasi Format Gambar
+    if (!file.type.startsWith('image/')) {
+      showToast("⚠️ Format file harus berupa gambar (JPG, PNG, WEBP).");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+
+    try {
+      const fileExt = file.name.split('.').pop() || 'jpg';
+      const filePath = `${session.user.id}/${Date.now()}.${fileExt}`;
+
+      // 3. Upload file langsung ke bucket 'avatars' Supabase
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // 4. Dapatkan Public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      if (publicUrlData?.publicUrl) {
+        setEditAvatarUrl(publicUrlData.publicUrl);
+        showToast("✓ Foto berhasil diunggah!");
+      }
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      showToast(`Gagal mengunggah foto: ${err.message || err}`);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   // Inisialisasi form profil saat modal dibuka
   const handleOpenProfileModal = () => {
@@ -2152,34 +2203,68 @@ export const App: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveProfile} className="space-y-4 font-sans">
-              {/* Preview Avatar & Input URL */}
-              <div className="flex items-center gap-4 p-3.5 bg-neutral-950/60 rounded-2xl border border-white/10">
-                {editAvatarUrl ? (
-                  <img
-                    src={editAvatarUrl}
-                    alt="Avatar Preview"
-                    className="w-14 h-14 rounded-2xl object-cover border border-white/20 shrink-0"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center font-bold text-lg text-white uppercase shrink-0">
-                    {editFullName.charAt(0) || 'U'}
-                  </div>
-                )}
+              {/* Upload Area Foto Profil (Maks. 500 KB) */}
+              <div className="space-y-2 font-sans">
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                  Foto Profil (Maks. 500 KB)
+                </label>
 
-                <div className="flex-1 space-y-1">
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                    Tautan Foto Profil (URL Image)
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="https://example.com/avatar.jpg"
-                    value={editAvatarUrl}
-                    onChange={(e) => setEditAvatarUrl(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-neutral-900 px-3 py-1.5 text-xs text-white outline-hidden focus:border-white/30 font-sans"
-                  />
+                <div className="flex items-center gap-4 p-4 bg-neutral-950/60 rounded-2xl border border-white/10">
+                  {/* Preview Avatar */}
+                  <div className="relative shrink-0">
+                    {editAvatarUrl ? (
+                      <img
+                        src={editAvatarUrl}
+                        alt="Avatar Preview"
+                        className="w-16 h-16 rounded-2xl object-cover border border-white/20 shadow-md"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center font-bold text-xl text-white uppercase">
+                        {editFullName.charAt(0) || 'U'}
+                      </div>
+                    )}
+                    {isUploadingAvatar && (
+                      <div className="absolute inset-0 bg-black/70 rounded-2xl flex items-center justify-center text-[10px] text-white font-bold">
+                        Mengunggah...
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tombol Pilih File */}
+                  <div className="flex-1 space-y-1.5 font-sans">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleAvatarFileChange}
+                      accept="image/png, image/jpeg, image/webp"
+                      className="hidden"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isUploadingAvatar}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-3 py-1.5 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {isUploadingAvatar ? 'Memproses...' : 'Pilih Foto Baru'}
+                      </button>
+                      {editAvatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditAvatarUrl('');
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl border border-white/10 bg-transparent hover:bg-rose-500/20 text-[11px] font-medium text-rose-300 hover:text-rose-200 transition-colors cursor-pointer"
+                        >
+                          Hapus Foto
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-zinc-500">
+                      Format: JPG, PNG, WEBP. Ukuran maksimal 500 KB.
+                    </p>
+                  </div>
                 </div>
               </div>
 
