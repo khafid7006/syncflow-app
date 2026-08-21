@@ -128,6 +128,62 @@ export const PODashboard: React.FC<PODashboardProps> = ({
 }) => {
   const isUserPL = isPlRole || activeWorkspaceRole === 'pl';
   const isUserPO = !isUserPL;
+
+  // 1. Kelompokkan tugas aktif berdasarkan Pod/Divisi untuk Gantt Chart Radar
+  const podGanttData = React.useMemo(() => {
+    const pods: Record<string, { totalTasks: number; doneTasks: number; blockedTasks: number; earliestDeadline: string; latestDeadline: string }> = {};
+
+    allTasks.forEach((task) => {
+      const podName = task.pod || 'General';
+      if (!pods[podName]) {
+        pods[podName] = {
+          totalTasks: 0,
+          doneTasks: 0,
+          blockedTasks: 0,
+          earliestDeadline: task.deadline || '',
+          latestDeadline: task.deadline || ''
+        };
+      }
+      pods[podName].totalTasks += 1;
+      if (task.status === 'done') pods[podName].doneTasks += 1;
+      if (task.status === 'blocked' || task.is_blocked) pods[podName].blockedTasks += 1;
+
+      if (task.deadline && (!pods[podName].latestDeadline || task.deadline > pods[podName].latestDeadline)) {
+        pods[podName].latestDeadline = task.deadline;
+      }
+    });
+
+    return Object.entries(pods).map(([pod, data]) => ({
+      pod,
+      ...data,
+      progress: data.totalTasks > 0 ? Math.round((data.doneTasks / data.totalTasks) * 100) : 0
+    }));
+  }, [allTasks]);
+
+  // 2. Kalkulasi Smart Velocity Forecasting ETA
+  const forecastingResult = React.useMemo(() => {
+    if (!activeSprint || allTasks.length === 0) {
+      return { status: 'standby', text: 'Menunggu PL membagikan tugas ke anggota tim...', etaDate: '-' };
+    }
+
+    const remainingDoD = Math.max(0, totalDoDCount - completedDoDCount);
+    const activeMembersCount = Math.max(1, assigneeList.length);
+    // Asumsi 1 member menyelesaikan ~1.5 DoD poin per hari kerja
+    const estimatedDaysNeeded = Math.max(1, Math.ceil(remainingDoD / (activeMembersCount * 1.5)));
+
+    const sprintDaysLeft = calculateDaysLeft(activeSprint.end_date);
+    const isDelayRisk = estimatedDaysNeeded > sprintDaysLeft;
+
+    return {
+      status: isDelayRisk ? 'delay_risk' : 'on_track',
+      estimatedDays: estimatedDaysNeeded,
+      daysLeft: sprintDaysLeft,
+      text: isDelayRisk
+        ? `⚠️ Potensi Delay: Beban sisa ${remainingDoD} DoD butuh ~${estimatedDaysNeeded} hari, sisa sprint ${sprintDaysLeft} hari.`
+        : `🟢 Optimal: Diprediksi selesai dalam ~${estimatedDaysNeeded} hari (Tepat Waktu).`
+    };
+  }, [activeSprint, allTasks, totalDoDCount, completedDoDCount, assigneeList.length, calculateDaysLeft]);
+
   // Set ID tugas yang sedang dibuka detailnya (default: hanya tugas dengan Blocker atau Review yang otomatis terbuka)
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(new Set());
 
@@ -573,31 +629,76 @@ export const PODashboard: React.FC<PODashboardProps> = ({
               </div>
             </div>
 
-            {/* Bento Metric Forecasting Waktu & Kesehatan Sprint */}
-            <div className="grid grid-cols-2 gap-3 font-sans">
-              <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] space-y-1">
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Durasi Sprint</span>
-                <p className="text-xl font-extrabold text-white">
-                  {activeSprint ? `${calculateDaysLeft(activeSprint.end_date)} Hari Sisa` : '-'}
-                </p>
-                <p className="text-[11px] text-zinc-400 font-mono">
-                  {activeSprint?.start_date || '-'} → {activeSprint?.end_date || '-'}
-                </p>
+            {/* ================= SMART AUTO-FORECASTING BANNER ================= */}
+            <div className={`p-4 rounded-2xl border transition-all text-xs space-y-1.5 font-sans ${
+              forecastingResult.status === 'delay_risk'
+                ? 'border-rose-500/30 bg-rose-950/20 text-rose-300'
+                : 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
+            }`}>
+              <div className="flex items-center justify-between font-sans">
+                <span className="font-bold text-[10px] uppercase tracking-wider font-mono flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${forecastingResult.status === 'delay_risk' ? 'bg-rose-400 animate-ping' : 'bg-emerald-400'}`} />
+                  Smart Velocity Forecast
+                </span>
+                <span className="text-[10px] font-mono opacity-80">
+                  {allTasks.length} Tugas Aktif dari PL
+                </span>
+              </div>
+              <p className="font-semibold text-white text-xs leading-relaxed font-sans">
+                {forecastingResult.text}
+              </p>
+            </div>
+
+            {/* ================= INTERACTIVE MINI-GANTT TIMELINE ================= */}
+            <div className="space-y-3 p-4 rounded-2xl border border-white/10 bg-white/[0.02] font-sans">
+              <div className="flex items-center justify-between font-sans">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                  Timeline Distribusi POD (Gantt Radar)
+                </span>
+                <span className="text-[10px] text-zinc-500 font-mono">
+                  {activeSprint?.start_date?.slice(5)} → {activeSprint?.end_date?.slice(5)}
+                </span>
               </div>
 
-              <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] space-y-1">
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Status Proyek</span>
-                <p className="text-xl font-extrabold text-emerald-400">
-                  {activeSprint ? (sprintProgressPct >= 50 ? 'On Track ⚡' : 'In Progress ⏳') : 'Standby'}
-                </p>
-                <p className="text-[11px] text-zinc-400 font-sans">
-                  {allTasks.filter(t => t.status === 'blocked' || t.is_blocked).length > 0 ? (
-                    <span className="text-rose-400 font-semibold">🚨 Ada kendala di lapangan</span>
-                  ) : (
-                    'Semua pod berjalan lancar'
-                  )}
-                </p>
-              </div>
+              {podGanttData.length === 0 ? (
+                <div className="py-6 text-center text-xs text-zinc-500 font-mono">
+                  PL belum menetapkan tugas ke divisi manapun.
+                </div>
+              ) : (
+                <div className="space-y-2.5 pt-1 font-sans">
+                  {podGanttData.map((item) => (
+                    <div key={item.pod} className="space-y-1 font-sans">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-zinc-300 flex items-center gap-1.5 font-sans">
+                          <span>{item.pod}</span>
+                          {item.blockedTasks > 0 && (
+                            <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[9px] font-bold font-mono">
+                              {item.blockedTasks} Blocker
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-zinc-500 font-mono text-[10px]">
+                          {item.doneTasks}/{item.totalTasks} Selesai ({item.progress}%)
+                        </span>
+                      </div>
+
+                      {/* Gantt Bar Horizontal */}
+                      <div className="w-full h-2.5 rounded-full bg-neutral-900 border border-white/10 overflow-hidden p-0.5">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            item.blockedTasks > 0
+                              ? 'bg-gradient-to-r from-rose-500 to-amber-500'
+                              : item.progress === 100
+                              ? 'bg-emerald-400'
+                              : 'bg-gradient-to-r from-sky-400 to-indigo-500'
+                          }`}
+                          style={{ width: `${Math.max(item.progress, 10)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Petunjuk Operasional PO */}
